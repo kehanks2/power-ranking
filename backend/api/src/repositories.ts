@@ -24,23 +24,10 @@ const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 // values, so the API has to apply the same weight+confidence-shrinkage the
 // replay used or displayed ratings won't match what was actually computed.
 //
-// Backtest-tuned. Exists at all because an unweighted sum let a region's meta
-// dominate individual team merit -- a weak team in a strong region outranking a
-// team that had just beaten top opponents in a weaker one.
-//
-// Briefly lowered to 0.65, which measured better at the time. That turned out
-// to be compensating for a real bug rather than a genuine optimum: international
-// games graded each side's bare contextual against the opponent's contextual +
-// meta, so both teams were underdogs in the same game and the meta term was
-// effectively over-applied. With that asymmetry fixed (see GameResult's
-// ownExpectancyMu) the optimum moved back here: calibration weighted mean
-// absolute gap is 3.47pp at 0.80 versus 3.83pp at 0.65.
-//
-// Do NOT tune this by intuition -- re-sweep manualBacktest and
-// manualLeagueCalibration after substantial data changes, and keep this value
-// identical in computeRatings.ts and repositories.ts or displayed ratings stop
-// matching what the replay computed.
-const META_WEIGHT = 0.8;
+// Must stay identical to computeRatings.ts's META_WEIGHT -- see the reasoning
+// there. Combination happens at read time, not baked into stored mu values, so
+// a mismatch makes displayed ratings disagree with what the replay computed.
+const META_WEIGHT = 0.5;
 // A team with no game in its league's latest split is treated as no longer
 // actively competing (e.g. relegated, or just not in the current split's
 // lineup) -- team_league_memberships only ever grows an open (end_date IS

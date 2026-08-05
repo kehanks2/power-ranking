@@ -18,44 +18,35 @@ const MOV_WEIGHT_CAP = 1.5;
 // region's meta swing dominate individual team merit (a weak team in a
 // strong region outranking a team that just beat top opponents in a weaker
 // one). Re-sweep via manualBacktest.ts after any substantial data changes.
-// Backtest-tuned. Exists at all because an unweighted sum let a region's meta
-// dominate individual team merit -- a weak team in a strong region outranking a
-// team that had just beaten top opponents in a weaker one.
+// Weight on the league prior relative to a team's own record.
 //
-// Briefly lowered to 0.65, which measured better at the time. That turned out
-// to be compensating for a real bug rather than a genuine optimum: international
-// games graded each side's bare contextual against the opponent's contextual +
-// meta, so both teams were underdogs in the same game and the meta term was
-// effectively over-applied. With that asymmetry fixed (see GameResult's
-// ownExpectancyMu) the optimum moved back here: calibration weighted mean
-// absolute gap is 3.47pp at 0.80 versus 3.83pp at 0.65.
+// Chosen by a joint 48-config grid (manualModelSweep) sweeping metaWeight x
+// seriesCorrelation x internationalWeightMultiplier together, because tuning
+// these one at a time is what left SERIES_CORRELATION stale for months.
+// Primary criterion is Brier -- a strictly proper scoring rule, so unlike
+// accuracy it cannot be improved by shading probabilities toward 50%.
 //
-// Do NOT tune this by intuition -- re-sweep manualBacktest and
-// manualLeagueCalibration after substantial data changes, and keep this value
-// identical in computeRatings.ts and repositories.ts or displayed ratings stop
-// matching what the replay computed.
-const META_WEIGHT = 0.8;
-// Intra-series correlation (rho) -- see seriesEvidenceWeight in replay.ts.
-// Games inside a Bo3/Bo5 are not independent observations, so each carries
-// weight 1/(1+(n-1)*rho). At 0.4 a 3-0 counts as 1.67 games rather than 3.
+// At 0.5: Brier 0.2254 and log loss 0.6434, both the grid minimum; the
+// >80%-confidence overconfidence gap falls to 5.3pp from 6.7pp at 0.8; and the
+// displayed league spread drops to 1.20x the Bradley-Terry fit from 1.45x.
+// Accuracy is 63.60% against a grid range of 60-64%, i.e. unchanged.
 //
-// Was 0.8, chosen when down-weighting correlated evidence measurably fixed
-// overconfidence (the >80% confidence band predicted ~86% and delivered ~77%,
-// a gap rho=0.8 closed from ~8.6pp to ~7.1pp). That is no longer what the data
-// says. After the offseason-drift, roster-prior-confidence, symmetric
-// international expectancy and cross-region weighting fixes, calibration is
-// FLAT across the whole rho range -- Brier 0.2253-0.2259, log loss
-// 0.6430-0.6448, high-confidence gap 5.8-6.9pp, all inside noise -- while
-// median displayed RD swings from 80 (rho=0) to 103 (rho=0.95).
+// One metric disagrees: per-league calibration on cross-league games prefers a
+// LARGER weight (2.93pp at 0.8 vs 3.96pp at 0.5). It is the weaker measure --
+// only ~870 observations, and a bigger league term matches aggregate per-league
+// win rates almost mechanically, which is the very over-attribution to region
+// this weight exists to limit.
+const META_WEIGHT = 0.5;
+// Intra-series correlation (rho): games inside a Bo3/Bo5 are not independent
+// observations, so each carries weight 1/(1+(n-1)*rho). At 0.6 a 3-0 counts as
+// 1.36 games rather than 3.
 //
-// So 0.8 was buying 20 points of extra uncertainty on every team for no
-// calibration benefit, and slightly worse accuracy (63.18% vs 63.45%). 0.4 is
-// the measured optimum on Brier, log loss AND the high-confidence gap, keeps a
-// real statistically-motivated correction rather than pretending series games
-// are independent, and tightens the board. Re-check with
-// manualSeriesCorrelationSweep after substantial data changes -- this value is
-// contingent on the rest of the model being right, as its own history shows.
-const SERIES_CORRELATION = 0.4;
+// From the same joint grid. Higher rho consistently improves the proper scoring
+// rules and, more importantly, overconfidence: the >80% band gap is 5.3pp at
+// 0.6 against 6.9pp at 0. It costs displayed RD (median contextual RD 95 at 0.6
+// vs 79 at 0), which is a real trade -- the model is still overconfident, so
+// narrowing RD further would make its probabilities worse, not better.
+const SERIES_CORRELATION = 0.6;
 // Daily. Rating periods are now a genuinely free knob: drift is scaled by
 // elapsed TIME (see updateRating's elapsedPeriods), so total uncertainty
 // growth over any span no longer depends on how finely that span is sliced.
