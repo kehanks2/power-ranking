@@ -45,21 +45,51 @@ export interface RosterDecayConfig {
 }
 
 /**
+ * How much a fully-confident roster-implied prior is allowed to reduce the RD
+ * widening. At 0 the prior is ignored for uncertainty (the original
+ * behaviour); at 1 a well-known incoming five would widen RD not at all.
+ *
+ * Deliberately not 1: even five individually well-understood players are an
+ * unknown *combination*. Team synergy is real, so signing five known stars
+ * still leaves genuine uncertainty about the unit. This keeps 40% of the
+ * widening at full confidence.
+ */
+export const DEFAULT_PRIOR_CONFIDENCE_RELIEF = 0.6;
+
+/**
  * Regresses a team's rating toward rosterImpliedMu proportional to turnover
  * (fraction of the 5 starting roles that changed), widening RD and volatility
- * in step. turnover=0 is a no-op; turnover=1 (full 5-man swap) regresses fully
- * to rosterImpliedMu with fresh uncertainty.
+ * in step. turnover=0 is a no-op.
+ *
+ * `priorConfidence` (0-1) is the mean confidence of the incoming players'
+ * ratings -- the same signal computeRosterImpliedMu already uses to shape
+ * `mu`. Without it this function was internally inconsistent: it would assert
+ * a specific new rating derived from player evidence, while simultaneously
+ * widening RD as though the team were unknown. Confirmed against real data:
+ * Vivo Keyd Stars swapped 4 of 5 starters and went from a converged RD of 131
+ * to 306 out of a 350 maximum -- i.e. "we know almost nothing" -- even though
+ * every incoming player had a rating we were confident enough to move mu with.
+ *
+ * A confident prior now damps the widening; an unknown one (rookies, no
+ * rating) still produces the full original reset.
  */
 export function applyRosterChangeDecay(
   current: RatingState,
   turnover: number,
   rosterImpliedMu: number,
   config: RosterDecayConfig,
+  priorConfidence = 0,
+  priorConfidenceRelief = DEFAULT_PRIOR_CONFIDENCE_RELIEF,
 ): RatingState {
   const clampedTurnover = Math.max(0, Math.min(1, turnover));
+  const clampedConfidence = Math.max(0, Math.min(1, priorConfidence));
+  const wideningScale = 1 - priorConfidenceRelief * clampedConfidence;
   return {
     mu: current.mu + clampedTurnover * (rosterImpliedMu - current.mu),
-    phi: Math.max(current.phi, current.phi + clampedTurnover * (config.phiInitMax - current.phi)),
+    phi: Math.max(
+      current.phi,
+      current.phi + clampedTurnover * wideningScale * (config.phiInitMax - current.phi),
+    ),
     sigma: current.sigma + clampedTurnover * (config.sigmaDefault - current.sigma),
   };
 }
@@ -84,18 +114,28 @@ export function applySeasonalDecay(current: RatingState, leagueMeanMu: number, k
  */
 export function applyCoincidentDecay(
   current: RatingState,
-  rosterChange: { turnover: number; rosterImpliedMu: number } | null,
+  rosterChange: { turnover: number; rosterImpliedMu: number; priorConfidence?: number } | null,
   seasonal: { leagueMeanMu: number; kSeason: number } | null,
   config: RosterDecayConfig,
+  priorConfidenceRelief = DEFAULT_PRIOR_CONFIDENCE_RELIEF,
 ): RatingState {
+  const roster = (state: RatingState) =>
+    applyRosterChangeDecay(
+      state,
+      rosterChange!.turnover,
+      rosterChange!.rosterImpliedMu,
+      config,
+      rosterChange!.priorConfidence ?? 0,
+      priorConfidenceRelief,
+    );
   if (rosterChange && !seasonal) {
-    return applyRosterChangeDecay(current, rosterChange.turnover, rosterChange.rosterImpliedMu, config);
+    return roster(current);
   }
   if (seasonal && !rosterChange) {
     return applySeasonalDecay(current, seasonal.leagueMeanMu, seasonal.kSeason);
   }
   if (rosterChange && seasonal) {
-    const rosterResult = applyRosterChangeDecay(current, rosterChange.turnover, rosterChange.rosterImpliedMu, config);
+    const rosterResult = roster(current);
     const seasonalResult = applySeasonalDecay(current, seasonal.leagueMeanMu, seasonal.kSeason);
     const rosterShift = Math.abs(rosterResult.mu - current.mu);
     const seasonalShift = Math.abs(seasonalResult.mu - current.mu);

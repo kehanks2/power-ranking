@@ -154,6 +154,10 @@ export async function loadReplayData(
         };
       });
       const rosterImpliedMu = computeRosterImpliedMu(0, incomingPlayers, OFFSET_SCALE);
+      // The same confidence that shaped rosterImpliedMu also governs how much
+      // uncertainty the change really creates -- see applyRosterChangeDecay.
+      const rosterImpliedConfidence =
+        incomingPlayers.reduce((sum, player) => sum + player.confidence, 0) / incomingPlayers.length;
 
       decayEvents.push({
         kind: 'roster_change',
@@ -161,6 +165,7 @@ export async function loadReplayData(
         effectiveDate,
         turnover: genuinelyNewEvents.length / 5,
         rosterImpliedMu,
+        rosterImpliedConfidence,
       });
     }
   }

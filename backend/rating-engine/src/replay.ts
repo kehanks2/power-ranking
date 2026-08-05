@@ -12,12 +12,7 @@
 
 import { updateRating, DEFAULT_TAU, SIGMA_REFERENCE_DAYS, type RatingState, type GameResult } from './glicko2.js';
 import { updateLeagueMeta, effectiveMetaWeight, DEFAULT_META_WEIGHT, type InternationalGameResult } from './contextualMeta.js';
-import {
-  applyRosterChangeDecay,
-  applySeasonalDecay,
-  applyCoincidentDecay,
-  type RosterDecayConfig,
-} from './decay.js';
+import { applyCoincidentDecay, DEFAULT_PRIOR_CONFIDENCE_RELIEF, type RosterDecayConfig } from './decay.js';
 import { computeMovWeight } from './movWeight.js';
 
 export interface ReplayGame {
@@ -46,6 +41,12 @@ export interface RosterDecayEvent {
   effectiveDate: string; // ISO date
   turnover: number;
   rosterImpliedMu: number;
+  /**
+   * Mean confidence (0-1) of the incoming players' ratings -- the same signal
+   * that shaped rosterImpliedMu. Optional for older/synthetic fixtures; absent
+   * means "no prior knowledge", i.e. the full RD reset.
+   */
+  rosterImpliedConfidence?: number;
 }
 
 /** A split-boundary seasonal decay event, already resolved by the caller (league mean at that date). */
@@ -88,6 +89,8 @@ export interface ReplayConfig {
    * empirical trade-off rather than an obvious win.
    */
   ratingPeriodDays?: number;
+  /** See DEFAULT_PRIOR_CONFIDENCE_RELIEF -- how much a confident roster prior damps the RD widening. */
+  priorConfidenceRelief?: number;
 }
 
 /**
@@ -256,9 +259,16 @@ export function runReplay(input: ReplayInput): ReplayResult {
 
       const updated = applyCoincidentDecay(
         current,
-        rosterEvent ? { turnover: rosterEvent.turnover, rosterImpliedMu: rosterEvent.rosterImpliedMu } : null,
+        rosterEvent
+          ? {
+              turnover: rosterEvent.turnover,
+              rosterImpliedMu: rosterEvent.rosterImpliedMu,
+              priorConfidence: rosterEvent.rosterImpliedConfidence,
+            }
+          : null,
         seasonalEvent ? { leagueMeanMu: seasonalEvent.leagueMeanMu, kSeason: seasonalEvent.kSeason } : null,
         rosterConfig,
+        input.config.priorConfidenceRelief ?? DEFAULT_PRIOR_CONFIDENCE_RELIEF,
       );
       teamContextual.set(teamId, updated);
 

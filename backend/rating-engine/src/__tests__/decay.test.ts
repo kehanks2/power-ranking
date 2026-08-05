@@ -103,3 +103,51 @@ describe('coincident roster-change + split-boundary decay', () => {
     expect(combinedShift).toBeLessThan(rosterShift + seasonalShift);
   });
 });
+
+describe('applyRosterChangeDecay -- roster-implied prior confidence', () => {
+  const config = { phiInitMax: 350 / GLICKO2_SCALE, sigmaDefault: 0.06 };
+  // A converged rating, roughly where a mid-season team sits.
+  const converged = { mu: 0.5, phi: 130 / GLICKO2_SCALE, sigma: 0.06 };
+
+  it('still resets RD nearly to cold-start when the incoming players are unknown', () => {
+    // Rookies with no rating -> confidence 0 -> the original behaviour.
+    const after = applyRosterChangeDecay(converged, 0.8, 0.2, config, 0);
+    expect(after.phi * GLICKO2_SCALE).toBeCloseTo(130 + 0.8 * (350 - 130), 6);
+  });
+
+  it('widens RD less when we are confident about who joined', () => {
+    const unknown = applyRosterChangeDecay(converged, 0.8, 0.2, config, 0);
+    const known = applyRosterChangeDecay(converged, 0.8, 0.2, config, 1);
+    expect(known.phi).toBeLessThan(unknown.phi);
+  });
+
+  it('never widens RD to zero even for a fully-known incoming five', () => {
+    // Five known players are still an unknown COMBINATION -- synergy is real.
+    const known = applyRosterChangeDecay(converged, 1, 0.2, config, 1);
+    expect(known.phi).toBeGreaterThan(converged.phi);
+  });
+
+  it('never narrows RD below where it started', () => {
+    const after = applyRosterChangeDecay(converged, 0.5, 0.2, config, 1);
+    expect(after.phi).toBeGreaterThanOrEqual(converged.phi);
+  });
+
+  it('leaves mu untouched by the confidence relief -- it only governs uncertainty', () => {
+    const a = applyRosterChangeDecay(converged, 0.8, 0.2, config, 0);
+    const b = applyRosterChangeDecay(converged, 0.8, 0.2, config, 1);
+    expect(a.mu).toBeCloseTo(b.mu, 12);
+  });
+
+  it('is a no-op at zero turnover regardless of confidence', () => {
+    expect(applyRosterChangeDecay(converged, 0, 0.2, config, 1)).toEqual(converged);
+  });
+
+  it('clamps confidence outside 0-1 rather than inverting the widening', () => {
+    const over = applyRosterChangeDecay(converged, 0.8, 0.2, config, 5);
+    const at1 = applyRosterChangeDecay(converged, 0.8, 0.2, config, 1);
+    expect(over.phi).toBeCloseTo(at1.phi, 12);
+    const under = applyRosterChangeDecay(converged, 0.8, 0.2, config, -3);
+    const at0 = applyRosterChangeDecay(converged, 0.8, 0.2, config, 0);
+    expect(under.phi).toBeCloseTo(at0.phi, 12);
+  });
+});
