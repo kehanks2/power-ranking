@@ -35,15 +35,27 @@ const MOV_WEIGHT_CAP = 1.5;
 // identical in computeRatings.ts and repositories.ts or displayed ratings stop
 // matching what the replay computed.
 const META_WEIGHT = 0.8;
-// Intra-series correlation -- see seriesEvidenceWeight in replay.ts. Games
-// inside a Bo3/Bo5 are not independent observations, and counting them as
-// such made the model overconfident (the >80% confidence band predicted
-// ~86% and delivered ~77%). Swept on CALIBRATION rather than accuracy,
-// because down-weighting correlated evidence barely reorders predictions:
-// 0.8 gives the best Brier/log-loss at every rating-period length tried and
-// closes the high-confidence gap from ~8.6pp to ~7.1pp, at no measurable
-// accuracy cost.
-const SERIES_CORRELATION = 0.8;
+// Intra-series correlation (rho) -- see seriesEvidenceWeight in replay.ts.
+// Games inside a Bo3/Bo5 are not independent observations, so each carries
+// weight 1/(1+(n-1)*rho). At 0.4 a 3-0 counts as 1.67 games rather than 3.
+//
+// Was 0.8, chosen when down-weighting correlated evidence measurably fixed
+// overconfidence (the >80% confidence band predicted ~86% and delivered ~77%,
+// a gap rho=0.8 closed from ~8.6pp to ~7.1pp). That is no longer what the data
+// says. After the offseason-drift, roster-prior-confidence, symmetric
+// international expectancy and cross-region weighting fixes, calibration is
+// FLAT across the whole rho range -- Brier 0.2253-0.2259, log loss
+// 0.6430-0.6448, high-confidence gap 5.8-6.9pp, all inside noise -- while
+// median displayed RD swings from 80 (rho=0) to 103 (rho=0.95).
+//
+// So 0.8 was buying 20 points of extra uncertainty on every team for no
+// calibration benefit, and slightly worse accuracy (63.18% vs 63.45%). 0.4 is
+// the measured optimum on Brier, log loss AND the high-confidence gap, keeps a
+// real statistically-motivated correction rather than pretending series games
+// are independent, and tightens the board. Re-check with
+// manualSeriesCorrelationSweep after substantial data changes -- this value is
+// contingent on the rest of the model being right, as its own history shows.
+const SERIES_CORRELATION = 0.4;
 // Daily. Rating periods are now a genuinely free knob: drift is scaled by
 // elapsed TIME (see updateRating's elapsedPeriods), so total uncertainty
 // growth over any span no longer depends on how finely that span is sliced.

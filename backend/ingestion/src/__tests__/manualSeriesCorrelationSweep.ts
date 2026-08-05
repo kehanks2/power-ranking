@@ -52,8 +52,8 @@ async function main() {
   console.log('-'.repeat(header.length));
 
   const combos: { periodDays: number; rho: number }[] = [];
-  for (const periodDays of [1, 3, 7, 14]) {
-    for (const rho of [0.8]) combos.push({ periodDays, rho });
+  for (const periodDays of [1]) {
+    for (const rho of [0, 0.2, 0.4, 0.6, 0.8, 0.95]) combos.push({ periodDays, rho });
   }
 
   for (const { periodDays, rho } of combos) {
