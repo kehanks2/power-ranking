@@ -1,4 +1,11 @@
-export type LeagueSlug = 'LCK' | 'LPL' | 'LEC' | 'LCS' | 'CBLOL' | 'LCP';
+export const LEAGUE_SLUGS = ['LCK', 'LPL', 'LEC', 'LCS', 'CBLOL', 'LCP'] as const;
+
+export type LeagueSlug = (typeof LEAGUE_SLUGS)[number];
+
+/** Narrows an untrusted string (e.g. a `?league=` query param) to a real league. */
+export function isLeagueSlug(value: string | null | undefined): value is LeagueSlug {
+  return value !== null && value !== undefined && (LEAGUE_SLUGS as readonly string[]).includes(value);
+}
 
 export interface LeagueSummary {
   slug: LeagueSlug;

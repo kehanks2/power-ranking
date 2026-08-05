@@ -133,6 +133,83 @@ describe('runReplay', () => {
     const resultB = runReplay(input);
     expect(resultA).toEqual(resultB);
   });
+
+  it('accrues drift across a gap with no games, not just per occupied period', () => {
+    // The offseason bug: sortedPeriods only holds periods that contain a game
+    // or decay event, so a long gap used to contribute NO uncertainty growth.
+    const game = (gameId: string, datetimeUtc: string): ReplayGame => ({
+      gameId,
+      datetimeUtc,
+      team1Id: 'teamA',
+      team2Id: 'teamB',
+      winnerTeamId: 'teamA',
+      team1LeagueId: 'LCS',
+      team2LeagueId: 'LCS',
+      team1Gold: null,
+      team2Gold: null,
+      gamelengthSeconds: null,
+    });
+
+    const base = { teamIds: ['teamA', 'teamB'], leagueIds: ['LCS'], decayEvents: [], config };
+    // Same two games, same rating periods occupied -- only the GAP differs.
+    const backToBack = runReplay({
+      ...base,
+      games: [game('g1', '2026-01-05T18:00:00Z'), game('g2', '2026-01-06T18:00:00Z')],
+    } as ReplayInput);
+    const acrossOffseason = runReplay({
+      ...base,
+      games: [game('g1', '2026-01-05T18:00:00Z'), game('g2', '2026-03-20T18:00:00Z')],
+    } as ReplayInput);
+
+    const lastPhi = (result: ReturnType<typeof runReplay>) =>
+      result.teamHistory.filter((s) => s.teamId === 'teamA' && s.reason === 'game_update').at(-1)!.phi;
+
+    // A 74-day layoff must leave the team less certain than a one-day turnaround.
+    expect(lastPhi(acrossOffseason)).toBeGreaterThan(lastPhi(backToBack));
+  });
+
+  it('accumulates the same total drift regardless of rating-period length', () => {
+    // ratingPeriodDays is meant to be a free knob: slicing the same span more
+    // finely must not change how much uncertainty accumulates over it.
+    const games: ReplayGame[] = [
+      {
+        gameId: 'g1',
+        datetimeUtc: '2026-01-05T18:00:00Z',
+        team1Id: 'teamA',
+        team2Id: 'teamB',
+        winnerTeamId: 'teamA',
+        team1LeagueId: 'LCS',
+        team2LeagueId: 'LCS',
+        team1Gold: null,
+        team2Gold: null,
+        gamelengthSeconds: null,
+      },
+      {
+        gameId: 'g2',
+        datetimeUtc: '2026-02-16T18:00:00Z',
+        team1Id: 'teamA',
+        team2Id: 'teamB',
+        winnerTeamId: 'teamA',
+        team1LeagueId: 'LCS',
+        team2LeagueId: 'LCS',
+        team1Gold: null,
+        team2Gold: null,
+        gamelengthSeconds: null,
+      },
+    ];
+    const phiFor = (ratingPeriodDays: number) => {
+      const result = runReplay({
+        teamIds: ['teamA', 'teamB'],
+        leagueIds: ['LCS'],
+        games,
+        decayEvents: [],
+        config: { ...config, ratingPeriodDays },
+      } as ReplayInput);
+      return result.teamHistory.filter((s) => s.teamId === 'teamA' && s.reason === 'game_update').at(-1)!.phi;
+    };
+
+    expect(phiFor(1)).toBeCloseTo(phiFor(7), 6);
+  });
 });
 
 describe('seriesEvidenceWeight', () => {

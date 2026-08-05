@@ -178,12 +178,6 @@ export function runReplay(input: ReplayInput): ReplayResult {
     game.seriesId === undefined ? 1 : seriesEvidenceWeight(gamesPerSeries.get(game.seriesId) ?? 1, seriesCorrelation);
 
   const periodDays = input.config.ratingPeriodDays ?? DEFAULT_RATING_PERIOD_DAYS;
-  // Drift is a random walk: its variance grows with elapsed TIME, not with
-  // how many buckets that time is sliced into. Expressing each period's
-  // length in sigma's reference units keeps total drift over any span
-  // identical no matter the period length -- so ratingPeriodDays becomes a
-  // genuinely free knob instead of one that silently rescales uncertainty.
-  const elapsedPeriods = periodDays / SIGMA_REFERENCE_DAYS;
 
   const teamContextual = new Map<string, RatingState>();
   for (const teamId of input.teamIds) {
@@ -225,7 +219,32 @@ export function runReplay(input: ReplayInput): ReplayResult {
   const sortedPeriods = [...allPeriods].sort();
   const rosterConfig: RosterDecayConfig = { phiInitMax: input.config.phiInitMax, sigmaDefault: input.config.sigmaDefault };
 
+  // Drift is a random walk: its variance grows with elapsed TIME, not with the
+  // number of buckets that time is sliced into. `sortedPeriods` only contains
+  // periods that actually hold a game or a decay event, so measuring elapsed
+  // time from the PREVIOUS occupied period is what makes the two equivalent.
+  //
+  // Using a constant `periodDays / SIGMA_REFERENCE_DAYS` here was wrong: empty
+  // periods are never iterated, so a gap with no games anywhere contributed no
+  // drift at all. Confirmed against real data -- 342 of 934 calendar days in
+  // the dataset have no games, including the two ~10-week post-Worlds
+  // offseasons. Teams therefore came into each new season carrying their old
+  // certainty, which is precisely backwards: that gap is when rosters churn
+  // most. applySeasonalDecay's doc comment even documents relying on this
+  // ("RD growth across the offseason gap already happens for free via
+  // updateRating([]) during periods with no games") -- it never did.
+  let previousPeriod: string | null = null;
   for (const period of sortedPeriods) {
+    // Zero for the first period: no time has elapsed before the very first
+    // observation, and teams already start at phiInitMax (maximum
+    // uncertainty), so there is nothing for drift to add. Seeding this with
+    // `periodDays` instead would make the total drift depend on the period
+    // length again -- the exact coupling this is meant to remove.
+    const elapsedDays =
+      previousPeriod === null ? 0 : (Date.parse(period) - Date.parse(previousPeriod)) / MS_PER_DAY;
+    const elapsedPeriods = elapsedDays / SIGMA_REFERENCE_DAYS;
+    previousPeriod = period;
+
     // 1. Apply decay events dated in this period, before this period's games.
     for (const teamId of input.teamIds) {
       const events = decayByTeamAndPeriod.get(`${teamId}::${period}`);

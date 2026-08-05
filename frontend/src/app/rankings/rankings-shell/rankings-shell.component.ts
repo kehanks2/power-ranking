@@ -2,9 +2,9 @@ import { Component, ChangeDetectionStrategy, inject, signal, computed } from '@a
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { LeagueFilterService } from '../league-filter.service';
-import type { LeagueSlug } from '../models';
+import { LEAGUE_SLUGS, type LeagueSlug } from '../models';
 
-const LEAGUES: (LeagueSlug | 'all')[] = ['all', 'LCK', 'LPL', 'LEC', 'LCS', 'CBLOL', 'LCP'];
+const LEAGUES: (LeagueSlug | 'all')[] = ['all', ...LEAGUE_SLUGS];
 
 @Component({
   selector: 'app-rankings-shell',

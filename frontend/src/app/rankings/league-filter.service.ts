@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 import { filter } from 'rxjs';
-import type { LeagueSlug } from './models';
+import { isLeagueSlug, type LeagueSlug } from './models';
 
 /**
  * Single source of truth for the current league filter, synced to the
@@ -32,7 +32,10 @@ export class LeagueFilterService {
   }
 
   private readFromUrl(): LeagueSlug | 'all' {
+    // Validated rather than cast: `?league=` is user-editable, and an
+    // unrecognised value used to pass straight through to the API, which
+    // matched no league and rendered an empty board with no chip selected.
     const value = this.route.snapshot.queryParamMap.get('league');
-    return (value as LeagueSlug | null) ?? 'all';
+    return isLeagueSlug(value) ? value : 'all';
   }
 }
