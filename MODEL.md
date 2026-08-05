@@ -116,9 +116,29 @@ Measured, not guessed. Re-check with the runners below.
   system has this limitation; representing it would require a matchup term
   rather than one rating per league.
 
-  Worth noting the TEAM ratings are not distorted by it, because a team's
-  contextual rating carries its own results: LYON (LCS) currently ranks above G2
-  (LEC), which is what the head-to-head record supports.
+  The team ratings soften it but do not undo it. LYON (LCS) carries the higher
+  point estimate than G2 (LEC), 1675 to 1667, which the head-to-head supports —
+  but G2 still ranks above LYON on the board, because ranking is by
+  `conservativeRank` and G2 is the more certain of the two (RD 58 vs 66).
+
+## Ranking order vs displayed rating
+
+The board is ordered by `conservativeRank` (rating − `DEFAULT_CONSERVATIVE_K` ×
+RD) but displays the raw rating. These are different quantities, so the table
+can legitimately show a lower number above a higher one — currently 18 of 55
+adjacent pairs, the largest inversion being 59 points (JD Gaming 1644 at #13
+above Invictus Gaming 1704 at #14, which carries RD 129).
+
+The ordering itself is defensible and standard: TrueSkill leaderboards rank on a
+conservative estimate for the same reason, so that a team with a high but
+poorly-evidenced rating does not sit above a well-established one. It is also
+doing useful work here — it is what keeps high-RD teams like BNK FEARX and
+Invictus Gaming out of the top few places.
+
+What is not defensible is ranking by one number and displaying another, which
+reads as a sorting bug. Either display the conservative value that is actually
+sorted on, or sort on the displayed rating and let the ± column carry the
+uncertainty. This is an open UI decision, not a model one.
 
 ## Diagnostics
 
