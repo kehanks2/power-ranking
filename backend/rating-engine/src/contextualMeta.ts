@@ -51,7 +51,13 @@ export function effectiveMetaWeight(meta: RatingState, metaWeight: number, phiIn
 // this is a second, independent shrinkage keyed to the INDIVIDUAL team's own
 // participation recency, since "the region is strong" and "this specific team
 // personally proved it recently" are different claims.
-export const META_PARTICIPATION_FULL_CREDIT_DAYS = 365;
+// Six months, deliberately shorter than the year this started at. A year of
+// undiminished credit spans an entire competitive season: a team that attended
+// last year's First Stand still carried full regional credit through a whole
+// domestic year in which the region's standing may have changed completely.
+// Half a year means credit lapses if a team misses the next international
+// cycle, which is roughly the real cadence (First Stand -> MSI -> Worlds).
+export const META_PARTICIPATION_FULL_CREDIT_DAYS = 182;
 export const META_PARTICIPATION_ZERO_CREDIT_DAYS = 730;
 // Never fully zero -- a team that's simply never had the chance yet (too new)
 // still gets partial regional credit, matching the original design intent
@@ -59,7 +65,7 @@ export const META_PARTICIPATION_ZERO_CREDIT_DAYS = 730;
 export const META_PARTICIPATION_FLOOR = 0.3;
 
 /**
- * 1.0 within a year of the team's own last international game, decaying
+ * 1.0 within six months of the team's own last international game, decaying
  * linearly to a floor (never zero) by two years, floor also applied if the
  * team has never played internationally at all.
  */
@@ -70,6 +76,46 @@ export function internationalParticipationFactor(daysSinceLastInternational: num
   const span = META_PARTICIPATION_ZERO_CREDIT_DAYS - META_PARTICIPATION_FULL_CREDIT_DAYS;
   const progress = (daysSinceLastInternational - META_PARTICIPATION_FULL_CREDIT_DAYS) / span;
   return 1 - progress * (1 - META_PARTICIPATION_FLOOR);
+}
+
+/**
+ * International games at which a team's own record has replaced half of the
+ * league prior. Roughly one deep run at a major event.
+ */
+export const META_EVIDENCE_HALF_LIFE_GAMES = 30;
+
+/**
+ * How much of the league prior a team should still be carrying, given how much
+ * international evidence it has of its OWN.
+ *
+ * NOT USED IN PRODUCTION -- kept because manualLeagueCalibration.ts scores it
+ * as one mode, and because the hypothesis is tempting enough to be worth
+ * recording as tested and rejected.
+ *
+ * The idea: the league meta is a *prior*, and a team's contextual rating is
+ * updated against opponents' COMBINED (contextual + meta) strength, so a team
+ * with many international games should already be cross-calibrated and need
+ * less of the prior. It looked like it would fix two real observations --
+ * Bilibili Gaming had the best international record of any team in 2026 (12-3
+ * at First Stand, 11-6 at MSI, 72% overall vs T1's 71%) yet ranked below three
+ * LCK teams, and LCS as a whole won 43.0% of cross-league games while the
+ * model predicted 34.3%.
+ *
+ * Measured, it makes calibration WORSE: weighted mean absolute gap across
+ * cross-league games goes from 3.62pp to 4.65pp, flipping LCK from -1.8pp to
+ * +5.0pp and pushing LCP to -7.6pp. The reason is that a team's contextual
+ * rating is still predominantly earned in REGIONAL games, so it is only
+ * partially cross-calibrated no matter how many internationals it has played.
+ * Dropping the prior entirely is worse still (8.49pp; LCK +15.9pp,
+ * CBLOL -21.0pp), which is the same effect at full strength.
+ */
+export function internationalEvidenceShrink(
+  internationalGames: number,
+  halfLifeGames = META_EVIDENCE_HALF_LIFE_GAMES,
+): number {
+  if (halfLifeGames <= 0) return 0;
+  const games = Math.max(0, internationalGames);
+  return halfLifeGames / (halfLifeGames + games);
 }
 
 export interface InternationalGameResult {

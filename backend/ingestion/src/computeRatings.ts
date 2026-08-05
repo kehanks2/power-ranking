@@ -18,7 +18,22 @@ const MOV_WEIGHT_CAP = 1.5;
 // region's meta swing dominate individual team merit (a weak team in a
 // strong region outranking a team that just beat top opponents in a weaker
 // one). Re-sweep via manualBacktest.ts after any substantial data changes.
-const META_WEIGHT = 0.8;
+// Backtest-tuned. Two independent measures agree on 0.65: predictive accuracy
+// (manualBacktest, 63.16% vs 63.15% at 0.80) and per-league calibration
+// (manualLeagueCalibration, weighted mean absolute gap 3.48pp vs 3.62pp).
+//
+// Raised from an unweighted sum originally because that let a region's meta
+// dominate individual team merit -- a weak team in a strong region outranking
+// a team that had just beaten top opponents in a weaker one. Lowered from 0.80
+// to 0.65 for the same reason at finer grain: at 0.80 the model over-predicted
+// LCK (-1.8pp) and badly under-predicted LCS (+8.4pp), i.e. regional identity
+// was outweighing what teams outside LCK actually did internationally. At 0.65
+// LCK sits at +1.0pp and LCS improves to +6.6pp.
+//
+// Do NOT tune this by intuition -- re-sweep both runners after substantial data
+// changes, and keep this value identical in computeRatings.ts and
+// repositories.ts or displayed ratings stop matching what the replay computed.
+const META_WEIGHT = 0.65;
 // Intra-series correlation -- see seriesEvidenceWeight in replay.ts. Games
 // inside a Bo3/Bo5 are not independent observations, and counting them as
 // such made the model overconfident (the >80% confidence band predicted
