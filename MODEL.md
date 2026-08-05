@@ -100,8 +100,25 @@ Measured, not guessed. Re-check with the runners below.
   59.5% against an actual 59.2% over 103 games — and overstated at the CBLOL
   end, which has only 48 cross-league games.
 - **LCS is under-rated**, winning 43.0% of cross-league games against a
-  prediction near 37%. Partly genuine intransitivity: LCS beat LEC 15-4 while
-  losing to LPL 20-5, which no single-number rating can represent.
+  prediction near 37%. Most of this is one genuinely intransitive matchup, not a
+  scaling error.
+
+  LEC is the better league against every large common opponent — 31.1% vs LCK
+  where LCS manages 19.4%, 37.2% vs LPL where LCS manages 20.0%, 65.1% vs LCP
+  where LCS manages 55.6%. But LCS beats LEC head-to-head 15-4, across five
+  separate events and three different LCS organisations (Team Liquid, FlyQuest,
+  LYON), including 6-0 at the 2026 MSI. It is a persistent matchup effect, not a
+  small-sample fluke.
+
+  A single number per league has to pick one of those stories. Ours sides with
+  the common-opponent evidence, which has 137 LEC games and 102 LCS games behind
+  it against only 19 head-to-head, and so rates LEC above LCS. Every Elo-family
+  system has this limitation; representing it would require a matchup term
+  rather than one rating per league.
+
+  Worth noting the TEAM ratings are not distorted by it, because a team's
+  contextual rating carries its own results: LYON (LCS) currently ranks above G2
+  (LEC), which is what the head-to-head record supports.
 
 ## Diagnostics
 
