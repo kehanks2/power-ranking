@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.angular/
+.DS_Store
+.liquipedia-rate-limit.json
+tsconfig.tsbuildinfo
+**/tsconfig.tsbuildinfo

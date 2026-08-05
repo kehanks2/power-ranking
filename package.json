@@ -1,0 +1,14 @@
+{
+  "name": "power-ranking",
+  "private": true,
+  "workspaces": [
+    "backend/shared",
+    "backend/rating-engine",
+    "backend/ingestion",
+    "backend/api"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  }
+}

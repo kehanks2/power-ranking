@@ -1,0 +1,28 @@
+@if (loading()) {
+  <p class="status">Loading teams…</p>
+} @else if (teams().length === 0) {
+  <p class="status">No teams ranked yet for this filter.</p>
+} @else {
+  <ul class="team-grid">
+    @for (team of teams(); track team.id) {
+      <li>
+        <a class="team-card" [routerLink]="['/rankings/teams', team.id]" [style.--team-color]="team.brandColor ?? 'var(--color-gold)'">
+          <span class="rank">#{{ team.rank }}</span>
+          @if (team.logoUrl) {
+            <img class="logo" [ngSrc]="team.logoUrl" width="48" height="48" alt="" />
+          } @else {
+            <span class="logo logo--placeholder" aria-hidden="true">{{ team.slug.slice(0, 2).toUpperCase() }}</span>
+          }
+          <span class="name">{{ team.name }}</span>
+          <span class="league-tag">{{ team.leagueSlug }}</span>
+          <span class="rating">{{ team.rating | number: '1.0-0' }}</span>
+          @if (isUnproven(team.rd)) {
+            <span class="badge badge--unproven">Unproven</span>
+          } @else {
+            <span class="rd">±{{ team.rd | number: '1.0-0' }}</span>
+          }
+        </a>
+      </li>
+    }
+  </ul>
+}

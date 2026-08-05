@@ -1,0 +1,97 @@
+.status {
+  color: var(--color-text-muted);
+}
+
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.team-card {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--team-color, var(--color-gold));
+  text-decoration: none;
+  color: var(--color-text);
+
+  &:hover {
+    background: var(--color-surface-hover);
+  }
+}
+
+.rank {
+  grid-row: 1;
+  font-weight: 800;
+  color: var(--color-text-muted);
+}
+
+.logo {
+  grid-row: 1;
+  border-radius: 50%;
+}
+
+.logo--placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-border);
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.name {
+  grid-row: 1;
+  font-weight: 700;
+}
+
+.league-tag {
+  grid-row: 2;
+  grid-column: 3;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rating {
+  grid-row: 1;
+  grid-column: 4;
+  font-weight: 800;
+  font-size: 1.25rem;
+  color: var(--color-gold);
+}
+
+.rd {
+  grid-row: 2;
+  grid-column: 4;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.badge {
+  grid-row: 2;
+  grid-column: 4;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  justify-self: start;
+}
+
+.badge--unproven {
+  background: var(--color-border);
+  color: var(--color-text-muted);
+}

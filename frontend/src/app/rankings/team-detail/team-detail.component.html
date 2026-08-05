@@ -1,0 +1,46 @@
+@if (loading()) {
+  <p class="status">Loading team…</p>
+} @else if (notFound()) {
+  <p class="status">Team not found.</p>
+  <a routerLink="/rankings/teams">Back to teams</a>
+} @else if (team(); as t) {
+  <a class="back-link" routerLink="/rankings/teams">← Back to teams</a>
+
+  <header class="team-header" [style.--team-color]="t.brandColor ?? 'var(--color-gold)'">
+    @if (t.logoUrl) {
+      <img class="logo" [ngSrc]="t.logoUrl" width="64" height="64" alt="" />
+    } @else {
+      <span class="logo logo--placeholder" aria-hidden="true">{{ t.slug.slice(0, 2).toUpperCase() }}</span>
+    }
+    <div>
+      <h2>{{ t.name }}</h2>
+      <p class="league-tag">{{ t.leagueSlug }} · Rank #{{ t.rank }}</p>
+    </div>
+    <div class="rating-block">
+      <span class="rating">{{ t.rating | number: '1.0-0' }}</span>
+      <span class="rd">± {{ t.rd | number: '1.0-0' }}</span>
+    </div>
+  </header>
+
+  <h3>Current Roster</h3>
+  @if (t.roster.length === 0) {
+    <p class="status">No roster data yet.</p>
+  } @else {
+    <table class="roster-table">
+      <thead>
+        <tr>
+          <th scope="col">Role</th>
+          <th scope="col">Player</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (entry of t.roster; track entry.playerId) {
+          <tr>
+            <td>{{ entry.role }}</td>
+            <td class="handle">{{ entry.handle }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+}

@@ -1,0 +1,24 @@
+@if (loading()) {
+  <p class="status">Loading leagues…</p>
+} @else {
+  <p class="hint">
+    League rating reflects international (Worlds/MSI-class) results only, relative to a neutral baseline of 0 —
+    it is not an average of member teams' ratings.
+  </p>
+  <ul class="league-grid">
+    @for (league of leagues(); track league.slug) {
+      <li class="league-card">
+        <span class="rank">#{{ league.rank }}</span>
+        @if (league.logoUrl) {
+          <img class="logo" [ngSrc]="league.logoUrl" width="40" height="40" alt="" />
+        } @else {
+          <span class="logo logo--placeholder" aria-hidden="true">{{ league.slug.slice(0, 2) }}</span>
+        }
+        <span class="name">{{ league.name }}</span>
+        <span class="rating" [class.rating--positive]="league.rating > 0" [class.rating--negative]="league.rating < 0">
+          {{ league.rating > 0 ? '+' : '' }}{{ league.rating | number: '1.0-0' }}
+        </span>
+      </li>
+    }
+  </ul>
+}

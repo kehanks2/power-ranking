@@ -1,0 +1,26 @@
+<header class="shell-header">
+  <h1 class="brand">PowerRanking</h1>
+  <nav class="tabs" aria-label="Ranking views">
+    <a routerLink="teams" routerLinkActive="tab--active" class="tab">Teams</a>
+    <a routerLink="leagues" routerLinkActive="tab--active" class="tab">Leagues</a>
+    <a routerLink="players" routerLinkActive="tab--active" class="tab">Players</a>
+  </nav>
+</header>
+
+<main class="content">
+  <div class="league-filter" role="group" aria-label="Filter by league">
+    @for (league of leagues; track league) {
+      <button
+        type="button"
+        class="chip"
+        [class.chip--active]="filter.selectedLeague() === league"
+        [attr.aria-pressed]="filter.selectedLeague() === league"
+        (click)="filter.setLeague(league)"
+      >
+        {{ league === 'all' ? allLabel() : league }}
+      </button>
+    }
+  </div>
+
+  <router-outlet />
+</main>

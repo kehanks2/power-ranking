@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: power-ranking-db
+    environment:
+      POSTGRES_USER: powerranking
+      POSTGRES_PASSWORD: powerranking
+      POSTGRES_DB: powerranking
+    ports:
+      # Host port 5433, not 5432: this machine already has a native Postgres
+      # install listening on 5432, which was silently intercepting connections
+      # meant for this container (real auth failures against the wrong server).
+      - "5433:5432"
+    volumes:
+      - power-ranking-db-data:/var/lib/postgresql/data
+
+volumes:
+  power-ranking-db-data:
