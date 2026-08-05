@@ -6,7 +6,8 @@ import type { Role } from '@power-ranking/rating-engine';
  * OE-derived role/position strings onto Liquipedia's own naming.
  */
 
-// Our team names come from Oracle's Elixir (often with a current sponsor
+// Our team rows were originally seeded from Oracle's Elixir and keep those
+// names (often with a current sponsor
 // prefix/suffix); Liquipedia's names don't always match exactly. Confirmed
 // individually against the Liquipedia API (not guessed) -- teams NOT in this
 // map that still fail to match were checked too and are genuinely disbanded

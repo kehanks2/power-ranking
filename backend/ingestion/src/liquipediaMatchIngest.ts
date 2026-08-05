@@ -32,7 +32,7 @@ export const INTERNATIONAL_SERIES = new Set(['Mid-Season Invitational', 'World C
 
 export interface MatchClassification {
   tournamentType: 'regional_split' | 'international';
-  canonicalLeagueId: number | null; // set only for regional -- international tournaments aren't tied to one league (same convention OE ingestion uses)
+  canonicalLeagueId: number | null; // set only for regional -- international tournaments aren't tied to one league
   isInternational: boolean;
 }
 
@@ -103,8 +103,8 @@ export interface MatchIngestResult {
 
 /**
  * Ingests Liquipedia match/series data for the regional leagues into the
- * same games/series/tournaments/game_lineups/player_game_performance schema
- * OE ingestion writes -- idempotent on the same keys (leaguepedia_unique_line
+ * games/series/tournaments/game_lineups/player_game_performance schema --
+ * idempotent on the same keys (leaguepedia_unique_line
  * for games, leaguepedia_match_id for series, overview_page for tournaments),
  * so re-running is always safe. `conditions` is the caller's full Liquipedia
  * filter (date range + `[[series::X]]`) -- see manualLiquipediaMatchBackfill.ts
@@ -147,9 +147,9 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
     const team1Id = teamIdByLiquipediaName.get(opp1.name.toLowerCase());
     const team2Id = teamIdByLiquipediaName.get(opp2.name.toLowerCase());
     if (!team1Id || !team2Id) {
-      // Matches OE's international-pass behavior: a team outside our 6-league
-      // scope (e.g. a wildcard region at an international) simply doesn't
-      // resolve, so its games are silently excluded rather than mis-attributed.
+      // A team outside our 6-league scope (e.g. a wildcard region at an
+      // international) simply doesn't resolve, so its games are silently
+      // excluded rather than mis-attributed.
       if (!team1Id) teamsUnresolvedSet.add(opp1.name);
       if (!team2Id) teamsUnresolvedSet.add(opp2.name);
       result.seriesSkipped += 1;
@@ -158,8 +158,7 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
 
     const dateOnly = match.date.slice(0, 10);
     // International passes must NOT touch team_league_memberships -- a
-    // team's home region comes exclusively from its regional-split games
-    // (same rule OE ingestion follows).
+    // team's home region comes exclusively from its regional-split games.
     if (classification.tournamentType === 'regional_split' && classification.canonicalLeagueId) {
       await ensureTeamLeagueMembership(pool, { teamId: team1Id, leagueId: classification.canonicalLeagueId, asOfDate: dateOnly });
       await ensureTeamLeagueMembership(pool, { teamId: team2Id, leagueId: classification.canonicalLeagueId, asOfDate: dateOnly });
@@ -252,7 +251,7 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
   return result;
 }
 
-/** Matches by clean handle (displayName) against existing players; creates new ones keyed by Liquipedia's disambiguated identity, not the handle -- avoids merging two different real people who happen to share a common handle (confirmed this exact class of bug earlier this session with OE data's "Saber"). */
+/** Matches by clean handle (displayName) against existing players; creates new ones keyed by Liquipedia's disambiguated identity, not the handle -- avoids merging two different real people who happen to share a common handle (confirmed this exact class of bug against real data's "Saber"). */
 async function resolvePlayerId(pool: Pool, player: LiquipediaGamePlayer, cache: Map<string, number>): Promise<number> {
   const cached = cache.get(player.player);
   if (cached) return cached;

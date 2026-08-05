@@ -23,14 +23,21 @@ export function isStarterFromRole(role: string | null | undefined): boolean {
 }
 
 /**
- * Replaces roster_memberships with Liquipedia's own current squad data --
- * authoritative, not inferred from lineup persistence heuristics. Confirmed
- * against real data this fixes a whole class of bug the OE-lineup-derived
- * heuristic (see computePlayerRatings.ts's populateRosterMemberships)
- * couldn't: Liquipedia models "two players sharing a position" (e.g. Cloud9
- * running APA/Loki at MID and Zven/Tactical at BOT) as a first-class active
- * state, not something a starter/substitute binary can represent -- both
- * simply show is_starter=true here, no forced "pick one."
+ * The SOLE writer of roster_memberships. It replaces the table wholesale with
+ * Liquipedia's own current squad data -- authoritative, not inferred from
+ * lineup persistence heuristics.
+ *
+ * There used to be a second writer (populateRosterMemberships, which derived
+ * rosters from game lineups; deleted, see git history). Both began with an
+ * unscoped `DELETE FROM roster_memberships`, so whichever ran last silently
+ * won, and the LCS rosters regressed twice that way. If a second writer is
+ * ever added, scope its delete.
+ *
+ * Confirmed against real data this fixes a whole class of bug the lineup
+ * heuristic couldn't: Liquipedia models "two players sharing a position"
+ * (e.g. Cloud9 running APA/Loki at MID and Zven/Tactical at BOT) as a
+ * first-class active state, not something a starter/substitute binary can
+ * represent -- both simply show is_starter=true here, no forced "pick one."
  *
  * roster_memberships is a pure DISPLAY table (see teamLineups.ts's comment --
  * rating computation reads game_lineups directly, never this table), so

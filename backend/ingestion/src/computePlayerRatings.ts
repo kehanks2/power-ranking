@@ -8,217 +8,7 @@ import {
   DEFAULT_HALF_LIFE_DAYS,
   shrinkToNeutral,
   weightedMean,
-  detectRosterChanges,
-  type Role,
-  type RosterChangeEvent,
 } from '@power-ranking/rating-engine';
-import { buildTeamLineupGames } from './teamLineups.js';
-
-// Deliberately higher than the rating-decay threshold (2, in computeRatings.ts).
-// Confirmed against real data: Cloud9's 2026-08-01 games had scrambled
-// position labels in the source CSV for all 5 of the team's existing players
-// (not a real in-game role swap -- confirmed directly against the raw file,
-// and corrected at the data level for this specific case). A higher
-// persistence threshold is still the right defensive posture against any
-// similar undetected source-data corruption elsewhere, since this table has
-// no self-correcting mechanism the way rating decay does (next paragraph).
-// Rating decay can afford a low threshold because it's self-correcting (the
-// next real game's result pulls a wrongly-decayed rating back); the roster
-// DISPLAY table has no such correction -- it just shows whatever this
-// threshold decided, so it needs to be more conservative before declaring a
-// role change "real."
-const ROSTER_DISPLAY_PERSISTENCE_GAMES = 5;
-const ROLES: Role[] = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
-// How far back from a team's most recent game counts as "currently on the
-// roster" for substitute purposes. Confirmed against real data this was
-// missing entirely: Cloud9 carries a 7-man roster (5 primaries + Loki and
-// Tactical as subs), and LYON currently plays Armao in place of their usual
-// jungler -- none of them ever "win" a role outright the way detectRosterChanges
-// requires for a primary, so they were invisible in the roster display even
-// though they're genuinely playing for the team.
-// Originally 90 days -- confirmed against real data that was too generous:
-// LYON's Castle (TOP) hadn't played a single game in 77 days (dropped after
-// MSI) but 77 < 90, so he stayed listed as a live substitute indefinitely.
-// A genuinely active substitute rotation shows up more often than that; 45
-// days gives real recent subs (e.g. Cloud9's Loki/Tactical, days-old at the
-// time) plenty of room while dropping a player nobody's fielded in months.
-// This second pass doesn't touch the primary-occupant logic above; it only
-// adds is_starter=false rows
-// for anyone else who appeared in that role recently.
-const SUBSTITUTE_WINDOW_DAYS = 45;
-
-/**
- * @deprecated SUPERSEDED by populateRosterFromLiquipedia. Do not wire this back
- * into any ingest path. It and the Liquipedia populator both begin with
- * `DELETE FROM roster_memberships`, so calling both means whichever ran last
- * silently wins -- that is exactly how the LCS rosters regressed after being
- * fixed (an OE ingest run reverted them). Rosters now come from Liquipedia's
- * own squad data, which models bench players and shared positions as
- * first-class states this lineup-persistence heuristic cannot represent.
- * Retained only for its test coverage of the heuristic; safe to delete once
- * that is no longer wanted.
- *
- * Backfills roster_memberships as genuine date-ranged history, reusing the
- * same `detectRosterChanges` module the rating engine uses for roster-decay
- * events -- NOT a per-role "current occupant" snapshot inferred fresh each
- * time. Two reasons this matters (both confirmed against real data):
- *
- * 1. A single anomalous game-lineup row (a scraping quirk or a genuine
- *    one-off in-game position experiment) must never override an established
- *    player -- detectRosterChanges already requires N consecutive games
- *    before counting a change, so a lone anomaly produces zero events, not a
- *    false membership row. (Earlier attempts at plain "most recent game" and
- *    even a windowed majority-vote were both still snapshots, discarding
- *    the actual history a genuine substitute stretch should leave behind.)
- * 2. A real substitute who plays a real stretch of games (a 6th/7th man
- *    filling in) gets their own dated membership period, distinct from the
- *    primary starter's surrounding periods -- not silently voted away.
- */
-export async function populateRosterMemberships(pool: Pool): Promise<number> {
-  const lineupGamesByTeam = await buildTeamLineupGames(pool);
-
-  // Same connection-pinning fix as computeRatings.ts/computePlayerRatings:
-  // DELETE + many INSERTs must run on one dedicated client to be atomic.
-  const client = await pool.connect();
-  let inserted = 0;
-  try {
-    await client.query('BEGIN');
-    await client.query(`DELETE FROM roster_memberships`);
-
-    for (const [teamId, lineupGames] of lineupGamesByTeam) {
-      if (lineupGames.length === 0) continue;
-
-      const events = detectRosterChanges(lineupGames, ROSTER_DISPLAY_PERSISTENCE_GAMES);
-      const eventsByRole = new Map<Role, RosterChangeEvent[]>();
-      for (const event of events) {
-        if (!eventsByRole.has(event.role)) eventsByRole.set(event.role, []);
-        eventsByRole.get(event.role)!.push(event);
-      }
-
-      // Pass 1: determine every role's primary occupant first. Needed before
-      // subs can be filtered -- see below.
-      const primaryPlayerIdByRole = new Map<Role, string>();
-      // Everyone who EVER held a persistent primary block in a given role,
-      // not just the current one -- see pass 2, which needs this to avoid
-      // re-listing a replaced former starter as if they were a live sub.
-      const everPrimaryPlayerIdsByRole = new Map<Role, Set<string>>();
-      for (const role of ROLES) {
-        const roleEvents = (eventsByRole.get(role) ?? []).sort((a, b) => (a.effectiveAt < b.effectiveAt ? -1 : 1));
-
-        let currentPlayerId = lineupGames[0].lineup[role];
-        let currentStart = String(lineupGames[0].playedAt).slice(0, 10);
-        const everPrimary = new Set<string>([currentPlayerId]);
-
-        for (const event of roleEvents) {
-          const endDate = String(event.effectiveAt).slice(0, 10);
-          await client.query(
-            `INSERT INTO roster_memberships (team_id, player_id, role, is_starter, start_date, end_date)
-             VALUES ($1, $2, $3, true, $4, $5)`,
-            [teamId, Number(currentPlayerId), role, currentStart, endDate],
-          );
-          inserted += 1;
-          currentPlayerId = event.newPlayerId;
-          currentStart = endDate;
-          everPrimary.add(currentPlayerId);
-        }
-
-        // The final, currently-open membership for this role.
-        await client.query(
-          `INSERT INTO roster_memberships (team_id, player_id, role, is_starter, start_date, end_date)
-           VALUES ($1, $2, $3, true, $4, NULL)`,
-          [teamId, Number(currentPlayerId), role, currentStart],
-        );
-        inserted += 1;
-        primaryPlayerIdByRole.set(role, currentPlayerId);
-        everPrimaryPlayerIdsByRole.set(role, everPrimary);
-      }
-
-      // Every role's established primary, as a set -- used to filter subs below.
-      const allPrimaryPlayerIds = new Set(primaryPlayerIdByRole.values());
-
-      // Pass 2: substitutes -- anyone else who played a role recently, who
-      // never won a persistent-enough block to become that role's primary.
-      // Two exclusions matter here, both confirmed against real data:
-      // 1. Players who are ALREADY this team's primary in a DIFFERENT role.
-      //    Cloud9's source data for 2026-08-01 had scrambled position labels
-      //    across all 5 established starters (nobody new, nobody left -- a
-      //    source-data defect, corrected at the data level for that specific
-      //    case). Without this exclusion, corrupted rows like that would make
-      //    every starter show up as a "substitute" in 4 other positions too.
-      // 2. Players who were FORMERLY this exact role's primary before being
-      //    replaced -- a genuine, completed transition (e.g. Denathor
-      //    replacing Photon at Dignitas TOP, or FenRir replacing Aiming at KT
-      //    Rolster BOT). Without this exclusion, every real roster swap left
-      //    the departed starter listed as an open-ended "substitute" forever,
-      //    since their games still fall inside the recency window below --
-      //    duplicating them across the old and new team in the player list.
-      // A genuine sub is someone who never won a persistent block in this
-      // role at all, for anyone, ever -- just recent appearances that lost
-      // out to the current primary.
-      for (const role of ROLES) {
-        const currentPlayerId = primaryPlayerIdByRole.get(role)!;
-        const everPrimaryThisRole = everPrimaryPlayerIdsByRole.get(role)!;
-        const mostRecentGameAt = lineupGames[lineupGames.length - 1].playedAt;
-        const windowStart = new Date(mostRecentGameAt);
-        windowStart.setDate(windowStart.getDate() - SUBSTITUTE_WINDOW_DAYS);
-
-        const subAppearances = new Map<string, string>(); // playerId -> first appearance in window
-        for (const game of lineupGames) {
-          if (new Date(game.playedAt) < windowStart) continue;
-          const playerInRole = game.lineup[role];
-          if (playerInRole === currentPlayerId) continue;
-          if (allPrimaryPlayerIds.has(playerInRole)) continue; // an existing starter elsewhere, not a real sub
-          if (everPrimaryThisRole.has(playerInRole)) continue; // a former primary in THIS role, replaced -- not a live sub
-          if (!subAppearances.has(playerInRole)) subAppearances.set(playerInRole, String(game.playedAt).slice(0, 10));
-        }
-        for (const [subPlayerId, firstSeenDate] of subAppearances) {
-          await client.query(
-            `INSERT INTO roster_memberships (team_id, player_id, role, is_starter, start_date, end_date)
-             VALUES ($1, $2, $3, false, $4, NULL)`,
-            [teamId, Number(subPlayerId), role, firstSeenDate],
-          );
-          inserted += 1;
-        }
-      }
-    }
-
-    // Global cross-team cleanup: a real player is on exactly one team at a
-    // time, but everything above operates per-team in isolation, so it can't
-    // see that a player who looks "current" here is ALSO current somewhere
-    // else. Confirmed against real data this happens two ways: (1) a team
-    // goes fully dark in our data (no more games at all -- e.g. Ultra Prime's
-    // last recorded game was months before Hena/Ceos's confirmed transfer to
-    // paiN Gaming) so its last known lineup never gets a closing event; (2) a
-    // sub appearance at an old team (e.g. Sharvel filling in at Dplus Kia)
-    // simply has no mechanism to close once that player becomes a different
-    // team's primary. Rather than chase every such staleness scenario
-    // individually, enforce the invariant directly: among a player's
-    // still-open rows, only the one with the most recent start_date is
-    // genuinely current -- close the rest as of that date.
-    await client.query(`
-      WITH open_rows AS (
-        SELECT id, player_id, start_date,
-               ROW_NUMBER() OVER (PARTITION BY player_id ORDER BY start_date DESC, id DESC) AS rn,
-               FIRST_VALUE(start_date) OVER (PARTITION BY player_id ORDER BY start_date DESC, id DESC) AS latest_start
-        FROM roster_memberships
-        WHERE end_date IS NULL
-      )
-      UPDATE roster_memberships rm
-      SET end_date = open_rows.latest_start
-      FROM open_rows
-      WHERE rm.id = open_rows.id AND open_rows.rn > 1
-    `);
-
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-
-  return inserted;
-}
 
 /** Bumped from 1 when the flat career average was replaced -- see playerRating.ts. */
 const PLAYER_RATING_METHOD_VERSION = 2;
@@ -291,9 +81,9 @@ export function buildPlayerGroupStats(
       accumulators.set(key, acc);
     }
     acc.kda.push(Number(row.kda));
-    // OE leaves these null for some games; a missing share is not a zero share,
-    // so fall back to the role-neutral 0.2 (one fifth of the team) rather than
-    // letting a gap read as a terrible game.
+    // The source leaves these null for some games; a missing share is not a
+    // zero share, so fall back to the role-neutral 0.2 (one fifth of the team)
+    // rather than letting a gap read as a terrible game.
     acc.goldShare.push(row.gold_share !== null ? Number(row.gold_share) : 0.2);
     acc.damageShare.push(row.damage_share !== null ? Number(row.damage_share) : 0.2);
     acc.killParticipation.push(row.kill_participation !== null ? Number(row.kill_participation) : 0.5);
@@ -372,27 +162,7 @@ export function selectPrimaryRatings(
   return bestByPlayer;
 }
 
-/**
- * Season player rating: each player's recency-weighted per-game stats (KDA,
- * gold share, damage share, kill participation -- using OE's own precomputed
- * earnedgoldshare/damageshare columns -- plus win rate) percentiled against
- * peers in the same role + league (never globally -- see plan's
- * within-league-only decision), blended via `componentWeights(winWeight)`, then
- * shrunk toward the peer-neutral 50 by sample size.
- *
- * Emits exactly ONE row per player. A player who changed role or league has
- * stats in more than one peer group; the group with the most recency-weighted
- * games wins, which is both deterministic and naturally prefers where they
- * play *now*. Every consumer reads this table with `DISTINCT ON (player_id)
- * ORDER BY as_of_date DESC` (the API's getPlayers, replayData's roster-implied
- * priors), and all rows from one run share a date -- so multiple rows per
- * player made those reads a coin flip. See playerRating.ts for the full list
- * of what v1 got wrong.
- *
- * Note: league is the team's CURRENT league (`tlm.end_date IS NULL`), not the
- * league the game was played in. That's deliberate -- the question this rating
- * answers is "how good is this player relative to the peers they face now."
- */
+/** One row per player-game, with everything the composite needs. */
 export async function fetchPlayerGameRows(pool: Pool): Promise<PlayerGameRow[]> {
   const result = await pool.query<PlayerGameRow>(`
     SELECT
@@ -412,6 +182,27 @@ export async function fetchPlayerGameRows(pool: Pool): Promise<PlayerGameRow[]> 
   return result.rows;
 }
 
+/**
+ * Season player rating: each player's recency-weighted per-game stats (KDA,
+ * gold share, damage share, kill participation -- using the source's own
+ * precomputed share columns -- plus win rate) percentiled against
+ * peers in the same role + league (never globally -- see plan's
+ * within-league-only decision), blended via `componentWeights(winWeight)`, then
+ * shrunk toward the peer-neutral 50 by sample size.
+ *
+ * Emits exactly ONE row per player. A player who changed role or league has
+ * stats in more than one peer group; the group with the most recency-weighted
+ * games wins, which is both deterministic and naturally prefers where they
+ * play *now*. Every consumer reads this table with `DISTINCT ON (player_id)
+ * ORDER BY as_of_date DESC` (the API's getPlayers, replayData's roster-implied
+ * priors), and all rows from one run share a date -- so multiple rows per
+ * player made those reads a coin flip. See playerRating.ts for the full list
+ * of what v1 got wrong.
+ *
+ * Note: league is the team's CURRENT league (`tlm.end_date IS NULL`), not the
+ * league the game was played in. That's deliberate -- the question this rating
+ * answers is "how good is this player relative to the peers they face now."
+ */
 export async function computePlayerRatings(pool: Pool, winWeight = DEFAULT_WIN_WEIGHT): Promise<number> {
   const rows = await fetchPlayerGameRows(pool);
   const bestByPlayer = selectPrimaryRatings(buildPlayerGroupStats(rows), winWeight);
@@ -499,8 +290,8 @@ export async function computeInternationalPlayerRatings(
 /**
  * Replaces every row for one scope. Deletes only that scope -- the two passes
  * share a table, so a blanket DELETE would have each run wipe the other's
- * output (the same footgun that made the OE and Liquipedia roster populators
- * clobber each other).
+ * output (the same footgun that made the two roster populators clobber each
+ * other -- see git history for populateRosterMemberships).
  */
 async function writeRatings(
   pool: Pool,
@@ -534,7 +325,7 @@ async function writeRatings(
   }
 }
 
-/** Populates player_game_performance from game_lineups + a per-game stats source (OE CSV rows, joined by caller). */
+/** Populates player_game_performance from game_lineups + a per-game stats source (Liquipedia game rows, joined by caller). */
 export interface PlayerGamePerformanceInput {
   gameId: number;
   playerId: number;
