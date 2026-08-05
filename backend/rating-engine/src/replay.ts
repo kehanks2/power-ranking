@@ -91,6 +91,19 @@ export interface ReplayConfig {
   ratingPeriodDays?: number;
   /** See DEFAULT_PRIOR_CONFIDENCE_RELIEF -- how much a confident roster prior damps the RD widening. */
   priorConfidenceRelief?: number;
+  /**
+   * Extra evidence weight on international games in the CONTEXTUAL update
+   * (1 = no change).
+   *
+   * Regional games can only move a team within its own league; international
+   * games are the only ones carrying cross-region information, yet they are a
+   * minority of any team's schedule and are damped further by
+   * seriesCorrelation. Confirmed against real data: Bilibili Gaming went 3-2
+   * against T1 and 5-4 against Hanwha Life in 2026 international play, won
+   * First Stand outright, and still ranked 103 points below T1, because ~200
+   * LPL regional games outvoted ~100 international ones.
+   */
+  internationalWeightMultiplier?: number;
 }
 
 /**
@@ -308,8 +321,11 @@ export function runReplay(input: ReplayInput): ReplayResult {
     for (const game of periodGames) {
       // Both factors scale the same per-game evidence term and are applied
       // identically to both sides (see movWeight.ts's symmetry note).
-      const weight = movWeightForGame(game, input.config) * seriesWeightFor(game);
       const isInternational = game.team1LeagueId !== game.team2LeagueId;
+      const weight =
+        movWeightForGame(game, input.config) *
+        seriesWeightFor(game) *
+        (isInternational ? (input.config.internationalWeightMultiplier ?? 1) : 1);
       const team1Score = game.winnerTeamId === game.team1Id ? 1 : 0;
       const team1Contextual = teamContextual.get(game.team1Id)!;
       const team2Contextual = teamContextual.get(game.team2Id)!;
@@ -336,13 +352,23 @@ export function runReplay(input: ReplayInput): ReplayResult {
         // Own contextual rating moves too, using the opponent's full combined
         // strength as the comparison point (their bare contextual number alone
         // isn't calibrated cross-region).
+        // Expectancy is combined-vs-combined so both sides grade the same game
+        // identically; only the contextual half absorbs the resulting delta.
         if (!ownContextualGamesByTeam.has(game.team1Id)) ownContextualGamesByTeam.set(game.team1Id, []);
-        ownContextualGamesByTeam.get(game.team1Id)!.push({ opponent: team2Combined, score: team1Score as 0 | 1, weight });
+        ownContextualGamesByTeam.get(game.team1Id)!.push({
+          opponent: team2Combined,
+          score: team1Score as 0 | 1,
+          weight,
+          ownExpectancyMu: team1Combined.mu,
+        });
 
         if (!ownContextualGamesByTeam.has(game.team2Id)) ownContextualGamesByTeam.set(game.team2Id, []);
-        ownContextualGamesByTeam
-          .get(game.team2Id)!
-          .push({ opponent: team1Combined, score: (1 - team1Score) as 0 | 1, weight });
+        ownContextualGamesByTeam.get(game.team2Id)!.push({
+          opponent: team1Combined,
+          score: (1 - team1Score) as 0 | 1,
+          weight,
+          ownExpectancyMu: team2Combined.mu,
+        });
 
         if (!internationalGamesByLeague.has(game.team1LeagueId)) internationalGamesByLeague.set(game.team1LeagueId, []);
         internationalGamesByLeague.get(game.team1LeagueId)!.push({

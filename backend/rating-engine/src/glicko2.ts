@@ -24,6 +24,24 @@ export interface DisplayRating {
 }
 
 export interface GameResult {
+  /**
+   * Rating to use for THIS side when computing the expected score, if it
+   * differs from the rating being updated. Needed for international games,
+   * where the comparison must be like-for-like (each side's contextual + its
+   * league meta) even though only the contextual part is being updated.
+   *
+   * Without it the two sides of one game disagree about that game: grading
+   * each team's bare contextual against the opponent's contextual + meta made
+   * both teams underdogs simultaneously. On a real BLG vs T1 matchup the two
+   * updates implied P(BLG wins) = 23.2% and 57.2% respectively -- win
+   * probabilities summing to 66%, not 100%. updateLeagueMeta already avoided
+   * this by building ownCombinedMu before calling E(); this is the same fix
+   * for the contextual half.
+   *
+   * Omitted for intra-league games, where both sides share a league meta that
+   * cancels, so the bare contextual comparison is already like-for-like.
+   */
+  ownExpectancyMu?: number;
   /** Opponent's rating state at the start of the period. */
   opponent: RatingState;
   /** 1 = win, 0 = loss. Glicko-2 also supports 0.5 for a draw, not used in LoL. */
@@ -167,7 +185,7 @@ export function updateRating(
   for (const game of games) {
     const weight = game.weight ?? 1;
     const gPhiJ = g(game.opponent.phi);
-    const eValue = E(current.mu, game.opponent.mu, game.opponent.phi);
+    const eValue = E(game.ownExpectancyMu ?? current.mu, game.opponent.mu, game.opponent.phi);
     vInverse += weight * gPhiJ * gPhiJ * eValue * (1 - eValue);
     deltaSum += weight * gPhiJ * (game.score - eValue);
   }

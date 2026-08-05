@@ -59,6 +59,7 @@ const result = runReplay({
     metaWeight: META_WEIGHT,
     seriesCorrelation: 0.8,
     ratingPeriodDays: 1,
+    internationalWeightMultiplier: Number(process.env.INTL_MULT ?? 1),
   },
 } as ReplayInput);
 

@@ -24,22 +24,23 @@ const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 // values, so the API has to apply the same weight+confidence-shrinkage the
 // replay used or displayed ratings won't match what was actually computed.
 //
-// Backtest-tuned. Two independent measures agree on 0.65: predictive accuracy
-// (manualBacktest, 63.16% vs 63.15% at 0.80) and per-league calibration
-// (manualLeagueCalibration, weighted mean absolute gap 3.48pp vs 3.62pp).
+// Backtest-tuned. Exists at all because an unweighted sum let a region's meta
+// dominate individual team merit -- a weak team in a strong region outranking a
+// team that had just beaten top opponents in a weaker one.
 //
-// Raised from an unweighted sum originally because that let a region's meta
-// dominate individual team merit -- a weak team in a strong region outranking
-// a team that had just beaten top opponents in a weaker one. Lowered from 0.80
-// to 0.65 for the same reason at finer grain: at 0.80 the model over-predicted
-// LCK (-1.8pp) and badly under-predicted LCS (+8.4pp), i.e. regional identity
-// was outweighing what teams outside LCK actually did internationally. At 0.65
-// LCK sits at +1.0pp and LCS improves to +6.6pp.
+// Briefly lowered to 0.65, which measured better at the time. That turned out
+// to be compensating for a real bug rather than a genuine optimum: international
+// games graded each side's bare contextual against the opponent's contextual +
+// meta, so both teams were underdogs in the same game and the meta term was
+// effectively over-applied. With that asymmetry fixed (see GameResult's
+// ownExpectancyMu) the optimum moved back here: calibration weighted mean
+// absolute gap is 3.47pp at 0.80 versus 3.83pp at 0.65.
 //
-// Do NOT tune this by intuition -- re-sweep both runners after substantial data
-// changes, and keep this value identical in computeRatings.ts and
-// repositories.ts or displayed ratings stop matching what the replay computed.
-const META_WEIGHT = 0.65;
+// Do NOT tune this by intuition -- re-sweep manualBacktest and
+// manualLeagueCalibration after substantial data changes, and keep this value
+// identical in computeRatings.ts and repositories.ts or displayed ratings stop
+// matching what the replay computed.
+const META_WEIGHT = 0.8;
 // A team with no game in its league's latest split is treated as no longer
 // actively competing (e.g. relegated, or just not in the current split's
 // lineup) -- team_league_memberships only ever grows an open (end_date IS

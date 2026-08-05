@@ -18,22 +18,23 @@ const MOV_WEIGHT_CAP = 1.5;
 // region's meta swing dominate individual team merit (a weak team in a
 // strong region outranking a team that just beat top opponents in a weaker
 // one). Re-sweep via manualBacktest.ts after any substantial data changes.
-// Backtest-tuned. Two independent measures agree on 0.65: predictive accuracy
-// (manualBacktest, 63.16% vs 63.15% at 0.80) and per-league calibration
-// (manualLeagueCalibration, weighted mean absolute gap 3.48pp vs 3.62pp).
+// Backtest-tuned. Exists at all because an unweighted sum let a region's meta
+// dominate individual team merit -- a weak team in a strong region outranking a
+// team that had just beaten top opponents in a weaker one.
 //
-// Raised from an unweighted sum originally because that let a region's meta
-// dominate individual team merit -- a weak team in a strong region outranking
-// a team that had just beaten top opponents in a weaker one. Lowered from 0.80
-// to 0.65 for the same reason at finer grain: at 0.80 the model over-predicted
-// LCK (-1.8pp) and badly under-predicted LCS (+8.4pp), i.e. regional identity
-// was outweighing what teams outside LCK actually did internationally. At 0.65
-// LCK sits at +1.0pp and LCS improves to +6.6pp.
+// Briefly lowered to 0.65, which measured better at the time. That turned out
+// to be compensating for a real bug rather than a genuine optimum: international
+// games graded each side's bare contextual against the opponent's contextual +
+// meta, so both teams were underdogs in the same game and the meta term was
+// effectively over-applied. With that asymmetry fixed (see GameResult's
+// ownExpectancyMu) the optimum moved back here: calibration weighted mean
+// absolute gap is 3.47pp at 0.80 versus 3.83pp at 0.65.
 //
-// Do NOT tune this by intuition -- re-sweep both runners after substantial data
-// changes, and keep this value identical in computeRatings.ts and
-// repositories.ts or displayed ratings stop matching what the replay computed.
-const META_WEIGHT = 0.65;
+// Do NOT tune this by intuition -- re-sweep manualBacktest and
+// manualLeagueCalibration after substantial data changes, and keep this value
+// identical in computeRatings.ts and repositories.ts or displayed ratings stop
+// matching what the replay computed.
+const META_WEIGHT = 0.8;
 // Intra-series correlation -- see seriesEvidenceWeight in replay.ts. Games
 // inside a Bo3/Bo5 are not independent observations, and counting them as
 // such made the model overconfident (the >80% confidence band predicted
@@ -54,6 +55,27 @@ const SERIES_CORRELATION = 0.8;
 // team can play several series in one week -- weekly buckets graded all of
 // them against a rating that ignored the earlier ones.
 const RATING_PERIOD_DAYS = 1;
+// International games count double in the CONTEXTUAL update. Regional games can
+// only move a team within its own league; international games are the only ones
+// carrying cross-region information, and there are roughly ten times fewer of
+// them (about 500 of 5,929 games here), so at equal weight a team's regional
+// schedule simply outvotes them.
+//
+// The motivating case: Bilibili Gaming went 3-2 against T1 and 5-4 against
+// Hanwha Life in 2026 international play and won First Stand outright, yet
+// ranked 103 points and four places below T1, because ~200 LPL regional games
+// outweighed ~100 international ones. At 2x, BLG and T1 sit adjacent.
+//
+// Chosen at 2 rather than higher on purpose. manualLeagueCalibration keeps
+// improving as this rises (3.47pp at 1x, 2.71pp at 5x) but that metric is
+// measured ON international games, so up-weighting them fits it better almost
+// by construction -- it is not a clean selection criterion for this knob.
+// Overall accuracy, which is dominated by the ~5,400 regional games, peaks
+// around 3x and falls by 4x, and the differences across 1x-3x are inside noise
+// (~0.13pp, about 8 games). 2x takes the defensible middle: enough to stop
+// regional volume drowning cross-region evidence, not enough to overfit the
+// handful of international events.
+const INTERNATIONAL_WEIGHT_MULTIPLIER = 2;
 
 /**
  * Loads all data needed for a full replay from Postgres (via loadReplayData),
@@ -80,6 +102,7 @@ export async function computeRatings(pool: Pool): Promise<{ teamRows: number; le
       metaWeight: META_WEIGHT,
       seriesCorrelation: SERIES_CORRELATION,
       ratingPeriodDays: RATING_PERIOD_DAYS,
+      internationalWeightMultiplier: INTERNATIONAL_WEIGHT_MULTIPLIER,
     },
   };
 
