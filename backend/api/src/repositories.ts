@@ -110,7 +110,9 @@ export async function getLeagues(pool: Pool): Promise<LeagueSummaryDto[]> {
 
   const withRatings = result.rows.map((row) => {
     const meta = toRatingState(row.mu_meta, row.phi_meta) ?? initialLeagueMeta(PHI_INIT_MAX);
-    const display = metaToDisplayOffset(meta);
+    // Weighted, so the Leagues board reports the credit these teams actually
+    // carry rather than the raw internal parameter.
+    const display = metaToDisplayOffset(meta, META_WEIGHT, PHI_INIT_MAX);
     return { slug: row.slug, name: row.name, logoUrl: row.logo_url, rating: display.rating, rd: display.rd };
   });
 
