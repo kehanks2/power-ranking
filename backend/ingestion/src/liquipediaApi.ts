@@ -264,3 +264,56 @@ export async function fetchAllActiveSquadPlayers(): Promise<LiquipediaSquadPlaye
     conditions: '[[status::active]] AND [[type::player]]',
   });
 }
+
+/**
+ * A row from `v3/player` -- a different dataset from `v3/squadplayer`, keyed on
+ * the PLAYER's page rather than the team's, and carrying the player's current
+ * team directly.
+ *
+ * Note the case difference: squadplayer uses status "active", player uses
+ * "Active". They are separate Cargo tables, not two views of one table.
+ */
+export interface LiquipediaPlayer {
+  pagename: string; // the player's own page
+  id: string; // in-game handle
+  name: string; // real name
+  nationality: string;
+  status: string; // "Active" | "Retired" | ... (capitalised, unlike squadplayer)
+  type: string; // "player" | "staff" -- staff are coaches/managers, never roster slots
+  teampagename: string | null; // the team page they currently belong to
+  /** Position lives here, not as a top-level column: `{ role: "mid", roles: { "1": "mid" } }`. */
+  extradata: { role?: string; roles?: Record<string, string> } | null;
+}
+
+/**
+ * Current active players for specific teams, read from `v3/player`.
+ *
+ * Exists because `v3/squadplayer` is NOT complete: it has zero rows -- not even
+ * historical ones -- for some teams whose rosters are plainly visible on the
+ * rendered wiki page. Confirmed against Leviatán (CBLOL), where `v3/team`
+ * returns the team as active but `v3/squadplayer` knows nothing about its
+ * squad, while `v3/player` returns all five starters with the correct
+ * positions in `extradata.role`.
+ *
+ * Deliberately queried per-team rather than pulled wiki-wide like
+ * squadplayer: this is a fallback for the handful of teams squadplayer misses,
+ * and every active player across the whole wiki is a far larger result set
+ * than we need.
+ */
+export async function fetchActivePlayersForTeams(pagenames: string[]): Promise<LiquipediaPlayer[]> {
+  if (pagenames.length === 0) return [];
+
+  const results: LiquipediaPlayer[] = [];
+  // Chunked so the OR-condition string stays a sane URL length.
+  const CHUNK_SIZE = 10;
+  for (let i = 0; i < pagenames.length; i += CHUNK_SIZE) {
+    const chunk = pagenames.slice(i, i + CHUNK_SIZE);
+    const teamClause = chunk.map((pagename) => `[[teampagename::${pagename}]]`).join(' OR ');
+    const page = await liquipediaGetAll<LiquipediaPlayer>('v3/player', {
+      conditions: `(${teamClause}) AND [[status::Active]]`,
+    });
+    results.push(...page);
+    if (i + CHUNK_SIZE < pagenames.length) await sleep(500);
+  }
+  return results;
+}

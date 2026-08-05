@@ -1,5 +1,12 @@
 import type { Pool } from 'pg';
-import { fetchActiveTeams, fetchAllActiveSquadPlayers, type LiquipediaSquadPlayer } from './liquipediaApi.js';
+import {
+  fetchActiveTeams,
+  fetchAllActiveSquadPlayers,
+  fetchActivePlayersForTeams,
+  type LiquipediaSquadPlayer,
+  type LiquipediaPlayer,
+} from './liquipediaApi.js';
+import type { Role } from '@power-ranking/rating-engine';
 import { upsertPlayer } from './upsert.js';
 import { resolvePosition, resolveTeamPagename } from './liquipediaMappings.js';
 
@@ -8,6 +15,14 @@ export interface RosterImportResult {
   teamsUnmatched: string[];
   membershipsInserted: number;
   playersCreated: number;
+  /** Matched teams squadplayer had nothing for, recovered via the v3/player fallback. */
+  teamsFromPlayerFallback: string[];
+  /**
+   * Matched teams that ended up with NO roster from either source. Surfaced
+   * rather than left silent: a team quietly having zero players is exactly the
+   * failure that went unnoticed with Leviatán.
+   */
+  teamsWithNoRoster: string[];
 }
 
 /**
@@ -20,6 +35,50 @@ export interface RosterImportResult {
  */
 export function isStarterFromRole(role: string | null | undefined): boolean {
   return (role ?? '').trim().toLowerCase() !== 'substitute';
+}
+
+/** A roster slot, normalised from whichever Liquipedia dataset supplied it. */
+export interface ResolvedSquadMember {
+  handle: string;
+  role: Role;
+  isStarter: boolean;
+  startDate: string | null;
+}
+
+/**
+ * Normalises a `v3/player` row into a roster slot, or undefined if it isn't
+ * one.
+ *
+ * Two filters matter here, both confirmed against Leviatán's real data:
+ *
+ * 1. `type` must be "player". That team's active list also contains
+ *    LautaLoval and Kouke, both `type: "staff"` with `extradata.role: "coach"`
+ *    -- Kouke's `roles` map even lists "jungle" and "top" as secondary
+ *    entries, so filtering on the role strings alone would field a coach.
+ * 2. Position comes from `extradata.role`, not a top-level column -- `v3/player`
+ *    has no `position` field at all.
+ *
+ * `v3/player` carries no join date and no substitute flag, so members resolved
+ * this way are treated as starters with an unknown start date. That is the
+ * cost of the fallback and why squadplayer stays the primary source.
+ */
+export function squadMemberFromPlayerRow(row: LiquipediaPlayer): ResolvedSquadMember | undefined {
+  if ((row.type ?? '').trim().toLowerCase() !== 'player') return undefined;
+  const role = resolvePosition(row.extradata?.role);
+  if (!role) return undefined;
+  return { handle: row.id, role, isStarter: true, startDate: null };
+}
+
+/** Normalises a `v3/squadplayer` row into a roster slot, or undefined if it isn't one. */
+export function squadMemberFromSquadRow(row: LiquipediaSquadPlayer): ResolvedSquadMember | undefined {
+  const role = resolvePosition(row.position);
+  if (!role) return undefined; // non-standard/blank position -- not a starting role we track
+  return {
+    handle: row.id,
+    role,
+    isStarter: isStarterFromRole(row.role),
+    startDate: row.joindate && row.joindate !== '0000-01-01' ? row.joindate : null,
+  };
 }
 
 /**
@@ -73,6 +132,24 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
     else teamsUnmatched.push(team.name);
   }
 
+  // Squadplayer is incomplete -- see fetchActivePlayersForTeams. Any matched
+  // team it returns nothing for gets a second look via v3/player, which is
+  // keyed on the player's page instead and does have them.
+  const pagenamesMissingSquad = matchedTeams
+    .map(({ pagename }) => pagename)
+    .filter((pagename) => (squadByPagename.get(pagename) ?? []).length === 0);
+  const fallbackPlayers = await fetchActivePlayersForTeams([...new Set(pagenamesMissingSquad)]);
+  const fallbackByPagename = new Map<string, LiquipediaPlayer[]>();
+  for (const player of fallbackPlayers) {
+    const pagename = player.teampagename;
+    if (!pagename) continue;
+    if (!fallbackByPagename.has(pagename)) fallbackByPagename.set(pagename, []);
+    fallbackByPagename.get(pagename)!.push(player);
+  }
+
+  const teamsFromFallback: string[] = [];
+  const teamsStillEmpty: string[] = [];
+
   const client = await pool.connect();
   let membershipsInserted = 0;
   let playersCreated = 0;
@@ -80,34 +157,42 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
     await client.query('BEGIN');
     await client.query('DELETE FROM roster_memberships');
 
+    const today = new Date().toISOString().slice(0, 10);
+
     for (const { teamId, pagename } of matchedTeams) {
       const squad = squadByPagename.get(pagename) ?? [];
+      let members = squad
+        .map(squadMemberFromSquadRow)
+        .filter((m): m is ResolvedSquadMember => m !== undefined);
 
-      for (const member of squad) {
-        const role = resolvePosition(member.position);
-        if (!role) continue; // non-standard/blank position -- not a starting role we track
+      if (members.length === 0) {
+        members = (fallbackByPagename.get(pagename) ?? [])
+          .map(squadMemberFromPlayerRow)
+          .filter((m): m is ResolvedSquadMember => m !== undefined);
+        if (members.length > 0) teamsFromFallback.push(pagename);
+        else teamsStillEmpty.push(pagename);
+      }
 
+      for (const member of members) {
         const playerLookup = await client.query<{ id: number }>(
           `SELECT id FROM players WHERE lower(handle) = lower($1) LIMIT 1`,
-          [member.id],
+          [member.handle],
         );
         let playerId: number;
         if (playerLookup.rows.length > 0) {
           playerId = playerLookup.rows[0].id;
         } else {
           playerId = await upsertPlayer(client as unknown as Pool, {
-            leaguepediaPage: `liquipedia:player:${member.id}`,
-            handle: member.id,
+            leaguepediaPage: `liquipedia:player:${member.handle}`,
+            handle: member.handle,
           });
           playersCreated += 1;
         }
 
-        const startDate = member.joindate && member.joindate !== '0000-01-01' ? member.joindate : new Date().toISOString().slice(0, 10);
-        const isStarter = isStarterFromRole(member.role);
         await client.query(
           `INSERT INTO roster_memberships (team_id, player_id, role, is_starter, start_date, end_date)
            VALUES ($1, $2, $3, $4, $5, NULL)`,
-          [teamId, playerId, role, isStarter, startDate],
+          [teamId, playerId, member.role, member.isStarter, member.startDate ?? today],
         );
         membershipsInserted += 1;
       }
@@ -121,5 +206,12 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
     client.release();
   }
 
-  return { teamsMatched: matchedTeams.length, teamsUnmatched, membershipsInserted, playersCreated };
+  return {
+    teamsMatched: matchedTeams.length,
+    teamsUnmatched,
+    membershipsInserted,
+    playersCreated,
+    teamsFromPlayerFallback: teamsFromFallback,
+    teamsWithNoRoster: teamsStillEmpty,
+  };
 }
