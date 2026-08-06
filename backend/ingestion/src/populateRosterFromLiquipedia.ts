@@ -26,15 +26,31 @@ export interface RosterImportResult {
 }
 
 /**
- * Liquipedia explicitly tags bench players via role="Substitute" -- everyone
- * else (empty/missing role, "Loan", "Captain", etc.) is genuinely playing
- * that position right now. Two players both resolving to is_starter=true for
- * the same role IS the "shared role" case (see module doc) -- not a bug.
- * Defensively treats a missing/null role (not just "") as non-substitute,
- * since a bug here would silently crash INSERTs for every normal starter.
+ * A blank role is a starter; anything Liquipedia bothers to label is not.
+ *
+ * Surveyed against every active player row on the wiki, the only labels that
+ * occur are "Substitute" (56) and "Loan" (2) -- "Inactive" exists but only on
+ * `former` rows. Both labels mean the player is not in the starting five, so
+ * the test is "is there a label", not a list of known ones. That way a label
+ * we have not seen fails safe, instead of promoting someone to starter.
+ *
+ * Two players both resolving to is_starter=true for the same role IS the
+ * "shared role" case (see module doc) -- not a bug. A missing/null role is
+ * treated as blank, since a throw here would take out every normal starter.
  */
 export function isStarterFromRole(role: string | null | undefined): boolean {
-  return (role ?? '').trim().toLowerCase() !== 'substitute';
+  return (role ?? '').trim() === '';
+}
+
+/**
+ * A player loaned OUT plays for someone else and does not belong on this
+ * squad. `role: "Loan"` alone cannot say which way the loan runs, so the
+ * direction is read from `extradata.loanedto`. Currently 2 rows wiki-wide,
+ * neither in our six leagues -- this is a latent hole being closed, not an
+ * observed defect.
+ */
+export function isLoanedAway(row: LiquipediaSquadPlayer): boolean {
+  return row.extradata?.loanedto === true;
 }
 
 /** A roster slot, normalised from whichever Liquipedia dataset supplied it. */
@@ -71,6 +87,7 @@ export function squadMemberFromPlayerRow(row: LiquipediaPlayer): ResolvedSquadMe
 
 /** Normalises a `v3/squadplayer` row into a roster slot, or undefined if it isn't one. */
 export function squadMemberFromSquadRow(row: LiquipediaSquadPlayer): ResolvedSquadMember | undefined {
+  if (isLoanedAway(row)) return undefined; // out at another team; not this squad
   const role = resolvePosition(row.position);
   if (!role) return undefined; // non-standard/blank position -- not a starting role we track
   return {

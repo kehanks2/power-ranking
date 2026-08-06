@@ -101,15 +101,61 @@ export function weightedMean(values: number[], weights: number[]): number {
   return weightTotal > 0 ? weightedSum / weightTotal : 0;
 }
 
+/** The peer-neutral score: by construction every peer group centres here. */
+export const NEUTRAL_SCORE = 50;
+
 /**
- * Pulls a percentile score toward the peer-neutral 50 in proportion to how
- * little evidence backs it. `effectiveGames` is the recency-weighted game
- * count, so an old sample shrinks harder than a fresh one of the same size --
- * which is the intended interaction with `recencyWeight`, not a side effect.
+ * How much of a player's standing in one league carries to another.
+ *
+ * Fit from our own data, not assumed: across 100 observations of players with
+ * 15+ games in two different leagues at the same role, regressing one
+ * percentile on the other gives a slope of 0.315 (r^2 = 0.099). So past-league
+ * standing is real evidence but weak -- worth about a third of the distance
+ * from neutral, and no more.
+ *
+ * Deliberately NOT adjusted by league strength. The obvious theory is that
+ * moving to a stronger league should cost you percentile, but the correlation
+ * between the league-rating gap and the percentile change is -0.19 -- weak,
+ * and pointing the WRONG way. Applying a strength term would be adding noise
+ * with a rigorous-looking justification. See MODEL.md.
  */
-export function shrinkToNeutral(score: number, effectiveGames: number, k = DEFAULT_SHRINKAGE_GAMES): number {
+export const DEFAULT_TRANSFER_CARRYOVER = 0.3;
+
+/**
+ * Pulls a percentile score toward `anchor` in proportion to how little
+ * evidence backs it. `effectiveGames` is the recency-weighted game count, so
+ * an old sample shrinks harder than a fresh one of the same size -- which is
+ * the intended interaction with `recencyWeight`, not a side effect.
+ */
+export function shrinkToward(
+  score: number,
+  effectiveGames: number,
+  anchor = NEUTRAL_SCORE,
+  k = DEFAULT_SHRINKAGE_GAMES,
+): number {
   const confidence = effectiveGames / (effectiveGames + k);
-  return 50 + (score - 50) * confidence;
+  return anchor + (score - anchor) * confidence;
+}
+
+/** Shrinks toward the peer-neutral 50 -- the case where nothing else is known. */
+export function shrinkToNeutral(score: number, effectiveGames: number, k = DEFAULT_SHRINKAGE_GAMES): number {
+  return shrinkToward(score, effectiveGames, NEUTRAL_SCORE, k);
+}
+
+/**
+ * Where to anchor a player who has a record in another league.
+ *
+ * Returns the neutral score when there is nothing to carry, so a caller can
+ * use this unconditionally. Note the result is an ANCHOR, not a rating: the
+ * player's own games in this league still pull the final number away from it
+ * exactly as before, and do so faster the more they play.
+ */
+export function transferAnchor(
+  priorScore: number | null | undefined,
+  carryover = DEFAULT_TRANSFER_CARRYOVER,
+): number {
+  if (priorScore === null || priorScore === undefined) return NEUTRAL_SCORE;
+  return NEUTRAL_SCORE + (priorScore - NEUTRAL_SCORE) * carryover;
 }
 
 export type PlayerComponent = 'kda' | 'goldShare' | 'damageShare' | 'killParticipation' | 'winRate';

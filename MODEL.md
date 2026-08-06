@@ -38,6 +38,36 @@ The second is the intuitive "the prior should yield to evidence" idea. It fails
 because a team's contextual rating is still earned mostly in regional games no
 matter how many internationals it plays, so the prior never becomes redundant.
 
+### Player transfers between leagues
+
+A player arriving from another league is not an unknown quantity, so their
+group rating is shrunk toward a carryover anchor rather than a flat 50 (see
+`DEFAULT_TRANSFER_CARRYOVER`). Two things about the size and shape of that
+anchor were settled on data:
+
+| Question | Answer |
+|---|---|
+| How much of a percentile carries between leagues? | Slope **0.315**, r² = 0.099, over 100 observations of players with 15+ games in two leagues at the same role |
+| Should the carryover be adjusted by league strength? | **No.** corr(league-rating gap, percentile change) = **−0.19** — weak, and pointing the wrong way |
+
+The second is the intuitive one and it is worth being explicit about why it was
+dropped. Moving to a stronger league "should" cost a player percentile, and a
+league-strength term would have looked more principled than a flat carryover.
+The data does not merely fail to support it, it leans the other way, so the
+term would have added noise with a rigorous-looking justification. The flat
+carryover stays until there is evidence for something better.
+
+Note what the r² of 0.10 means in practice: past-league standing is real
+evidence but weak, which is exactly why the anchor keeps only about a third of
+the distance from neutral. Effect on the current dataset is 124 of 671 groups
+moving, 1.13 points on average and 7.45 at most; team ratings are unchanged
+(Brier 0.2247 either way) since the roster-implied prior reads the primary
+group.
+
+This does nothing for a player with no record anywhere — currently 28 of 352
+rostered players, mostly academy call-ups and new teams. That gap needs tier-2
+data, not a better prior.
+
 ## Parameters
 
 ### Glicko-2 core — published defaults, not tuned

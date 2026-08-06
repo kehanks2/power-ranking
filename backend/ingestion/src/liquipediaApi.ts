@@ -263,10 +263,21 @@ export interface LiquipediaSquadPlayer {
   name: string; // real name
   nationality: string;
   position: string; // "Top" | "Jungle" | "Mid" | "Bot" | "Support" for players; role/title text for staff
-  role: string; // "" for a normal starter, "Substitute"/"Loan"/etc. otherwise
+  /**
+   * Surveyed across every active player row on the wiki: "" (942), "Substitute"
+   * (56), and "Loan" (2). "Inactive" also exists but only ever on `former`
+   * rows, so it never reaches an active roster.
+   */
+  role: string;
   type: string; // "player" | "staff"
   status: string;
   joindate: string;
+  /**
+   * `loanedto` says which DIRECTION a loan runs -- true means this player is
+   * out at another team and is not part of this squad. The role string alone
+   * cannot tell the two apart.
+   */
+  extradata?: { loanedto?: boolean } | null;
 }
 
 /**

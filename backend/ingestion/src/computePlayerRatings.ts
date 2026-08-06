@@ -7,7 +7,11 @@ import {
   recencyWeight,
   DEFAULT_HALF_LIFE_DAYS,
   shrinkToNeutral,
+  shrinkToward,
+  transferAnchor,
   weightedMean,
+  NEUTRAL_SCORE,
+  DEFAULT_SHRINKAGE_GAMES,
 } from '@power-ranking/rating-engine';
 
 /** Bumped from 1 when the flat career average was replaced -- see playerRating.ts. */
@@ -192,7 +196,64 @@ export function selectGroupRatings(
       claimed.add(rating.playerId);
     }
   }
+
+  applyTransferAnchors(ratings);
   return ratings;
+}
+
+/**
+ * Re-shrinks each group toward what the player's OTHER leagues say about them,
+ * instead of toward a flat 50.
+ *
+ * Someone arriving from another league is not an unknown quantity, and the old
+ * behaviour treated them as one: with no games yet in the new league, shrinkage
+ * pulled them all the way to neutral and threw the record away. The carryover
+ * is small (see DEFAULT_TRANSFER_CARRYOVER -- about a third) because that is
+ * what the data supports, so this nudges a newcomer off 50 rather than
+ * transplanting their old standing.
+ *
+ * Runs as a separate pass over the FIRST-pass values on purpose. Anchoring
+ * each group on its sibling's already-anchored rating would be circular --
+ * A leaning on B leaning on A -- so every anchor here is read from the
+ * neutral-shrunk numbers computed above.
+ *
+ * Same role only. The carryover was fit on same-role pairs, and there is no
+ * evidence here for what a role change carries.
+ */
+function applyTransferAnchors(ratings: PlayerGroupRating[]): void {
+  const byPlayer = new Map<number, PlayerGroupRating[]>();
+  for (const rating of ratings) {
+    if (!byPlayer.has(rating.playerId)) byPlayer.set(rating.playerId, []);
+    byPlayer.get(rating.playerId)!.push(rating);
+  }
+
+  for (const groups of byPlayer.values()) {
+    if (groups.length < 2) continue;
+    const firstPass = groups.map((g) => g.rating);
+
+    groups.forEach((group, index) => {
+      // The best-evidenced OTHER group at this role -- their strongest claim
+      // to being known, wherever it was earned.
+      let prior: number | null = null;
+      let bestEvidence = 0;
+      groups.forEach((other, otherIndex) => {
+        if (otherIndex === index || other.role !== group.role) return;
+        if (other.effectiveGames > bestEvidence) {
+          bestEvidence = other.effectiveGames;
+          prior = firstPass[otherIndex];
+        }
+      });
+      if (prior === null) return;
+
+      // Undo the neutral shrink to recover the raw blended score, then re-shrink
+      // toward the transfer anchor. Cheaper and exact, versus threading the raw
+      // score through every group.
+      const confidence = group.effectiveGames / (group.effectiveGames + DEFAULT_SHRINKAGE_GAMES);
+      if (confidence === 0) return;
+      const blended = NEUTRAL_SCORE + (firstPass[index] - NEUTRAL_SCORE) / confidence;
+      group.rating = shrinkToward(blended, group.effectiveGames, transferAnchor(prior));
+    });
+  }
 }
 
 /** One row per player-game, with everything the composite needs. */

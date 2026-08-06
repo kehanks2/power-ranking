@@ -17,14 +17,37 @@ describe('isStarterFromRole', () => {
     expect(isStarterFromRole('  SUBSTITUTE  ')).toBe(false);
   });
 
-  it('treats other tags like "Loan" or "Captain" as a starter', () => {
-    expect(isStarterFromRole('Loan')).toBe(true);
-    expect(isStarterFromRole('Captain')).toBe(true);
+  it('treats any other label as NOT a starter, including ones not seen yet', () => {
+    // The test is "is there a label", not a list of known ones, so an
+    // unfamiliar tag fails safe rather than promoting someone to starter.
+    expect(isStarterFromRole('Loan')).toBe(false);
+    expect(isStarterFromRole('Inactive')).toBe(false);
+    expect(isStarterFromRole('Captain')).toBe(false);
   });
 
   it('does not throw on null/undefined -- defensively treats as a starter', () => {
     expect(isStarterFromRole(null)).toBe(true);
     expect(isStarterFromRole(undefined)).toBe(true);
+  });
+});
+
+describe('squadMemberFromSquadRow loan direction', () => {
+  const row = (extradata: LiquipediaSquadPlayer['extradata']): LiquipediaSquadPlayer =>
+    ({ id: 'Karaage', position: 'Mid', role: 'Loan', type: 'player', status: 'active', joindate: '2026-01-20', extradata }) as LiquipediaSquadPlayer;
+
+  it('drops a player loaned OUT -- they play for someone else', () => {
+    expect(squadMemberFromSquadRow(row({ loanedto: true }))).toBeUndefined();
+  });
+
+  it('keeps a player loaned IN, since they do play for this team', () => {
+    const member = squadMemberFromSquadRow(row({ loanedto: false }));
+    expect(member?.handle).toBe('Karaage');
+    // Still not a starter: the role carries a label at all.
+    expect(member?.isStarter).toBe(false);
+  });
+
+  it('keeps a player when the loan direction is absent entirely', () => {
+    expect(squadMemberFromSquadRow(row(null))?.handle).toBe('Karaage');
   });
 });
 

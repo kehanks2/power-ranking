@@ -6,6 +6,8 @@ import {
   recencyWeight,
   weightedMean,
   shrinkToNeutral,
+  shrinkToward,
+  transferAnchor,
   blendComponentPercentiles,
   componentWeights,
   DEFAULT_WIN_WEIGHT,
@@ -110,6 +112,49 @@ describe('weightedMean', () => {
   it('returns 0 rather than NaN when there is nothing to average', () => {
     expect(weightedMean([], [])).toBe(0);
     expect(weightedMean([5], [0])).toBe(0);
+  });
+});
+
+describe('transferAnchor', () => {
+  it('keeps about a third of the distance from neutral', () => {
+    // 0.3 is fit from our own data, not chosen: a percentile in one league
+    // regresses on the same player's percentile in another with slope 0.315.
+    expect(transferAnchor(80)).toBeCloseTo(59, 0);
+    expect(transferAnchor(20)).toBeCloseTo(41, 0);
+  });
+
+  it('falls back to neutral when there is nothing to carry', () => {
+    expect(transferAnchor(null)).toBe(50);
+    expect(transferAnchor(undefined)).toBe(50);
+  });
+
+  it('never moves the anchor past the prior itself', () => {
+    // A carryover above 1 would claim a transfer makes a player MORE extreme
+    // than they were, which no reading of the data supports.
+    expect(transferAnchor(90)).toBeLessThan(90);
+    expect(transferAnchor(90)).toBeGreaterThan(50);
+  });
+});
+
+describe('shrinkToward', () => {
+  it('pulls toward the anchor rather than neutral', () => {
+    // Same evidence, different starting belief: at K games the score sits
+    // halfway between the anchor and its raw value.
+    expect(shrinkToward(90, DEFAULT_SHRINKAGE_GAMES, 60)).toBeCloseTo(75, 10);
+  });
+
+  it('lands on the anchor when there is no evidence at all', () => {
+    expect(shrinkToward(90, 0, 62)).toBeCloseTo(62, 10);
+  });
+
+  it('ignores the anchor once the sample is large', () => {
+    // Evidence has to win eventually, or a transfer prior would follow a
+    // player around forever.
+    expect(shrinkToward(90, 500, 50)).toBeCloseTo(shrinkToward(90, 500, 65), 0);
+  });
+
+  it('is exactly shrinkToNeutral when the anchor is 50', () => {
+    expect(shrinkToward(88.6, 7, 50)).toBeCloseTo(shrinkToNeutral(88.6, 7), 10);
   });
 });
 
