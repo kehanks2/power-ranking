@@ -98,7 +98,7 @@ const INTERNATIONAL_WEIGHT_MULTIPLIER = 2;
 export const MIN_INTERNATIONAL_GAMES = 10;
 
 export async function computeRatings(pool: Pool): Promise<{ teamRows: number; leagueRows: number; internationalRows: number }> {
-  const { teamIds, leagueIds, games, decayEvents } = await loadReplayData(pool);
+  const { teamIds, leagueIds, games, decayEvents, internationalWindowStart } = await loadReplayData(pool);
 
   const replayInput: ReplayInput = {
     teamIds,
@@ -128,7 +128,9 @@ export async function computeRatings(pool: Pool): Promise<{ teamRows: number; le
   // a 2024 Worlds semifinalist, from the board because 7 of their 16 games
   // there were against other LPL teams. Everyone in this pool played inside
   // the same set of events, so the comparison holds without the league prior.
-  const internationalGames = games.filter((g) => g.internationalEvent);
+  const internationalGames = games.filter(
+    (g) => g.internationalEvent && (internationalWindowStart === null || g.datetimeUtc >= internationalWindowStart),
+  );
   const internationalGameCount = new Map<string, number>();
   for (const game of internationalGames) {
     for (const teamId of [game.team1Id, game.team2Id]) {

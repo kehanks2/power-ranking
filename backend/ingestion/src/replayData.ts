@@ -36,11 +36,38 @@ interface GameRow {
   team2_league_id: number;
 }
 
+/**
+ * How many international events the International board looks back over.
+ *
+ * A multiple of three on purpose. The calendar now runs First Stand -> MSI ->
+ * Worlds, so any six consecutive events contain exactly two of each. That
+ * keeps the evidence base constant: with a non-multiple the window would hold
+ * three of one type and two of the others, and which type is over-represented
+ * would rotate through the year. Since Worlds is roughly twice the size of
+ * First Stand (84-106 games against 35-45), that would make the board
+ * Worlds-heavy for part of the year and First-Stand-heavy for the rest.
+ *
+ * Six rather than three or nine, measured against the current data: six spans
+ * two years and 421 games and qualifies 22 teams, against 23 for every event
+ * we hold -- so it costs one team while giving a genuinely bounded window.
+ * Three spans one year and qualifies only 15: a team that skipped a year
+ * disappears entirely, which is too harsh when rosters persist across a
+ * season. Nine would be a no-op today and would eventually reach back to
+ * rosters sharing almost no players with the current team.
+ */
+export const INTERNATIONAL_EVENT_WINDOW = 6;
+
 export interface ReplayData {
   teamIds: string[];
   leagueIds: string[];
   games: ReplayGame[];
   decayEvents: DecayEvent[];
+  /**
+   * Start date of the oldest international event inside the window. Games at
+   * international events before this are excluded from the International
+   * board (they still count everywhere else).
+   */
+  internationalWindowStart: string | null;
 }
 
 /**
@@ -223,5 +250,15 @@ export async function loadReplayData(
     }
   }
 
-  return { teamIds, leagueIds, games, decayEvents };
+  // Oldest event still inside the window; null when there are fewer events
+  // than the window holds, which simply means nothing is excluded yet.
+  const windowResult = await pool.query<{ date_start: string }>(
+    `SELECT date_start::text FROM tournaments
+     WHERE tournament_type = 'international'
+     ORDER BY date_start DESC OFFSET $1 - 1 LIMIT 1`,
+    [INTERNATIONAL_EVENT_WINDOW],
+  );
+  const internationalWindowStart = windowResult.rows[0]?.date_start ?? null;
+
+  return { teamIds, leagueIds, games, decayEvents, internationalWindowStart };
 }
