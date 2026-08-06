@@ -30,6 +30,21 @@ export const REGIONAL_SERIES_TO_LEAGUE_SLUG: Record<string, string> = {
  */
 export const INTERNATIONAL_SERIES = new Set(['Mid-Season Invitational', 'World Championships', 'First Stand Tournament']);
 
+/**
+ * Through 2025 the Americas ran as one series, "LoL Championship of The
+ * Americas", split into two conferences that are separate leagues to us: LTA
+ * North is LCS and LTA South is CBLOL. Series alone cannot tell them apart --
+ * both carry the same value -- so the conference is read off `parent`
+ * ("LTA/2025/Split_2/North"). Same shape of ambiguity as the MSI qualifier
+ * brackets above.
+ *
+ * This is why leagueAlias.ts existed and why nothing called it: the season it
+ * remaps was never ingested, because the backfill queried for a series named
+ * "LCS" that did not exist that year.
+ */
+export const AMERICAS_SERIES = 'LoL Championship of The Americas';
+const AMERICAS_CONFERENCE_TO_LEAGUE_SLUG: Record<string, string> = { North: 'LCS', South: 'CBLOL' };
+
 export interface MatchClassification {
   tournamentType: 'regional_split' | 'international';
   canonicalLeagueId: number | null; // set only for regional -- international tournaments aren't tied to one league
@@ -52,6 +67,19 @@ export function classifyMatch(series: string, parent: string, leagueIdBySlug: Ma
   const leagueSlug = REGIONAL_SERIES_TO_LEAGUE_SLUG[series];
   if (leagueSlug) {
     const canonicalLeagueId = leagueIdBySlug.get(leagueSlug);
+    if (!canonicalLeagueId) return null;
+    return { tournamentType: 'regional_split', canonicalLeagueId, isInternational: false };
+  }
+  if (series === AMERICAS_SERIES) {
+    // Cross-Conference and Championship brackets put North against South.
+    // Those are LCS vs CBLOL to us, so treating them as either league's
+    // regional play would mis-assign team membership, and letting them through
+    // as cross-league games would feed the league meta with matches that were
+    // never international. Excluded until they have a home -- exclusion is the
+    // default here, as everywhere else in this function.
+    const conference = /\/(North|South)$/.exec(parent)?.[1];
+    if (!conference) return null;
+    const canonicalLeagueId = leagueIdBySlug.get(AMERICAS_CONFERENCE_TO_LEAGUE_SLUG[conference]);
     if (!canonicalLeagueId) return null;
     return { tournamentType: 'regional_split', canonicalLeagueId, isInternational: false };
   }
