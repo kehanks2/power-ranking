@@ -1,18 +1,3 @@
-@if (isInternational()) {
-  <p class="scope-note">
-    Built only from games between regions. Teams with at least 10 international games appear — below
-    that there isn’t enough to say anything. A team with no international record isn’t ranked low
-    here, it simply doesn’t appear. <strong>This is the only board that compares regions.</strong>
-  </p>
-} @else {
-  <p class="scope-note">
-    Ranked on games inside {{ filterService.selectedScope() }} only. These ratings compare
-    {{ filterService.selectedScope() }} teams to each other and
-    <strong>are not transferable between regions</strong> — a 1650 here does not equal a 1650 on
-    another regional board. Only the International board compares across regions.
-  </p>
-}
-
 @if (loading()) {
   <p class="status">Loading teams…</p>
 } @else if (sorted().length === 0) {
@@ -49,7 +34,7 @@
           </th>
           <th scope="col" class="interval-h">Confidence range</th>
           <th scope="col">Last 4 internationals</th>
-          <th scope="col" class="num">Games</th>
+          <th scope="col" class="num">{{ isInternational() ? 'Vs other regions' : 'Games' }}</th>
         </tr>
         <tr class="axis-row">
           <th scope="col" [attr.colspan]="isInternational() ? 6 : 5"></th>

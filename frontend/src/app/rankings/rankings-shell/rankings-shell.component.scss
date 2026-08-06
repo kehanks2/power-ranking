@@ -1,3 +1,10 @@
+.shell-header,
+.control-bar,
+.content {
+  max-width: 1200px;
+  margin-inline: auto;
+}
+
 .shell-header {
   display: flex;
   align-items: center;
@@ -65,6 +72,21 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
+  margin-bottom: 0.7rem;
+}
+
+.scope-note {
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 72ch;
+  min-height: 3.4em;
+
+  strong {
+    color: var(--color-text);
+    font-weight: 600;
+  }
 }
 
 // Regional strength lives beside every board rather than on a tab of its own:
