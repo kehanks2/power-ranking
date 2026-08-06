@@ -81,3 +81,35 @@ export interface PlayerSummary {
   scope: PlayerRatingScope;
   gamesPlayed: number;
 }
+
+/**
+ * A stat and where it places the player among same-role peers in the same
+ * scope. `percentile` is always oriented so higher is better, including for
+ * deaths, where the better raw number is the lower one.
+ */
+export interface PlayerStat {
+  value: number | null;
+  percentile: number | null;
+}
+
+export interface PlayerStats {
+  games: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  kills: PlayerStat;
+  deaths: PlayerStat;
+  assists: PlayerStat;
+  kda: PlayerStat;
+  csPerMin: PlayerStat;
+  goldDiff: PlayerStat;
+  killParticipation: PlayerStat;
+  damageShare: PlayerStat;
+  goldShare: PlayerStat;
+}
+
+export interface PlayerDetail extends PlayerSummary {
+  /** Measured over exactly the games this scope's rating was computed from. */
+  stats: PlayerStats;
+  peerCount: number;
+}

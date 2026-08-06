@@ -160,4 +160,51 @@ describe('read API (live Postgres)', () => {
       expect(player.scope).toBe('regional');
     }
   });
+
+  it('GET /players/:id returns a stat line placed against same-role peers', async () => {
+    const board = await request(app).get('/players').query({ scope: 'international' });
+    const top = board.body[0];
+
+    const res = await request(app).get(`/players/${top.id}`).query({ scope: 'international' });
+    expect(res.status).toBe(200);
+    expect(res.body.handle).toBe(top.handle);
+    expect(res.body.peerCount).toBeGreaterThan(1);
+
+    const { stats } = res.body;
+    expect(stats.wins + stats.losses).toBe(stats.games);
+    expect(stats.winRate).toBeCloseTo(stats.wins / stats.games, 6);
+
+    for (const key of ['kills', 'deaths', 'assists', 'kda', 'csPerMin', 'goldDiff', 'killParticipation', 'damageShare', 'goldShare']) {
+      const stat = stats[key];
+      // A percentile without a value would be percent_rank placing a null in
+      // the ordering, which reads as a real 0th percentile and is not one.
+      if (stat.value === null) {
+        expect(stat.percentile).toBeNull();
+      } else {
+        expect(stat.percentile).toBeGreaterThanOrEqual(0);
+        expect(stat.percentile).toBeLessThanOrEqual(100);
+      }
+    }
+
+    // The board's top player should not be scraping the bottom of their own
+    // role on the rating's own headline component.
+    expect(stats.kda.percentile).toBeGreaterThan(50);
+  });
+
+  it('GET /players/:id measures a regional rank inside the player own league, not across all of them', async () => {
+    const board = await request(app).get('/players').query({ league: 'LCK' });
+    const top = board.body[0];
+
+    const res = await request(app).get(`/players/${top.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.scope).toBe('regional');
+    // Pooling every league would push an LCK player's rank far past 1, since
+    // regional ratings are within-league percentiles and not comparable.
+    expect(res.body.rank).toBe(top.rank);
+  });
+
+  it('GET /players/:id rejects a non-numeric id and 404s an unknown one', async () => {
+    expect((await request(app).get('/players/not-a-number')).status).toBe(400);
+    expect((await request(app).get('/players/99999999')).status).toBe(404);
+  });
 });

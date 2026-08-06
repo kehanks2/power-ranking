@@ -27,9 +27,23 @@
       </thead>
       <tbody>
         @for (player of players(); track player.id) {
-          <tr>
+          <tr [class.is-open]="isOpen(player.id)">
             <td class="rank">{{ player.rank }}</td>
-            <td class="handle">{{ player.handle }}</td>
+            <td>
+              <!-- A real button, so the panel is reachable and announced
+                   without a mouse. The whole row is not clickable: that would
+                   leave the control invisible to assistive tech. -->
+              <button
+                type="button"
+                class="handle-toggle"
+                [attr.aria-expanded]="isOpen(player.id)"
+                [attr.aria-controls]="'player-panel-' + player.id"
+                (click)="toggle(player.id)"
+              >
+                <span class="chevron" aria-hidden="true"></span>
+                <span class="handle">{{ player.handle }}</span>
+              </button>
+            </td>
             <td><span class="role" [class]="'role-' + player.role">{{ player.role }}</span></td>
             @if (isGlobal()) {
               <td>
@@ -44,6 +58,66 @@
             <td class="num rating">{{ player.rating | number: '1.0-0' }}</td>
             <td class="num games">{{ player.gamesPlayed }}</td>
           </tr>
+
+          @if (isOpen(player.id)) {
+            <tr class="detail-row">
+              <td [attr.colspan]="columnCount()">
+                <div class="panel" [id]="'player-panel-' + player.id">
+                  @if (detailLoading()) {
+                    <p class="status">Loading {{ player.handle }}’s stats…</p>
+                  } @else if (detail(); as d) {
+                    <div class="panel__head">
+                      <p class="record">
+                        <strong>{{ d.stats.wins }}–{{ d.stats.losses }}</strong>
+                        <span class="record__rate">{{ d.stats.winRate | percent: '1.0-0' }} win rate</span>
+                        <span class="record__games">{{ d.stats.games }} games</span>
+                      </p>
+                      <p class="coverage">{{ coverageNote() }}</p>
+                    </div>
+
+                    @if (d.stats.games === 0) {
+                      <p class="status">
+                        Too few games on this board to break down. The rating above is shrunk toward
+                        the neutral 50 for exactly this reason.
+                      </p>
+                    } @else {
+                      <dl class="stats">
+                        @for (stat of stats(); track stat.label) {
+                          <div class="stat">
+                            <dt>{{ stat.label }}</dt>
+                            <dd>
+                              <span class="stat__value">{{ stat.display }}</span>
+                              <span class="stat__bar" [title]="stat.standing">
+                                <span
+                                  class="stat__fill"
+                                  [class]="'band-' + band(stat.percentile)"
+                                  [style.width.%]="stat.percentile ?? 0"
+                                ></span>
+                              </span>
+                              <span class="stat__pct">
+                                @if (stat.percentile !== null) {
+                                  {{ stat.percentile }}<span class="stat__pct-unit">th</span>
+                                } @else {
+                                  —
+                                }
+                              </span>
+                              <span class="visually-hidden">{{ stat.standing }}</span>
+                            </dd>
+                          </div>
+                        }
+                      </dl>
+                      <p class="peers">
+                        Percentiles are against the {{ d.peerCount }} {{ d.role }} players with enough
+                        games on this board. Higher is always better, including deaths.
+                      </p>
+                    }
+                  } @else {
+                    <p class="status">Couldn’t load stats for {{ player.handle }}.</p>
+                  }
+                </div>
+              </td>
+            </tr>
+          }
         }
       </tbody>
     </table>

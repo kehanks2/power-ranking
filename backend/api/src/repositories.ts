@@ -3,7 +3,6 @@ import {
   fromGlicko2Scale,
   metaToDisplayOffset,
   initialLeagueMeta,
-  internationalParticipationFactor,
   conservativeRank,
   DEFAULT_CONSERVATIVE_K,
   GLICKO2_SCALE,
@@ -15,6 +14,7 @@ import type {
   TeamSummaryDto,
   TeamDetailDto,
   PlayerSummaryDto,
+  PlayerDetailDto,
   PlayerRatingScope,
   RosterEntryDto,
 } from '@power-ranking/shared';
@@ -375,4 +375,170 @@ export async function getPlayers(
 
   withRatings.sort((a, b) => b.rating - a.rating);
   return withRatings.map((row, index) => ({ ...row, rank: index + 1 }));
+}
+
+/**
+ * Must match computePlayerRatings.ts. The international rating is computed over
+ * international games from the last 36 months only; showing a stat line over
+ * any other set of games would put numbers next to a rating that disagrees
+ * with them.
+ */
+const INTERNATIONAL_WINDOW_MONTHS = 36;
+
+/**
+ * Minimum games to be *included in the peer group* a percentile is measured
+ * against -- not a floor on being shown. A handful of players with two games
+ * each would otherwise occupy both tails and squash everyone real into the
+ * middle. Set to each scope's own display floor: 5 international games
+ * (MIN_INTERNATIONAL_GAMES) and 10 regional (DEFAULT_SHRINKAGE_GAMES, the
+ * point at which the rating stops being mostly shrinkage).
+ */
+const PEER_MIN_GAMES: Record<PlayerRatingScope, number> = { international: 5, regional: 10 };
+
+interface PlayerStatsRow {
+  role: string;
+  games: number;
+  wins: number;
+  peer_count: number;
+  [metric: string]: number | string | null;
+}
+
+/**
+ * Every metric the panel shows, with the direction that counts as better.
+ * Deaths is the only one where a lower raw number is the better result, so its
+ * percentile is ordered descending to keep "higher percentile is better" true
+ * for every stat on the panel.
+ */
+const STAT_METRICS = [
+  { key: 'kills', expr: 'AVG(s.kills)', better: 'higher' },
+  { key: 'deaths', expr: 'AVG(s.deaths)', better: 'lower' },
+  { key: 'assists', expr: 'AVG(s.assists)', better: 'higher' },
+  { key: 'kda', expr: '(SUM(s.kills) + SUM(s.assists))::numeric / GREATEST(SUM(s.deaths), 1)', better: 'higher' },
+  // Aggregated as total CS over total time, not the mean of per-game rates:
+  // a 20-minute stomp and a 40-minute grind are not equal evidence. Games
+  // missing either side are excluded from both halves rather than counted as
+  // zero.
+  {
+    key: 'csPerMin',
+    expr: `SUM(s.creep_score) FILTER (WHERE s.creep_score IS NOT NULL AND s.gamelength_seconds IS NOT NULL) * 60.0
+           / NULLIF(SUM(s.gamelength_seconds) FILTER (WHERE s.creep_score IS NOT NULL AND s.gamelength_seconds IS NOT NULL), 0)`,
+    better: 'higher',
+  },
+  { key: 'goldDiff', expr: 'AVG(s.gold_diff)', better: 'higher' },
+  { key: 'killParticipation', expr: 'AVG(s.kill_participation)', better: 'higher' },
+  { key: 'damageShare', expr: 'AVG(s.damage_share)', better: 'higher' },
+  { key: 'goldShare', expr: 'AVG(s.gold_share)', better: 'higher' },
+] as const;
+
+/**
+ * A player's stat line for one scope, each figure placed against same-role
+ * peers in that same scope.
+ *
+ * Aggregated by (player, role) and then reduced to the role they played most,
+ * for the same reason computePlayerRatings picks one group: a player who
+ * changed role has two genuinely different stat lines, and averaging a jungler
+ * season with a mid season describes nobody.
+ */
+export async function getPlayerById(pool: Pool, playerId: number, scope: PlayerRatingScope): Promise<PlayerDetailDto | null> {
+  // Regional ratings are within-league percentiles, so the rank has to come
+  // from the player's own league list -- ranking them against a pool of every
+  // league at once is the cross-league comparison the whole design refuses to
+  // make. International is already one pool, so it needs no narrowing.
+  let leagueSlug: string | undefined;
+  if (scope === 'regional') {
+    const leagueRow = await pool.query<{ slug: string }>(
+      `SELECT l.slug FROM roster_memberships rm
+       JOIN team_league_memberships tlm ON tlm.team_id = rm.team_id AND tlm.end_date IS NULL
+       JOIN leagues l ON l.id = tlm.league_id
+       WHERE rm.player_id = $1 AND rm.end_date IS NULL LIMIT 1`,
+      [playerId],
+    );
+    leagueSlug = leagueRow.rows[0]?.slug;
+  }
+
+  const summaries = await getPlayers(pool, leagueSlug, scope);
+  const summary = summaries.find((p) => p.id === playerId);
+  if (!summary) return null;
+
+  const internationalOnly =
+    scope === 'international'
+      ? `JOIN series se ON se.id = g.series_id
+         JOIN tournaments tn ON tn.id = se.tournament_id
+         AND tn.tournament_type = 'international'
+         AND g.datetime_utc > NOW() - INTERVAL '${INTERNATIONAL_WINDOW_MONTHS} months'`
+      : '';
+
+  const aggregates = STAT_METRICS.map((m) => `${m.expr} AS "${m.key}"`).join(',\n      ');
+  // percent_rank() is over the whole role partition, so it is computed against
+  // every qualifying peer and only then narrowed to this player.
+  const percentiles = STAT_METRICS.map(
+    (m) => `ROUND((percent_rank() OVER (PARTITION BY role ORDER BY "${m.key}" ${m.better === 'lower' ? 'DESC' : 'ASC'} NULLS FIRST) * 100)::numeric, 0) AS "${m.key}_pct"`,
+  ).join(',\n      ');
+
+  const result = await pool.query<PlayerStatsRow>(
+    `
+    WITH scoped AS (
+      SELECT pgp.player_id, pgp.role, pgp.kills, pgp.deaths, pgp.assists,
+             pgp.creep_score, pgp.gold_diff, pgp.kill_participation,
+             pgp.damage_share, pgp.gold_share,
+             g.gamelength_seconds,
+             (g.winner_team_id = pgp.team_id) AS won
+      FROM player_game_performance pgp
+      JOIN games g ON g.id = pgp.game_id
+      ${internationalOnly}
+    ),
+    agg AS (
+      SELECT s.player_id, s.role,
+             COUNT(*)::int AS games,
+             COUNT(*) FILTER (WHERE s.won)::int AS wins,
+             ${aggregates}
+      FROM scoped s
+      GROUP BY s.player_id, s.role
+      HAVING COUNT(*) >= $2
+    ),
+    ranked AS (
+      SELECT *, COUNT(*) OVER (PARTITION BY role)::int AS peer_count,
+             ${percentiles}
+      FROM agg
+    )
+    SELECT * FROM ranked WHERE player_id = $1 ORDER BY games DESC LIMIT 1
+    `,
+    [playerId, PEER_MIN_GAMES[scope]],
+  );
+
+  // Below the peer minimum the player has a rating but no placeable stat line.
+  // Reported as an empty line rather than a 404: the row exists on the board,
+  // so the panel has to say "too few games" rather than appear broken.
+  const row = result.rows[0];
+  const num = (v: number | string | null | undefined): number | null => (v === null || v === undefined ? null : Number(v));
+  // A missing value has no standing to report. percent_rank still assigns
+  // nulls a position in the ordering, so the percentile is dropped alongside
+  // the value rather than shown as a genuine 0th percentile.
+  const stat = (key: string) => {
+    const value = num(row?.[key]);
+    return { value, percentile: value === null ? null : num(row?.[`${key}_pct`]) };
+  };
+
+  const games = row?.games ?? 0;
+  const wins = row?.wins ?? 0;
+
+  return {
+    ...summary,
+    peerCount: row?.peer_count ?? 0,
+    stats: {
+      games,
+      wins,
+      losses: games - wins,
+      winRate: games > 0 ? wins / games : 0,
+      kills: stat('kills'),
+      deaths: stat('deaths'),
+      assists: stat('assists'),
+      kda: stat('kda'),
+      csPerMin: stat('csPerMin'),
+      goldDiff: stat('goldDiff'),
+      killParticipation: stat('killParticipation'),
+      damageShare: stat('damageShare'),
+      goldShare: stat('goldShare'),
+    },
+  };
 }

@@ -1,7 +1,7 @@
 import express, { type Express } from 'express';
 import cors from 'cors';
 import type { Pool } from 'pg';
-import { getLeagues, getTeams, getTeamById, getPlayers } from './repositories.js';
+import { getLeagues, getTeams, getTeamById, getPlayers, getPlayerById } from './repositories.js';
 
 /** Thin, precomputed-only read API -- no request-time rating computation, per plan. */
 export function createApp(pool: Pool): Express {
@@ -49,6 +49,23 @@ export function createApp(pool: Pool): Express {
     const scope = req.query.scope === 'international' ? 'international' : 'regional';
     const players = await getPlayers(pool, league, scope);
     res.json(players);
+  });
+
+  app.get('/players/:id', async (req, res) => {
+    const playerId = Number(req.params.id);
+    if (!Number.isInteger(playerId)) {
+      res.status(400).json({ error: 'invalid player id' });
+      return;
+    }
+    // Same narrowing as /players: an unrecognised scope must never fall
+    // through to a differently-scaled rating.
+    const scope = req.query.scope === 'international' ? 'international' : 'regional';
+    const player = await getPlayerById(pool, playerId, scope);
+    if (!player) {
+      res.status(404).json({ error: 'player not found' });
+      return;
+    }
+    res.json(player);
   });
 
   return app;

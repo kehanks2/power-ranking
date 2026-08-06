@@ -111,3 +111,203 @@
   white-space: nowrap;
   border: 0;
 }
+
+// --- Detail panel ----------------------------------------------------------
+
+// The toggle carries the handle, so it has to read as the handle did -- a
+// button that looks like a form control would turn the whole column into
+// chrome.
+.handle-toggle {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+
+  &:hover .handle {
+    color: var(--color-gold);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-gold);
+    outline-offset: 3px;
+    border-radius: 3px;
+  }
+}
+
+.chevron {
+  width: 0;
+  height: 0;
+  flex: 0 0 auto;
+  border-left: 5px solid var(--color-text-muted);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 140ms ease;
+}
+
+tr.is-open {
+  background: var(--color-surface-hover);
+
+  .chevron {
+    transform: rotate(90deg) translateX(1px);
+    border-left-color: var(--color-gold);
+  }
+}
+
+tr.is-open td {
+  border-bottom-color: transparent;
+}
+
+.detail-row td {
+  padding: 0 0.7rem 1.1rem;
+  background: var(--color-surface-hover);
+}
+
+.panel {
+  border-left: 2px solid var(--color-gold);
+  padding: 0.2rem 0 0.3rem 0.9rem;
+  animation: slide-down 160ms ease;
+}
+
+// Height is not animatable from auto, and the panel's height depends on how
+// many stats resolved, so the reveal is done with transform + opacity.
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+
+  .chevron {
+    transition: none;
+  }
+}
+
+.panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1.1rem;
+  margin-bottom: 0.9rem;
+}
+
+.record {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+
+  strong {
+    font-size: 1.15rem;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.record__rate,
+.record__games {
+  color: var(--color-text-muted);
+  font-size: 0.86rem;
+}
+
+.coverage {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  max-width: 62ch;
+}
+
+.stats {
+  margin: 0;
+  display: grid;
+  gap: 0.55rem 1.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.stat {
+  display: grid;
+  grid-template-columns: 8.5rem auto;
+  align-items: center;
+  gap: 0.6rem;
+
+  dt {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+  }
+
+  dd {
+    margin: 0;
+    display: grid;
+    grid-template-columns: 4.2rem 1fr 2.6rem;
+    align-items: center;
+    gap: 0.5rem;
+  }
+}
+
+.stat__value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  font-size: 0.94rem;
+  text-align: right;
+}
+
+.stat__bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.stat__fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+// Banded rather than a single hue: length alone is hard to compare across
+// rows, and colour must not be the only signal (the number is always shown).
+.band-high {
+  background: var(--color-gold);
+}
+
+.band-mid {
+  background: var(--color-text-muted);
+}
+
+.band-low {
+  background: var(--color-border-strong, #4a4f5e);
+}
+
+.stat__pct {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.stat__pct-unit {
+  font-size: 0.66rem;
+}
+
+.peers {
+  margin: 0.95rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  max-width: 70ch;
+}

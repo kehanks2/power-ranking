@@ -80,3 +80,51 @@ export interface PlayerSummaryDto {
    */
   gamesPlayed: number;
 }
+
+/**
+ * One stat, with the context needed to read it.
+ *
+ * `value` alone says very little -- 8.1 CS/min is strong for a support and
+ * poor for a mid -- so every stat also carries its standing among players of
+ * the same role in the same scope. That is the same percentile language the
+ * rating itself is built from, rather than a second, unrelated yardstick.
+ *
+ * `percentile` is 0-100 and always oriented so higher is better, including for
+ * stats where the raw number is better when low (deaths). Null when the stat
+ * is unavailable, or when the role peer group is too small to place them in.
+ */
+export interface PlayerStatDto {
+  value: number | null;
+  percentile: number | null;
+}
+
+export interface PlayerStatsDto {
+  games: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  kills: PlayerStatDto;
+  deaths: PlayerStatDto;
+  assists: PlayerStatDto;
+  /** (kills + assists) / deaths, aggregated over games rather than averaged per game. */
+  kda: PlayerStatDto;
+  /** Null where game length is missing, which Liquipedia leaves off some games. */
+  csPerMin: PlayerStatDto;
+  /** Average gold against the same-role opponent. Negative is behind. */
+  goldDiff: PlayerStatDto;
+  killParticipation: PlayerStatDto;
+  damageShare: PlayerStatDto;
+  goldShare: PlayerStatDto;
+}
+
+export interface PlayerDetailDto extends PlayerSummaryDto {
+  /**
+   * Measured over exactly the games the player's rating for this scope was
+   * computed from -- international-only for the International board, all
+   * games for a regional one. Anything else would put a stat line next to a
+   * rating that disagrees with it.
+   */
+  stats: PlayerStatsDto;
+  /** How many players the percentiles place them against. */
+  peerCount: number;
+}

@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import type { Observable } from 'rxjs';
-import type { LeagueSummary, TeamSummary, TeamDetail, PlayerSummary, BoardScope } from './models';
+import type { LeagueSummary, TeamSummary, TeamDetail, PlayerSummary, PlayerDetail, BoardScope } from './models';
 
 const API_BASE_URL = 'http://localhost:3000';
 
@@ -39,5 +39,15 @@ export class RankingsApiService {
     const params: Record<string, string> =
       scope === 'international' ? { scope: 'international' } : { league: scope };
     return this.http.get<PlayerSummary[]>(`${API_BASE_URL}/players`, { params });
+  }
+
+  /**
+   * The stat line is scoped the same way the board is, because it is measured
+   * over the same games the rating was: on the International board a player's
+   * numbers are their international games only, not their season.
+   */
+  getPlayerById(id: number, scope: BoardScope): Observable<PlayerDetail> {
+    const params: Record<string, string> = scope === 'international' ? { scope: 'international' } : {};
+    return this.http.get<PlayerDetail>(`${API_BASE_URL}/players/${id}`, { params });
   }
 }

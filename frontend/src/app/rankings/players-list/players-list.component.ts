@@ -1,12 +1,21 @@
 import { Component, ChangeDetectionStrategy, inject, signal, computed, effect } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import { DecimalPipe, PercentPipe } from '@angular/common';
 import { RankingsApiService } from '../rankings-api.service';
 import { LeagueFilterService } from '../league-filter.service';
-import type { PlayerSummary } from '../models';
+import type { PlayerDetail, PlayerStat, PlayerSummary } from '../models';
+
+/** One stat as the panel renders it: already formatted, with its standing. */
+interface StatView {
+  label: string;
+  display: string;
+  percentile: number | null;
+  /** Spelled out for the tooltip, since a bare percentile invites misreading. */
+  standing: string;
+}
 
 @Component({
   selector: 'app-players-list',
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, PercentPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './players-list.component.html',
   styleUrl: './players-list.component.scss',
@@ -17,6 +26,11 @@ export class PlayersListComponent {
 
   protected readonly players = signal<PlayerSummary[]>([]);
   protected readonly loading = signal(true);
+
+  /** The row whose panel is open. Only one at a time -- a board of open panels scrolls badly. */
+  protected readonly openPlayerId = signal<number | null>(null);
+  protected readonly detail = signal<PlayerDetail | null>(null);
+  protected readonly detailLoading = signal(false);
 
   /**
    * There is no meaningful cross-league list of REGIONAL player ratings --
@@ -36,15 +50,100 @@ export class PlayersListComponent {
   // literally as "Int&apos;l games".
   protected readonly gamesColumnLabel = computed(() => (this.isGlobal() ? "Int'l games" : 'Games'));
 
+  /** Panel spans the whole row, so the count has to track the conditional Region column. */
+  protected readonly columnCount = computed(() => (this.isGlobal() ? 7 : 6));
+
+  /** What the numbers in the panel are measured over -- never left implicit. */
+  protected readonly coverageNote = computed(() =>
+    this.isGlobal()
+      ? 'International games from the last 3 years — the same games this rating is built from, not their league season.'
+      : 'Every recorded game in this league, most recent weighted highest.',
+  );
+
+  protected readonly stats = computed<StatView[]>(() => {
+    const detail = this.detail();
+    if (!detail) return [];
+    const s = detail.stats;
+    const peers = detail.peerCount;
+
+    const view = (label: string, stat: PlayerStat, display: (v: number) => string): StatView => ({
+      label,
+      display: stat.value === null ? '—' : display(stat.value),
+      percentile: stat.percentile,
+      standing:
+        stat.percentile === null
+          ? 'Not enough games to place against peers'
+          : `Ahead of ${stat.percentile}% of ${peers} ${detail.role} players on this board`,
+    });
+
+    const to = (places: number) => (v: number) => v.toFixed(places);
+    const pct = (v: number) => `${(v * 100).toFixed(0)}%`;
+    // Signed, because the sign IS the reading: negative means behind the
+    // player they were matched against.
+    const signed = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(Math.round(v)).toLocaleString('en-US')}`;
+
+    return [
+      view('KDA', s.kda, to(2)),
+      view('Kills', s.kills, to(1)),
+      view('Deaths', s.deaths, to(1)),
+      view('Assists', s.assists, to(1)),
+      view('CS / min', s.csPerMin, to(1)),
+      view('Gold vs. lane', s.goldDiff, signed),
+      view('Kill participation', s.killParticipation, pct),
+      view('Damage share', s.damageShare, pct),
+      view('Gold share', s.goldShare, pct),
+    ];
+  });
+
   constructor() {
     effect((onCleanup) => {
       const scope = this.filterService.selectedScope();
       this.loading.set(true);
+      // A panel left open across a tab switch would show one board's stats
+      // under another board's row.
+      this.openPlayerId.set(null);
+      this.detail.set(null);
       const subscription = this.api.getPlayers(scope).subscribe((players) => {
         this.players.set(players);
         this.loading.set(false);
       });
       onCleanup(() => subscription.unsubscribe());
     });
+
+    effect((onCleanup) => {
+      const playerId = this.openPlayerId();
+      if (playerId === null) return;
+      const scope = this.filterService.selectedScope();
+      this.detailLoading.set(true);
+      const subscription = this.api.getPlayerById(playerId, scope).subscribe({
+        next: (detail) => {
+          this.detail.set(detail);
+          this.detailLoading.set(false);
+        },
+        error: () => {
+          this.detail.set(null);
+          this.detailLoading.set(false);
+        },
+      });
+      onCleanup(() => subscription.unsubscribe());
+    });
+  }
+
+  protected toggle(playerId: number): void {
+    const isOpen = this.openPlayerId() === playerId;
+    this.openPlayerId.set(isOpen ? null : playerId);
+    if (isOpen) this.detail.set(null);
+  }
+
+  protected isOpen(playerId: number): boolean {
+    return this.openPlayerId() === playerId;
+  }
+
+  /** Percentile bands, so the bar reads at a glance and not only by length. */
+  protected band(percentile: number | null): string {
+    if (percentile === null) return 'none';
+    if (percentile >= 75) return 'high';
+    if (percentile >= 40) return 'mid';
+    return 'low';
   }
 }
