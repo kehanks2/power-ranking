@@ -159,15 +159,31 @@ async function liquipediaGet<T>(endpoint: string, params: Record<string, string>
   return json.result;
 }
 
-/** Paginates a single condition set to exhaustion, respecting MAX_RESULT_LIMIT. */
+/**
+ * Rows per page, by endpoint. The documented max is what flat endpoints
+ * (team, player, placement) happily serve, but v3/match is not flat: one row
+ * carries every game in the series, each with both full ten-player stat
+ * lines. Asking for 1000 of those makes the server give up with a 500 --
+ * observed against an unbounded LCK pull of only ~450 matches, so the ceiling
+ * is payload size, not row count.
+ *
+ * Paging smaller costs no extra budget worth caring about: request count is
+ * total rows / page size, so the whole ~2,700-series sweep is still ~20
+ * requests of the 60/hour. Date-chunking instead would cost far more, because
+ * every chunk spends a request even when it matches almost nothing.
+ */
+const PAGE_SIZE_BY_ENDPOINT: Record<string, number> = { 'v3/match': 200 };
+
+/** Paginates a single condition set to exhaustion, a page at a time. */
 async function liquipediaGetAll<T>(endpoint: string, params: Record<string, string>): Promise<T[]> {
+  const pageSize = PAGE_SIZE_BY_ENDPOINT[endpoint] ?? MAX_RESULT_LIMIT;
   const results: T[] = [];
   let offset = 0;
   for (;;) {
-    const page = await liquipediaGet<T>(endpoint, { ...params, limit: String(MAX_RESULT_LIMIT), offset: String(offset) });
+    const page = await liquipediaGet<T>(endpoint, { ...params, limit: String(pageSize), offset: String(offset) });
     results.push(...page);
-    if (page.length < MAX_RESULT_LIMIT) break;
-    offset += MAX_RESULT_LIMIT;
+    if (page.length < pageSize) break;
+    offset += pageSize;
     await sleep(500); // still pace consecutive pages of the same pull, not back-to-back
   }
   return results;

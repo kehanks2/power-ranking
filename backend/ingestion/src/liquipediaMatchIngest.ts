@@ -120,12 +120,41 @@ export function isPlayedGame(game: { winner?: string; opponents: { score: number
   return true;
 }
 
+/**
+ * Gold by role for one side of a game, for computing the lane differential.
+ *
+ * A role is omitted when it does not resolve to exactly one player. Both the
+ * missing case (a side short a position) and the ambiguous case (two players
+ * tagged the same role, which real data does occasionally carry) end up as a
+ * null differential rather than a guess -- there is no correct opponent to
+ * subtract when we cannot say which player it is.
+ */
+export function goldByRole(players: LiquipediaGamePlayer[]): Map<string, number> {
+  const gold = new Map<string, number>();
+  const ambiguous = new Set<string>();
+
+  for (const player of players) {
+    const role = resolvePosition(player.role);
+    if (!role) continue;
+    if (gold.has(role)) {
+      ambiguous.add(role);
+      continue;
+    }
+    gold.set(role, player.gold ?? 0);
+  }
+
+  for (const role of ambiguous) gold.delete(role);
+  return gold;
+}
+
 export interface MatchIngestResult {
   seriesProcessed: number;
   seriesSkipped: number;
   gamesProcessed: number;
   /** Unplayed placeholder slots in early-ending series -- see isPlayedGame. */
   gamesSkippedUnplayed: number;
+  /** Games where two players on one side resolved to the same id, so one stat line overwrote another. */
+  gamesWithCollidedPlayers: number;
   teamsUnresolved: string[];
 }
 
@@ -159,7 +188,14 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
   const leaguesResult = await pool.query<{ id: number; slug: string }>('SELECT id, slug FROM leagues');
   const leagueIdBySlug = new Map(leaguesResult.rows.map((l) => [l.slug, l.id]));
 
-  const result: MatchIngestResult = { seriesProcessed: 0, seriesSkipped: 0, gamesProcessed: 0, gamesSkippedUnplayed: 0, teamsUnresolved: [] };
+  const result: MatchIngestResult = {
+    seriesProcessed: 0,
+    seriesSkipped: 0,
+    gamesProcessed: 0,
+    gamesSkippedUnplayed: 0,
+    gamesWithCollidedPlayers: 0,
+    teamsUnresolved: [],
+  };
   const teamsUnresolvedSet = new Set<string>();
   const playerIdCache = new Map<string, number>(); // Liquipedia's disambiguated player key -> our player_id
   const tournamentIdByParent = new Map<string, number>();
@@ -246,15 +282,26 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
       });
       result.gamesProcessed += 1;
 
+      // Everyone this run wrote for the game, so rows for anyone the response
+      // no longer lists can be cleared afterwards -- see pruneStalePerformance.
+      const playersInGame = new Set<number>();
+
       for (const [opponentIndex, gameOpponent] of [gameOpp1, gameOpp2].entries()) {
         const teamId = opponentIndex === 0 ? team1Id : team2Id;
         const teamDamageTotal = gameOpponent.players.reduce((sum, p) => sum + (p.damagedone ?? 0), 0);
+        const opponentGold = goldByRole((opponentIndex === 0 ? gameOpp2 : gameOpp1).players);
+        let rolesWritten = 0;
+        const idsThisSide = new Set<number>();
 
         for (const player of gameOpponent.players) {
           const role = resolvePosition(player.role);
           if (!role) continue;
+          const facingGold = opponentGold.get(role);
 
           const playerId = await resolvePlayerId(pool, player, playerIdCache);
+          playersInGame.add(playerId);
+          idsThisSide.add(playerId);
+          rolesWritten += 1;
           await upsertGameLineup(pool, { gameId, teamId, playerId, role });
           await upsertPlayerGamePerformance(pool, {
             gameId,
@@ -269,14 +316,40 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
             goldShare: gameOpponent.stats?.gold ? (player.gold ?? 0) / gameOpponent.stats.gold : null,
             damageShare: teamDamageTotal > 0 ? (player.damagedone ?? 0) / teamDamageTotal : null,
             killParticipation: player.killparticipation ?? null,
+            creepScore: player.creepscore ?? null,
+            goldDiff: facingGold === undefined ? null : (player.gold ?? 0) - facingGold,
           });
         }
+
+        // Two players on one side collapsing to a single id means a handle
+        // collision got past resolvePlayerId -- one real person's stat line
+        // silently overwrote another's, because performance rows are keyed by
+        // player. Rare (4 games in the 2024-2026 backfill) but invisible
+        // without counting it, so it is reported rather than swallowed.
+        if (idsThisSide.size < rolesWritten) result.gamesWithCollidedPlayers += 1;
       }
+
+      await pruneStalePerformance(pool, gameId, playersInGame);
     }
   }
 
   result.teamsUnresolved = [...teamsUnresolvedSet];
   return result;
+}
+
+/**
+ * Drops performance rows for players the current response no longer lists.
+ *
+ * game_lineups is keyed on (game_id, team_id, role) -- a slot -- so re-ingesting
+ * a game whose recorded lineup has since been corrected simply replaces the
+ * occupant. player_game_performance is keyed on (game_id, player_id) -- a
+ * person -- so the replaced player's row has no slot to be evicted from and
+ * survives every subsequent run. That left 180 phantom stat lines from earlier
+ * backfills, all of which fed player ratings as real games.
+ */
+async function pruneStalePerformance(pool: Pool, gameId: number, playerIds: Set<number>): Promise<void> {
+  if (playerIds.size === 0) return;
+  await pool.query(`DELETE FROM player_game_performance WHERE game_id = $1 AND player_id <> ALL($2::int[])`, [gameId, [...playerIds]]);
 }
 
 /** Matches by clean handle (displayName) against existing players; creates new ones keyed by Liquipedia's disambiguated identity, not the handle -- avoids merging two different real people who happen to share a common handle (confirmed this exact class of bug against real data's "Saber"). */

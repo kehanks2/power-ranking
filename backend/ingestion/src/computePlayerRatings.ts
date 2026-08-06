@@ -339,16 +339,21 @@ export interface PlayerGamePerformanceInput {
   goldShare: number | null;
   damageShare: number | null;
   killParticipation: number | null;
+  /** Raw CS, not CS/min -- the rate is derived at read time, see migration 0007. */
+  creepScore: number | null;
+  /** Against the same-role opponent; null when that opponent is unresolvable. */
+  goldDiff: number | null;
 }
 
 export async function upsertPlayerGamePerformance(pool: Pool, input: PlayerGamePerformanceInput): Promise<void> {
   await pool.query(
-    `INSERT INTO player_game_performance (game_id, player_id, team_id, role, kills, deaths, assists, gold, damage_to_champions, gold_share, damage_share, kill_participation)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    `INSERT INTO player_game_performance (game_id, player_id, team_id, role, kills, deaths, assists, gold, damage_to_champions, gold_share, damage_share, kill_participation, creep_score, gold_diff)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      ON CONFLICT (game_id, player_id) DO UPDATE SET
        kills = EXCLUDED.kills, deaths = EXCLUDED.deaths, assists = EXCLUDED.assists,
        gold = EXCLUDED.gold, damage_to_champions = EXCLUDED.damage_to_champions,
-       gold_share = EXCLUDED.gold_share, damage_share = EXCLUDED.damage_share, kill_participation = EXCLUDED.kill_participation`,
+       gold_share = EXCLUDED.gold_share, damage_share = EXCLUDED.damage_share, kill_participation = EXCLUDED.kill_participation,
+       creep_score = EXCLUDED.creep_score, gold_diff = EXCLUDED.gold_diff`,
     [
       input.gameId,
       input.playerId,
@@ -362,6 +367,8 @@ export async function upsertPlayerGamePerformance(pool: Pool, input: PlayerGameP
       input.goldShare,
       input.damageShare,
       input.killParticipation,
+      input.creepScore,
+      input.goldDiff,
     ],
   );
 }

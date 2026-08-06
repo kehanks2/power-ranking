@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { classifyMatch, isPlayedGame } from '../liquipediaMatchIngest.js';
+import { classifyMatch, goldByRole, isPlayedGame } from '../liquipediaMatchIngest.js';
+import type { LiquipediaGamePlayer } from '../liquipediaApi.js';
 
 describe('isPlayedGame', () => {
   it('accepts a normal decisive game', () => {
@@ -73,5 +74,52 @@ describe('classifyMatch', () => {
   it('returns null for a regional league whose id is missing from the map (defensive)', () => {
     const partialMap = new Map([['LPL', 2]]);
     expect(classifyMatch('LoL Champions Korea', 'LCK/2026', partialMap)).toBeNull();
+  });
+});
+
+function side(entries: [string, number][]): LiquipediaGamePlayer[] {
+  return entries.map(([role, gold]) => ({ role, gold }) as LiquipediaGamePlayer);
+}
+
+describe('goldByRole', () => {
+  it('maps a normal five-role side onto our position codes', () => {
+    const gold = goldByRole(
+      side([
+        ['top', 12000],
+        ['jungle', 11000],
+        ['mid', 13500],
+        ['bot', 14200],
+        ['support', 8100],
+      ]),
+    );
+    expect([...gold]).toEqual([
+      ['TOP', 12000],
+      ['JNG', 11000],
+      ['MID', 13500],
+      ['BOT', 14200],
+      ['SUP', 8100],
+    ]);
+  });
+
+  it('drops a role carried by two players rather than guessing which is the lane opponent', () => {
+    const gold = goldByRole(
+      side([
+        ['mid', 13500],
+        ['mid', 9200],
+        ['top', 12000],
+      ]),
+    );
+    expect(gold.has('MID')).toBe(false);
+    expect(gold.get('TOP')).toBe(12000);
+  });
+
+  it('omits unresolvable roles and treats missing gold as zero', () => {
+    const gold = goldByRole([
+      { role: 'coach', gold: 500 } as LiquipediaGamePlayer,
+      { role: 'bot' } as LiquipediaGamePlayer,
+    ]);
+    expect(gold.has('BOT')).toBe(true);
+    expect(gold.get('BOT')).toBe(0);
+    expect(gold.size).toBe(1);
   });
 });
