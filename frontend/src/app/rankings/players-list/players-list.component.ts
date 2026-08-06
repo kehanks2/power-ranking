@@ -10,10 +10,27 @@ interface StatView {
   display: string;
   /** "3rd", or null when the player has no value for this stat. */
   place: string | null;
-  /** 0-1, how far from last to first -- what the bar length shows. */
+  /** 0-1, how far from last to first -- what the meter length shows. */
   fill: number;
+  /**
+   * Top quartile of their peer group. Drives emphasis: the accent hue marks
+   * what this player is genuinely best at and everything else recedes, rather
+   * than nine equally loud bars. A fraction, not a fixed place, so it means the
+   * same thing in a group of 10 and a group of 27.
+   */
+  standout: boolean;
   /** Spelled out for the tooltip and for screen readers. */
   standing: string;
+}
+
+/**
+ * Grouped because the nine stats answer three different questions, and a
+ * reader arrives with one of them in mind -- "does he farm" goes to Economy,
+ * not down a flat list of nine.
+ */
+interface StatGroup {
+  title: string;
+  stats: StatView[];
 }
 
 @Component({
@@ -63,24 +80,28 @@ export class PlayersListComponent {
       : 'Every recorded game in this league, most recent weighted highest.',
   );
 
-  protected readonly stats = computed<StatView[]>(() => {
+  protected readonly statGroups = computed<StatGroup[]>(() => {
     const detail = this.detail();
     if (!detail) return [];
     const s = detail.stats;
     const peers = detail.peerCount;
 
-    const view = (label: string, stat: PlayerStat, display: (v: number) => string): StatView => ({
-      label,
-      display: stat.value === null ? '—' : display(stat.value),
-      place: stat.place === null ? null : this.ordinal(stat.place),
-      // Longest bar is 1st, shortest is last. Guarded against a peer group of
+    const view = (label: string, stat: PlayerStat, display: (v: number) => string): StatView => {
+      // Longest meter is 1st, shortest is last. Guarded against a peer group of
       // one, where there is no spread to show.
-      fill: stat.place === null || peers <= 1 ? 0 : (peers - stat.place + 1) / peers,
-      standing:
-        stat.place === null
-          ? 'No games on this board to place'
-          : `${this.ordinal(stat.place)} of ${peers} ${detail.role} players on this board`,
-    });
+      const fill = stat.place === null || peers <= 1 ? 0 : (peers - stat.place + 1) / peers;
+      return {
+        label,
+        display: stat.value === null ? '—' : display(stat.value),
+        place: stat.place === null ? null : this.ordinal(stat.place),
+        fill,
+        standout: fill >= 0.75,
+        standing:
+          stat.place === null
+            ? 'No games on this board to place'
+            : `${this.ordinal(stat.place)} of ${peers} ${detail.role} players on this board`,
+      };
+    };
 
     const to = (places: number) => (v: number) => v.toFixed(places);
     const pct = (v: number) => `${(v * 100).toFixed(0)}%`;
@@ -89,15 +110,27 @@ export class PlayersListComponent {
     const signed = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(Math.round(v)).toLocaleString('en-US')}`;
 
     return [
-      view('KDA', s.kda, to(2)),
-      view('Kills', s.kills, to(1)),
-      view('Deaths', s.deaths, to(1)),
-      view('Assists', s.assists, to(1)),
-      view('CS / min', s.csPerMin, to(1)),
-      view('Gold vs. lane', s.goldDiff, signed),
-      view('Kill participation', s.killParticipation, pct),
-      view('Damage share', s.damageShare, pct),
-      view('Gold share', s.goldShare, pct),
+      {
+        title: 'Combat',
+        stats: [
+          view('KDA', s.kda, to(2)),
+          view('Kills', s.kills, to(1)),
+          view('Deaths', s.deaths, to(1)),
+          view('Assists', s.assists, to(1)),
+        ],
+      },
+      {
+        title: 'Economy',
+        stats: [
+          view('CS / min', s.csPerMin, to(1)),
+          view('Gold vs. lane', s.goldDiff, signed),
+          view('Gold share', s.goldShare, pct),
+        ],
+      },
+      {
+        title: 'Team impact',
+        stats: [view('Kill participation', s.killParticipation, pct), view('Damage share', s.damageShare, pct)],
+      },
     ];
   });
 
@@ -143,13 +176,6 @@ export class PlayersListComponent {
 
   protected isOpen(playerId: number): boolean {
     return this.openPlayerId() === playerId;
-  }
-
-  /** Bands, so the bar reads at a glance and not only by length. */
-  protected band(fill: number): string {
-    if (fill >= 0.75) return 'high';
-    if (fill >= 0.4) return 'mid';
-    return 'low';
   }
 
   /** 1st, 2nd, 3rd, 4th -- and 11th/12th/13th, which break the pattern. */

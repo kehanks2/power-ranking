@@ -215,6 +215,9 @@ tr.is-open td {
   margin-bottom: 0.9rem;
 }
 
+// The panel's headline figure. Proportional figures deliberately: tabular-nums
+// gives every digit the width of a zero, which reads loose at this size, and
+// nothing lines up under it.
 .record {
   margin: 0;
   display: flex;
@@ -222,8 +225,9 @@ tr.is-open td {
   gap: 0.55rem;
 
   strong {
-    font-size: 1.15rem;
-    font-variant-numeric: tabular-nums;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
   }
 }
 
@@ -241,73 +245,99 @@ tr.is-open td {
   max-width: 62ch;
 }
 
+// Three questions, three groups -- a reader looking for "does he farm" goes
+// straight to Economy instead of scanning nine undifferentiated rows.
+.groups {
+  display: grid;
+  gap: 1.15rem 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+}
+
+.group__title {
+  margin: 0 0 0.5rem;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
 .stats {
   margin: 0;
   display: grid;
-  gap: 0.55rem 1.6rem;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.62rem;
 }
 
 .stat {
   display: grid;
-  grid-template-columns: 8.5rem auto;
-  align-items: center;
-  gap: 0.6rem;
+  gap: 0.18rem;
 
   dt {
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     color: var(--color-text-muted);
-    white-space: nowrap;
   }
 
   dd {
     margin: 0;
     display: grid;
-    grid-template-columns: 4.2rem 1fr 2.6rem;
+    // value | place | meter -- the meter last so every bar starts on the same
+    // left edge and lengths can be compared down the column.
+    grid-template-columns: auto auto 1fr;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.45rem;
   }
 }
 
 .stat__value {
   font-variant-numeric: tabular-nums;
   font-weight: 650;
-  font-size: 0.94rem;
-  text-align: right;
-}
-
-.stat__bar {
-  height: 5px;
-  border-radius: 3px;
-  background: var(--color-border);
-  overflow: hidden;
-}
-
-.stat__fill {
-  display: block;
-  height: 100%;
-  border-radius: 3px;
-}
-
-// Banded rather than a single hue: length alone is hard to compare across
-// rows, and colour must not be the only signal (the number is always shown).
-.band-high {
-  background: var(--color-gold);
-}
-
-.band-mid {
-  background: var(--color-text-muted);
-}
-
-.band-low {
-  background: var(--color-border-strong, #4a4f5e);
+  font-size: 1rem;
+  min-width: 3.6rem;
 }
 
 .stat__place {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  min-width: 2.2rem;
+}
+
+// A meter, not a bar chart: one ratio against a limit. The track is a faint
+// step of the SAME hue as the fill, so the whole bar reads as one scale.
+.stat__meter {
+  height: 4px;
+  border-radius: 2px;
+  background: rgb(205 164 94 / 12%);
+  overflow: hidden;
+}
+
+// Square at the baseline, rounded at the data end.
+.stat__fill {
+  display: block;
+  height: 100%;
+  border-radius: 0 2px 2px 0;
+  // De-emphasis by default. Length carries the place; colour is spent only on
+  // what stands out, so nine equally loud bars do not compete for the eye.
+  background: #737a8c;
+}
+
+// Emphasis: the accent marks the top quarter of the peer group, i.e. what this
+// player is genuinely best at. Never the only signal -- the place is always
+// printed beside it.
+.stat--standout {
+  .stat__fill {
+    background: var(--color-gold);
+  }
+
+  .stat__value {
+    color: var(--color-gold);
+  }
+
+  dt {
+    color: var(--color-text);
+  }
 }
 
 .peers {

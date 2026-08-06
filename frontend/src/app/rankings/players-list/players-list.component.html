@@ -71,11 +71,15 @@
                     <p class="status">Loading {{ player.handle }}’s stats…</p>
                   } @else if (detail(); as d) {
                     <div class="panel__head">
-                      <p class="record">
-                        <strong>{{ d.stats.wins }}–{{ d.stats.losses }}</strong>
-                        <span class="record__rate">{{ d.stats.winRate | percent: '1.0-0' }} win rate</span>
-                        <span class="record__games">{{ d.stats.games }} games</span>
-                      </p>
+                      <!-- A 0-0 record and a 0% win rate say nothing the empty
+                           state below does not say better. -->
+                      @if (d.stats.games > 0) {
+                        <p class="record">
+                          <strong>{{ d.stats.wins }}–{{ d.stats.losses }}</strong>
+                          <span class="record__rate">{{ d.stats.winRate | percent: '1.0-0' }} win rate</span>
+                          <span class="record__games">{{ d.stats.games }} games</span>
+                        </p>
+                      }
                       <p class="coverage">{{ coverageNote() }}</p>
                     </div>
 
@@ -91,28 +95,32 @@
                         }
                       </p>
                     } @else {
-                      <dl class="stats">
-                        @for (stat of stats(); track stat.label) {
-                          <div class="stat">
-                            <dt>{{ stat.label }}</dt>
-                            <dd>
-                              <span class="stat__value">{{ stat.display }}</span>
-                              <span class="stat__bar" [title]="stat.standing">
-                                <span
-                                  class="stat__fill"
-                                  [class]="'band-' + band(stat.fill)"
-                                  [style.width.%]="stat.fill * 100"
-                                ></span>
-                              </span>
-                              <span class="stat__place">{{ stat.place ?? '—' }}</span>
-                              <span class="visually-hidden">{{ stat.standing }}</span>
-                            </dd>
-                          </div>
+                      <div class="groups">
+                        @for (group of statGroups(); track group.title) {
+                          <section class="group">
+                            <h4 class="group__title">{{ group.title }}</h4>
+                            <dl class="stats">
+                              @for (stat of group.stats; track stat.label) {
+                                <div class="stat" [class.stat--standout]="stat.standout">
+                                  <dt>{{ stat.label }}</dt>
+                                  <dd>
+                                    <span class="stat__value">{{ stat.display }}</span>
+                                    <span class="stat__place">{{ stat.place ?? '—' }}</span>
+                                    <span class="stat__meter" [title]="stat.standing">
+                                      <span class="stat__fill" [style.width.%]="stat.fill * 100"></span>
+                                    </span>
+                                    <span class="visually-hidden">{{ stat.standing }}</span>
+                                  </dd>
+                                </div>
+                              }
+                            </dl>
+                          </section>
                         }
-                      </dl>
+                      </div>
                       <p class="peers">
-                        Placed against the {{ d.peerCount }} {{ d.role }} players on this board.
-                        1st is always best, including deaths.
+                        Bars run from last to 1st among the {{ d.peerCount }} {{ d.role }} players on
+                        this board, and 1st is always best — including deaths, where the best number is
+                        the lowest. Highlighted stats are top-quarter.
                       </p>
                     }
                   } @else {
