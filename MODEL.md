@@ -99,8 +99,14 @@ Measured, not guessed. Re-check with the runners below.
   games. It is honest where data is thick — the model's LCK–LPL gap predicts
   59.5% against an actual 59.2% over 103 games — and overstated at the CBLOL
   end, which has only 48 cross-league games.
+- **LCS and CBLOL are missing the whole of 2025.** Those leagues ran as LTA
+  North and LTA South that year, and the Liquipedia backfill is driven by
+  series name, so a query for "LCS" matched nothing and failed silently. LCS
+  holds 191 regional games for 2024 and 175 for 2026 with nothing between,
+  against LEC's 294/308/280. Backfilling the two LTA splits is the fix, and
+  every rating will move when it lands.
 - **LCS is under-rated**, winning 43.0% of cross-league games against a
-  prediction near 37%. Most of this is one genuinely intransitive matchup, not a
+  prediction near 37%. The missing 2025 season above is likely part of this. Most of this is one genuinely intransitive matchup, not a
   scaling error.
 
   LEC is the better league against every large common opponent — 31.1% vs LCK

@@ -1,22 +1,30 @@
 /**
- * DEAD IN PRODUCTION -- kept deliberately, flagged rather than deleted.
+ * Currently uncalled, and that is a SYMPTOM rather than a reason to delete it.
  *
- * This resolves a raw league name at a point in time to a canonical league,
- * and the league_aliases table it reads holds a real quirk: through 2025 the
- * Americas ran as LTA North and LTA South, so historical records appear under
- * "LTA N"/"LTAN" and "LTA S"/"LTAS" and must map onto LCS and CBLOL for a
- * team's history to stay continuous across the rename.
+ * This resolves a raw league name at a point in time to a canonical league.
+ * The league_aliases table it reads holds a real quirk: through 2025 the
+ * Americas ran as LTA North and LTA South, so records from that year appear
+ * under "LTA N"/"LTAN" and "LTA S"/"LTAS" and must map onto LCS and CBLOL for
+ * a team's history to stay continuous across the rename.
  *
- * Nothing calls it any more. The only callers were the Oracle's Elixir and
- * Leaguepedia Cargo ingest paths, both since deleted. The Liquipedia match
- * ingest that replaced them classifies tournaments through liquipediaMappings
- * instead and never consults this table.
+ * The reason nothing calls it is that the 2025 Americas season was never
+ * ingested at all. Confirmed against the data: LCS and CBLOL hold zero
+ * regional games for 2025, while every other league has a full year --
+ * LEC 308, LPL 817, LCK 535. The Liquipedia backfill is driven by series
+ * name, and "LCS"/"CBLOL" simply did not exist that year, so the query
+ * matched nothing and failed silently.
  *
- * Deleting it would throw away the only encoding of that rename. Keeping it
- * unused risks the next ingest path silently skipping the remap the way this
- * one does. Neither is obviously right, so it is left here with the question
- * stated: does the Liquipedia path handle the LTA rename correctly on its own,
- * or is it quietly mis-attributing 2025 Americas history?
+ * Consequences worth knowing before this is either used or removed:
+ *   - LCS teams rate on 366 games against LEC's 882, and carry a 14-month
+ *     hole between mid-2024 and early 2026.
+ *   - That gap is very likely part of why LCS measures as the most
+ *     under-rated region (winning 43.0% of cross-league games against a
+ *     prediction near 37%) -- see MODEL.md.
+ *
+ * The fix is to backfill the 2025 LTA North and LTA South splits, at which
+ * point this module becomes load-bearing again: it is what maps those records
+ * back onto LCS and CBLOL. Backfilling will move every rating, so the tuned
+ * parameters should be re-swept afterwards.
  */
 /**
  * Resolves a raw league/region name as it appears in Leaguepedia to a
