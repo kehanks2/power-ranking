@@ -89,7 +89,15 @@ const INTERNATIONAL_WEIGHT_MULTIPLIER = 2;
  * Must run AFTER computePlayerRatings (player_ratings_history feeds the
  * roster-decay prior) -- see manualRecompute.ts for the pipeline order.
  */
-export async function computeRatings(pool: Pool): Promise<{ teamRows: number; leagueRows: number }> {
+/**
+ * Minimum cross-region games before a team is rated internationally at all.
+ * Below this the rating is noise: at a 5-game floor KT Rolster placed 2nd on 7
+ * games with an RD of 206. Teams under the floor are not rated low -- they are
+ * absent, because nothing has been demonstrated.
+ */
+export const MIN_INTERNATIONAL_GAMES = 10;
+
+export async function computeRatings(pool: Pool): Promise<{ teamRows: number; leagueRows: number; internationalRows: number }> {
   const { teamIds, leagueIds, games, decayEvents } = await loadReplayData(pool);
 
   const replayInput: ReplayInput = {
@@ -110,6 +118,25 @@ export async function computeRatings(pool: Pool): Promise<{ teamRows: number; le
   };
 
   const result = runReplay(replayInput);
+
+  // Second, independent replay over cross-region games only, with the league
+  // prior switched off. This is the only rating that can compare regions,
+  // because it is built purely from teams that played each other.
+  const internationalGames = games.filter((g) => g.team1LeagueId !== g.team2LeagueId);
+  const internationalGameCount = new Map<string, number>();
+  for (const game of internationalGames) {
+    for (const teamId of [game.team1Id, game.team2Id]) {
+      internationalGameCount.set(teamId, (internationalGameCount.get(teamId) ?? 0) + 1);
+    }
+  }
+  const internationalResult = runReplay({
+    ...replayInput,
+    games: internationalGames,
+    config: { ...replayInput.config, metaWeight: 0, internationalWeightMultiplier: 1 },
+  });
+  const qualifiedInternational = internationalResult.teamHistory.filter(
+    (s) => (internationalGameCount.get(s.teamId) ?? 0) >= MIN_INTERNATIONAL_GAMES,
+  );
 
   // A real bug lived here: pool.query('BEGIN')/'COMMIT' issue each statement
   // through whatever connection the pool happens to hand back, which is NOT
@@ -141,6 +168,13 @@ export async function computeRatings(pool: Pool): Promise<{ teamRows: number; le
         ],
       );
     }
+    for (const snapshot of qualifiedInternational) {
+      await client.query(
+        `INSERT INTO team_ratings_history (team_id, as_of_date, mu_ctx, phi_ctx, sigma_ctx, reason, method_version, scope)
+         VALUES ($1, $2, $3, $4, $5, $6, 1, 'international')`,
+        [Number(snapshot.teamId), snapshot.asOfDate, snapshot.mu, snapshot.phi, snapshot.sigma, snapshot.reason],
+      );
+    }
     for (const snapshot of result.leagueHistory) {
       await client.query(
         `INSERT INTO league_ratings_history (league_id, as_of_date, mu_meta, phi_meta, sigma_meta, method_version)
@@ -156,5 +190,9 @@ export async function computeRatings(pool: Pool): Promise<{ teamRows: number; le
     client.release();
   }
 
-  return { teamRows: result.teamHistory.length, leagueRows: result.leagueHistory.length };
+  return {
+    teamRows: result.teamHistory.length,
+    leagueRows: result.leagueHistory.length,
+    internationalRows: qualifiedInternational.length,
+  };
 }

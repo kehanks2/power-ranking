@@ -104,6 +104,19 @@ export interface ReplayConfig {
    * LPL regional games outvoted ~100 international ones.
    */
   internationalWeightMultiplier?: number;
+  /**
+   * Half-life in days for down-weighting older games as evidence. Omitted or
+   * Infinity means no recency weighting, which is the production behaviour.
+   *
+   * Glicko already lets ratings move over time, but every game counts as
+   * equally strong evidence no matter how old. That is defensible over a
+   * dense domestic schedule and much less so over a sparse one: a rating built
+   * from international games alone spans years, across which a team's roster
+   * and identity turn over completely.
+   */
+  recencyHalfLifeDays?: number;
+  /** Date recency is measured from. Defaults to the latest game in the input. */
+  recencyReferenceDate?: string;
 }
 
 /**
@@ -194,6 +207,19 @@ export function runReplay(input: ReplayInput): ReplayResult {
     game.seriesId === undefined ? 1 : seriesEvidenceWeight(gamesPerSeries.get(game.seriesId) ?? 1, seriesCorrelation);
 
   const periodDays = input.config.ratingPeriodDays ?? DEFAULT_RATING_PERIOD_DAYS;
+
+  const recencyHalfLife = input.config.recencyHalfLifeDays ?? Infinity;
+  const recencyReference = Number.isFinite(recencyHalfLife)
+    ? Date.parse(
+        input.config.recencyReferenceDate ??
+          input.games.reduce((latest, g) => (g.datetimeUtc > latest ? g.datetimeUtc : latest), input.games[0]?.datetimeUtc ?? ''),
+      )
+    : 0;
+  const recencyWeightFor = (game: ReplayGame): number => {
+    if (!Number.isFinite(recencyHalfLife)) return 1;
+    const ageDays = Math.max(0, (recencyReference - Date.parse(game.datetimeUtc)) / MS_PER_DAY);
+    return Math.pow(0.5, ageDays / recencyHalfLife);
+  };
 
   const teamContextual = new Map<string, RatingState>();
   for (const teamId of input.teamIds) {
@@ -325,6 +351,7 @@ export function runReplay(input: ReplayInput): ReplayResult {
       const weight =
         movWeightForGame(game, input.config) *
         seriesWeightFor(game) *
+        recencyWeightFor(game) *
         (isInternational ? (input.config.internationalWeightMultiplier ?? 1) : 1);
       const team1Score = game.winnerTeamId === game.team1Id ? 1 : 0;
       const team1Contextual = teamContextual.get(game.team1Id)!;

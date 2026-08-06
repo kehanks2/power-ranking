@@ -9,6 +9,16 @@ export interface LeagueSummaryDto {
   rank: number;
 }
 
+/**
+ * Which pool a team's rating was measured against.
+ *
+ * A league slug means "ranked against other teams in that league, on games
+ * played inside it". Those numbers are NOT comparable between regions.
+ * 'international' means "ranked on cross-region games only" -- the one scope
+ * that can compare regions, because those teams played each other.
+ */
+export type TeamRatingScope = 'international' | string;
+
 export interface TeamSummaryDto {
   id: number;
   slug: string;
@@ -18,7 +28,17 @@ export interface TeamSummaryDto {
   leagueSlug: string;
   rating: number;
   rd: number;
+  /** rating - rd. What the board is ranked by: the level we're confident they're at least at. */
+  floor: number;
   rank: number;
+  /** Games behind this rating, in whichever scope it was computed. */
+  games: number;
+  /** A roster change in the last 60 days, which is why the range is wide. */
+  recentRosterChange: boolean;
+  /** Short codes for the last four international events this team played (e.g. ["MSI26","W25"]). */
+  attendance: string[];
+  /** Most recent international, when none of the last four were attended; otherwise null. */
+  lastInternational: string | null;
 }
 
 export interface RosterEntryDto {

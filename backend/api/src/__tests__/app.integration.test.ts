@@ -41,24 +41,60 @@ describe('read API (live Postgres)', () => {
     expect(ranks).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
-  it('GET /teams returns ranked teams with plausible display ratings', async () => {
+  it('GET /teams requires a scope rather than defaulting to a global board', async () => {
+    // There is no global team board by design -- ranking teams that never
+    // played each other is the guess this structure removes.
     const res = await request(app).get('/teams');
-    expect(res.status).toBe(200);
-    expect(res.body.length).toBeGreaterThan(0);
-    for (const team of res.body) {
-      expect(Number.isFinite(team.rating)).toBe(true);
-      expect(team.rd).toBeGreaterThan(0);
-      expect(['LCK', 'LPL', 'LEC', 'LCS', 'CBLOL', 'LCP']).toContain(team.leagueSlug);
-    }
+    expect(res.status).toBe(400);
   });
 
-  it('GET /teams?league=LCK only returns LCK teams', async () => {
-    const res = await request(app).get('/teams').query({ league: 'LCK' });
+  it('GET /teams?scope=LCK returns only that region, ranked by floor', async () => {
+    const res = await request(app).get('/teams').query({ scope: 'LCK' });
     expect(res.status).toBe(200);
     expect(res.body.length).toBeGreaterThan(0);
     for (const team of res.body) {
       expect(team.leagueSlug).toBe('LCK');
+      expect(Number.isFinite(team.rating)).toBe(true);
+      expect(team.rd).toBeGreaterThan(0);
+      expect(team.floor).toBeCloseTo(team.rating - team.rd, 6);
+      expect(team.games).toBeGreaterThan(0);
     }
+    const floors = res.body.map((t: { floor: number }) => t.floor);
+    expect([...floors].sort((a: number, b: number) => b - a)).toEqual(floors);
+    const ranks = res.body.map((t: { rank: number }) => t.rank);
+    expect(ranks).toEqual([...Array(res.body.length).keys()].map((i) => i + 1));
+  });
+
+  it('GET /teams?scope=international spans regions and only rates teams with a record', async () => {
+    const res = await request(app).get('/teams').query({ scope: 'international' });
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThan(0);
+
+    const leagues = new Set(res.body.map((t: { leagueSlug: string }) => t.leagueSlug));
+    expect(leagues.size).toBeGreaterThan(1);
+
+    for (const team of res.body) {
+      // The floor exists because nothing is rated internationally on a token
+      // appearance -- see MIN_INTERNATIONAL_GAMES.
+      expect(team.games).toBeGreaterThanOrEqual(10);
+    }
+
+    // Strictly a subset of the regions it draws from.
+    const lck = await request(app).get('/teams').query({ scope: 'LCK' });
+    const lckIntl = res.body.filter((t: { leagueSlug: string }) => t.leagueSlug === 'LCK');
+    expect(lckIntl.length).toBeLessThanOrEqual(lck.body.length);
+  });
+
+  it('regional and international scopes disagree, because they measure different things', async () => {
+    // Same team, two boards, two numbers. If these ever matched it would mean
+    // one of the scopes had stopped being independent.
+    const lck = await request(app).get('/teams').query({ scope: 'LCK' });
+    const intl = await request(app).get('/teams').query({ scope: 'international' });
+    const t1Regional = lck.body.find((t: { name: string }) => t.name === 'T1');
+    const t1Intl = intl.body.find((t: { name: string }) => t.name === 'T1');
+    expect(t1Regional).toBeDefined();
+    expect(t1Intl).toBeDefined();
+    expect(t1Regional.rating).not.toBeCloseTo(t1Intl.rating, 0);
   });
 
   it('GET /teams/:id returns 404 for a non-existent team', async () => {
