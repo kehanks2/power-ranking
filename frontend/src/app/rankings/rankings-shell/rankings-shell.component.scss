@@ -15,6 +15,12 @@
   top: 0;
   z-index: 30;
   background: var(--color-bg);
+  // The breathing room between the upper section and the board lives INSIDE
+  // the sticky block, so it is part of what pins and cannot disappear on
+  // scroll. Putting it on .content instead gave a gap at rest that vanished
+  // the moment the table header went flush -- and it applies to both boards
+  // equally, whether what follows is a table header or the role filter.
+  padding-bottom: 1rem;
 }
 
 .shell-header {

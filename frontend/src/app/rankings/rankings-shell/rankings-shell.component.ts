@@ -72,13 +72,17 @@ export class RankingsShellComponent {
     effect((onCleanup) => {
       const element = this.stickyTop().nativeElement;
       const root = this.document.documentElement;
-      // Ceil, not round: rounding a height of 257.6 down to 258 is fine, but
-      // rounding 257.4 to 257 leaves a sub-pixel gap that the scrolling rows
-      // show through as a flickering sliver above the table header. Ceiling it
-      // and having the header overlap by 1px (see teams-list.scss) means the
-      // seam can only ever err toward covering.
+      // The BORDER box, not contentRect: the block carries bottom padding (the
+      // breathing room above the board), and contentRect excludes padding, so
+      // measuring that pinned everything 16px too high, straight through the
+      // gap it was meant to preserve.
+      //
+      // Ceil, not round: rounding 257.4 down to 257 leaves a sub-pixel gap the
+      // scrolling rows show through. Ceiling it, plus the 1px overlap the
+      // headers apply, means the seam can only ever err toward covering.
       const observer = new ResizeObserver(([entry]) => {
-        root.style.setProperty('--sticky-top-height', `${Math.ceil(entry.contentRect.height)}px`);
+        const height = entry.borderBoxSize?.[0]?.blockSize ?? element.getBoundingClientRect().height;
+        root.style.setProperty('--sticky-top-height', `${Math.ceil(height)}px`);
       });
       observer.observe(element);
       onCleanup(() => {

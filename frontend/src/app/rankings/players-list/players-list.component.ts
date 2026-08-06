@@ -11,7 +11,10 @@ interface StatView {
   /** "3rd", or null when the player has no value for this stat. */
   place: string | null;
   /**
-   * 0-1 along the scale, worst at 0 and best at 1 -- where the marker sits.
+   * 0-1 along the scale, BEST at 0 and worst at 1 -- where the marker sits.
+   *
+   * 1st sits at the left because the scale is a ranking, and a ranking starts
+   * at 1. It is not a magnitude axis, where more would belong further right.
    *
    * A dot, not a bar: a bar's length says "how much", growing from zero, but
    * this is a POSITION among peers and has no zero to grow from. 2nd of 27 is
@@ -105,7 +108,9 @@ export class PlayersListComponent {
 
   /** What the numbers in the panel are measured over -- never left implicit. */
   protected readonly coverageNote = computed(() =>
-    this.isGlobal() ? 'All stats are from int’l games.' : 'All stats are from ' + this.regionLabel() + ' games.',
+    this.isGlobal()
+      ? 'All stats are from international games.'
+      : 'All stats are from ' + this.regionLabel() + ' games.',
   );
 
   protected readonly statGroups = computed<StatGroup[]>(() => {
@@ -115,9 +120,9 @@ export class PlayersListComponent {
     const peers = detail.peerCount;
 
     const view = (label: string, stat: PlayerStat, display: (v: number) => string): StatView => {
-      // Last sits at 0, 1st at 1. Guarded against a peer group of one, where
+      // 1st sits at 0, last at 1. Guarded against a peer group of one, where
       // there is no spread to place anyone along.
-      const position = stat.place === null || peers <= 1 ? 0 : (peers - stat.place) / (peers - 1);
+      const position = stat.place === null || peers <= 1 ? 0 : (stat.place - 1) / (peers - 1);
       return {
         label,
         display: stat.value === null ? '—' : display(stat.value),

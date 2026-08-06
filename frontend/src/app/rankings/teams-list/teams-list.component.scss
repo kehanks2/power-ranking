@@ -418,14 +418,18 @@ th.placements-h {
   }
 }
 
+// Tan rather than the saturated orange this started as -- at full chroma it
+// read as "orange", not "bronze". Pulling the saturation down and warming it
+// toward tan keeps the metal reading while still clearing every pair (the
+// tightest is silver against gold at 17.2) at 5.8:1 on the surface.
 .slot--bronze {
   .slot__medal {
-    background: #e07a45;
-    border-color: #e07a45;
+    background: #c8875a;
+    border-color: #c8875a;
   }
 
   .slot__place {
-    color: #e07a45;
+    color: #c8875a;
   }
 }
 

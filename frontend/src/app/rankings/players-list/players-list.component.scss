@@ -6,7 +6,10 @@
 // fixed-size chips at every width where the sticky header is active (the
 // narrow breakpoint below hands the table back to a scroll container). The
 // table header offsets itself by this.
-$role-filter-height: 3.1rem;
+// Tighter than it was: the space above now comes from the sticky block's own
+// bottom padding, shared with the teams board, so the filter only needs room
+// for the chips themselves.
+$role-filter-height: 2.5rem;
 
 .role-filter {
   display: flex;
