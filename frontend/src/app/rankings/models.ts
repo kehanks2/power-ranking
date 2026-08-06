@@ -80,6 +80,12 @@ export interface PlayerSummary {
   rank: number;
   scope: PlayerRatingScope;
   gamesPlayed: number;
+  /**
+   * Another squad they are concurrently active on -- almost always an academy
+   * or partner team. Set only when they have no games on this board, which is
+   * the case it explains.
+   */
+  alsoPlaysFor: string | null;
 }
 
 /**

@@ -1,0 +1,24 @@
+-- Where a player ALSO plays, when Liquipedia lists them as active on more than
+-- one squad at once.
+--
+-- 28 of 352 rostered players have no games anywhere in our data, and they are
+-- not evenly spread: five of them are Team Vitality's entire second five, all
+-- of whom are concurrently active on Rising Bees, Vitality's LFL squad. Same
+-- shape for NRG, Saigon Dino, and others. They are academy or partner-team
+-- players who appear on a tier-1 roster without playing tier-1 games.
+--
+-- Recorded rather than filtered out, because being on both squads is a real
+-- and legal state -- an academy player can be called up mid-split. Dropping
+-- them would assert they are not on the team, which is false. This says where
+-- their games actually are, so a zero-game row on a tier-1 board is explained
+-- instead of looking like missing data.
+--
+-- Costs no extra API budget: populateRosterFromLiquipedia already pulls every
+-- active squad row on the wiki in one paginated sweep, so the second team is
+-- sitting in a response we have.
+--
+-- Stored as Liquipedia's page name, not a teams.id -- these are tier-2 teams
+-- we deliberately do not track, and creating team rows for them would put them
+-- in scope for ratings, which is exactly what we are avoiding.
+ALTER TABLE roster_memberships
+  ADD COLUMN secondary_team TEXT;

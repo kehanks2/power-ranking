@@ -42,6 +42,10 @@
                 (click)="$event.stopPropagation(); toggle(player.id)"
               >
                 <span class="handle">{{ player.handle }}</span>
+                @if (player.alsoPlaysFor) {
+                  <span class="dot dot--academy" [title]="'No games on this board — currently playing for ' + player.alsoPlaysFor"></span>
+                  <span class="visually-hidden">No games on this board; currently playing for {{ player.alsoPlaysFor }}</span>
+                }
               </button>
             </td>
             <td><span class="role" [class]="'role-' + player.role">{{ player.role }}</span></td>
@@ -77,8 +81,14 @@
 
                     @if (d.stats.games === 0) {
                       <p class="status">
-                        Too few games on this board to break down. The rating above is shrunk toward
-                        the neutral 50 for exactly this reason.
+                        @if (d.alsoPlaysFor) {
+                          No games on this board — {{ d.handle }} is on the roster but currently playing
+                          for <strong>{{ d.alsoPlaysFor }}</strong>. The rating above sits at the neutral 50
+                          because nothing here has been earned yet.
+                        } @else {
+                          No games on this board yet, so the rating above sits at the neutral 50 rather
+                          than claiming anything.
+                        }
                       </p>
                     } @else {
                       <dl class="stats">

@@ -62,6 +62,49 @@ export interface ResolvedSquadMember {
 }
 
 /**
+ * Which OTHER squad each player is concurrently active on, keyed by handle.
+ *
+ * A player listed as active on two teams at once is nearly always an academy
+ * or partner-team player: Team Vitality's second five are all simultaneously
+ * on Rising Bees, their LFL squad, which is why they carry zero tier-1 games.
+ * Built from the same wiki-wide sweep the rosters come from, so it costs no
+ * extra requests.
+ *
+ * `trackedPagenames` are the teams we rate. A second team among those is a
+ * real transfer mid-sweep rather than an academy arrangement, and saying
+ * "also plays for <another tier-1 team>" would be wrong, so those are skipped.
+ */
+export function buildSecondaryTeams(
+  rows: LiquipediaSquadPlayer[],
+  trackedPagenames: Set<string>,
+): Map<string, string> {
+  const pagenamesByHandle = new Map<string, Set<string>>();
+  for (const row of rows) {
+    if ((row.type ?? '').trim().toLowerCase() !== 'player') continue;
+    if (!pagenamesByHandle.has(row.id)) pagenamesByHandle.set(row.id, new Set());
+    pagenamesByHandle.get(row.id)!.add(row.pagename);
+  }
+
+  const secondary = new Map<string, string>();
+  for (const [handle, pagenames] of pagenamesByHandle) {
+    const untracked = [...pagenames].filter((p) => !trackedPagenames.has(p));
+    // Only meaningful when they are also on a team we DO track -- otherwise
+    // there is no tier-1 row for it to explain.
+    const onTracked = [...pagenames].some((p) => trackedPagenames.has(p));
+    if (!onTracked || untracked.length === 0) continue;
+    // Deterministic when someone is on several untracked squads at once.
+    const sorted = [...untracked].sort((a, b) => a.localeCompare(b));
+    secondary.set(handle, sorted[0]);
+  }
+  return secondary;
+}
+
+/** Liquipedia page names read as "Rising_Bees"; nobody says it that way. */
+export function humanizePagename(pagename: string): string {
+  return pagename.replaceAll('_', ' ');
+}
+
+/**
  * Normalises a `v3/player` row into a roster slot, or undefined if it isn't
  * one.
  *
@@ -149,6 +192,11 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
     else teamsUnmatched.push(team.name);
   }
 
+  const secondaryTeamByHandle = buildSecondaryTeams(
+    allSquadPlayers,
+    new Set(matchedTeams.map(({ pagename }) => pagename)),
+  );
+
   // Squadplayer is incomplete -- see fetchActivePlayersForTeams. Any matched
   // team it returns nothing for gets a second look via v3/player, which is
   // keyed on the player's page instead and does have them.
@@ -206,10 +254,18 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
           playersCreated += 1;
         }
 
+        const secondaryPagename = secondaryTeamByHandle.get(member.handle);
         await client.query(
-          `INSERT INTO roster_memberships (team_id, player_id, role, is_starter, start_date, end_date)
-           VALUES ($1, $2, $3, $4, $5, NULL)`,
-          [teamId, playerId, member.role, member.isStarter, member.startDate ?? today],
+          `INSERT INTO roster_memberships (team_id, player_id, role, is_starter, start_date, end_date, secondary_team)
+           VALUES ($1, $2, $3, $4, $5, NULL, $6)`,
+          [
+            teamId,
+            playerId,
+            member.role,
+            member.isStarter,
+            member.startDate ?? today,
+            secondaryPagename ? humanizePagename(secondaryPagename) : null,
+          ],
         );
         membershipsInserted += 1;
       }

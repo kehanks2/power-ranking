@@ -79,6 +79,13 @@ export interface PlayerSummaryDto {
    * means "not yet established", not "bad".
    */
   gamesPlayed: number;
+  /**
+   * Another squad this player is concurrently active on, if any -- almost
+   * always an academy or partner team (Vitality's second five are all on
+   * Rising Bees). This is what a zero-game row on a tier-1 board usually
+   * means, so it is shown rather than left looking like missing data.
+   */
+  alsoPlaysFor: string | null;
 }
 
 /**

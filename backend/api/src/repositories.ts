@@ -334,11 +334,12 @@ export async function getPlayers(
     role: PlayerSummaryDto['role'] | null;
     rating: string | null;
     games_played: number | null;
+    secondary_team: string | null;
   }>(
     `
     WITH ${LEAGUE_LATEST_SPLIT_CTE}
     SELECT p.id, p.handle, t.slug AS team_slug, l.slug AS league_slug, rm.role,
-           prh.rating, prh.games_played
+           prh.rating, prh.games_played, rm.secondary_team
     FROM players p
     LEFT JOIN roster_memberships rm ON rm.player_id = p.id AND rm.end_date IS NULL
     LEFT JOIN teams t ON t.id = rm.team_id
@@ -380,6 +381,13 @@ export async function getPlayers(
       rating: row.rating !== null ? Number(row.rating) : 50, // 50 = neutral composite score, no games yet
       scope,
       gamesPlayed: row.games_played ?? 0,
+      // Only surfaced where it explains something. Liquipedia lists plenty of
+      // established pros on a second squad for reasons that are not academy
+      // arrangements -- Gen.G's collegiate programme puts Ruler on Ohio State
+      // with 273 games to his name -- and "Ruler also plays for Ohio State"
+      // would be nonsense. A player with no games on this board is the case
+      // the second squad actually accounts for.
+      alsoPlaysFor: (row.games_played ?? 0) === 0 ? row.secondary_team : null,
     }));
 
   withRatings.sort((a, b) => b.rating - a.rating);

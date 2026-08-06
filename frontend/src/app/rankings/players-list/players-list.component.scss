@@ -145,6 +145,22 @@ tr.row-toggle {
   cursor: pointer;
 }
 
+// Same language as the roster-churn flag on the teams board: a small dot that
+// explains itself on hover, rather than a column that would be empty for
+// almost every row.
+.dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  display: inline-block;
+  cursor: help;
+}
+
+.dot--academy {
+  background: var(--color-churn, #d98a5b);
+}
+
 tr.is-open {
   background: var(--color-surface-hover);
 

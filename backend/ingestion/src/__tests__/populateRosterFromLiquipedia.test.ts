@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildSecondaryTeams,
+  humanizePagename,
   isStarterFromRole,
   squadMemberFromPlayerRow,
   squadMemberFromSquadRow,
@@ -28,6 +30,51 @@ describe('isStarterFromRole', () => {
   it('does not throw on null/undefined -- defensively treats as a starter', () => {
     expect(isStarterFromRole(null)).toBe(true);
     expect(isStarterFromRole(undefined)).toBe(true);
+  });
+});
+
+describe('buildSecondaryTeams', () => {
+  const row = (id: string, pagename: string, type = 'player') =>
+    ({ id, pagename, type }) as LiquipediaSquadPlayer;
+  const tracked = new Set(['Team_Vitality', 'G2_Esports']);
+
+  it('reports the academy squad a tier-1 player is concurrently on', () => {
+    // Vitality's second five are all listed active on both squads at once,
+    // which is why they carry zero tier-1 games.
+    const map = buildSecondaryTeams([row('rym', 'Team_Vitality'), row('rym', 'Rising_Bees')], tracked);
+    expect(map.get('rym')).toBe('Rising_Bees');
+  });
+
+  it('says nothing about a player on one squad', () => {
+    expect(buildSecondaryTeams([row('Carzzy', 'Team_Vitality')], tracked).has('Carzzy')).toBe(false);
+  });
+
+  it('ignores two TRACKED teams -- that is a transfer, not an academy deal', () => {
+    const map = buildSecondaryTeams([row('X', 'Team_Vitality'), row('X', 'G2_Esports')], tracked);
+    expect(map.has('X')).toBe(false);
+  });
+
+  it('ignores a player on no tracked team at all', () => {
+    // Nothing on our boards for it to explain.
+    const map = buildSecondaryTeams([row('Y', 'Rising_Bees'), row('Y', 'Karmine_Corp_Blue_Stars')], tracked);
+    expect(map.has('Y')).toBe(false);
+  });
+
+  it('ignores staff rows', () => {
+    const map = buildSecondaryTeams([row('Coach', 'Team_Vitality', 'staff'), row('Coach', 'Rising_Bees', 'staff')], tracked);
+    expect(map.has('Coach')).toBe(false);
+  });
+
+  it('picks deterministically when several untracked squads are listed', () => {
+    const rows = [row('Z', 'Team_Vitality'), row('Z', 'Zerance_Bloom'), row('Z', 'Rising_Bees')];
+    expect(buildSecondaryTeams(rows, tracked).get('Z')).toBe('Rising_Bees');
+  });
+});
+
+describe('humanizePagename', () => {
+  it('reads a page name as a team name', () => {
+    expect(humanizePagename('Rising_Bees')).toBe('Rising Bees');
+    expect(humanizePagename('Karmine_Corp_Blue_Stars')).toBe('Karmine Corp Blue Stars');
   });
 });
 
