@@ -289,7 +289,11 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     FROM roster_memberships rm
     JOIN players p ON p.id = rm.player_id
     WHERE rm.team_id = $1 AND rm.end_date IS NULL
-    ORDER BY rm.role
+    -- In-game order, not alphabetical. TOP/JNG/MID/BOT/SUP is how a roster is
+    -- read and written everywhere in the sport; sorting the text puts BOT
+    -- first and SUP before TOP, which reads as scrambled to anyone who plays.
+    -- Starters lead within a role, so a substitute never heads the list.
+    ORDER BY array_position(ARRAY['TOP','JNG','MID','BOT','SUP']::text[], rm.role), rm.is_starter DESC, p.handle
     `,
     [teamId],
   );

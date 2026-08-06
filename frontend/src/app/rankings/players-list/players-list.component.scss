@@ -2,18 +2,104 @@
   color: var(--color-text-muted);
 }
 
-// Explains what the current rating is measured against. Not decoration: the
-// two scopes are on different scales, so the number is ambiguous without it.
-.scope-note {
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
-  line-height: 1.5;
-  max-width: 68ch;
-  margin: 0 0 1rem;
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
 }
 
-// Table caption for screen readers -- sighted users get the same information
-// from .scope-note above, which would be redundant if shown twice.
+.players-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 660px;
+
+  thead th {
+    text-align: left;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    font-weight: 700;
+    padding: 0.7rem 0.65rem;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  tbody td {
+    padding: 0.95rem 0.7rem;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+    font-size: 0.98rem;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  tbody tr:hover {
+    background: var(--color-surface-hover);
+  }
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rank {
+  width: 3ch;
+  text-align: right;
+  color: var(--color-text-muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.handle {
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.team {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.rating {
+  font-weight: 650;
+}
+
+.games {
+  color: var(--color-text-muted);
+  font-size: 0.92rem;
+}
+
+// Role reads as a label rather than a value, and sits beside the player it
+// describes rather than between region and team.
+.role {
+  display: inline-block;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.12rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  min-width: 3.4rem;
+  text-align: center;
+}
+
+.region {
+  display: inline-block;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.12rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -24,27 +110,4 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
-}
-
-.players-table {
-  width: 100%;
-  border-collapse: collapse;
-
-  th,
-  td {
-    text-align: left;
-    padding: 0.6rem 0.75rem;
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  th {
-    color: var(--color-text-muted);
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-}
-
-.handle {
-  font-weight: 700;
 }

@@ -1,52 +1,51 @@
 @if (loading()) {
   <p class="status">Loading players…</p>
 } @else if (players().length === 0) {
-  <p class="status">No players ranked yet for this filter.</p>
+  <p class="status">No players ranked yet for this board.</p>
 } @else {
-  @if (isGlobal()) {
-    <p class="scope-note">
-      Rated on international games only (last 3 years), against everyone else who has played
-      internationally — so these ratings are comparable across regions. Players with no
-      international record are not listed.
-    </p>
-  } @else {
-    <p class="scope-note">
-      Rated against other {{ regionLabel() }} players in the same role. Comparable within
-      {{ regionLabel() }} only — not against other regions.
-    </p>
-  }
-
-  <table class="players-table">
-    <caption class="visually-hidden">
-      {{
-        isGlobal()
-          ? 'Players ranked by international rating'
-          : regionLabel() + ' players ranked by regional rating'
-      }}
-    </caption>
-    <thead>
-      <tr>
-        <th scope="col">Rank</th>
-        <th scope="col">Player</th>
-        <th scope="col">Region</th>
-        <th scope="col">Role</th>
-        <th scope="col">Team</th>
-        <th scope="col">Rating</th>
-        <th scope="col">{{ gamesColumnLabel() }}</th>
-      </tr>
-    </thead>
-    <tbody>
-      @for (player of players(); track player.id) {
+  <div class="table-scroll">
+    <table class="players-table">
+      <caption class="visually-hidden">
+        {{
+          isGlobal()
+            ? 'Players ranked by international rating'
+            : regionLabel() + ' players ranked by regional rating'
+        }}
+      </caption>
+      <thead>
         <tr>
-          <td>{{ player.rank }}</td>
-          <td class="handle">{{ player.handle }}</td>
-          <td>{{ player.leagueSlug ?? '—' }}</td>
-          <td>{{ player.role }}</td>
-          <td>{{ player.teamSlug ?? '—' }}</td>
-          <td>{{ player.rating | number: '1.0-0' }}</td>
-          <td>{{ player.gamesPlayed }}</td>
+          <th scope="col" class="rank">#</th>
+          <th scope="col">Player</th>
+          <th scope="col">Role</th>
+          @if (isGlobal()) {
+            <th scope="col">Region</th>
+          }
+          <th scope="col">Team</th>
+          <th scope="col" class="num">Rating</th>
+          <th scope="col" class="num">{{ gamesColumnLabel() }}</th>
         </tr>
-      }
-    </tbody>
-  </table>
+      </thead>
+      <tbody>
+        @for (player of players(); track player.id) {
+          <tr>
+            <td class="rank">{{ player.rank }}</td>
+            <td class="handle">{{ player.handle }}</td>
+            <td><span class="role" [class]="'role-' + player.role">{{ player.role }}</span></td>
+            @if (isGlobal()) {
+              <td>
+                @if (player.leagueSlug) {
+                  <span class="region" [class]="'lg-' + player.leagueSlug">{{ player.leagueSlug }}</span>
+                } @else {
+                  —
+                }
+              </td>
+            }
+            <td class="team">{{ player.teamSlug ?? '—' }}</td>
+            <td class="num rating">{{ player.rating | number: '1.0-0' }}</td>
+            <td class="num games">{{ player.gamesPlayed }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
 }
