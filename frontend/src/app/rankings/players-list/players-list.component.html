@@ -131,8 +131,9 @@
                                   <dd>
                                     <span class="stat__value">{{ stat.display }}</span>
                                     <span class="stat__place">{{ stat.place ?? '—' }}</span>
-                                    <span class="stat__meter" [title]="stat.standing">
-                                      <span class="stat__fill" [style.width.%]="stat.fill * 100"></span>
+                                    <span class="stat__scale" [title]="stat.standing">
+                                      <span class="stat__track" aria-hidden="true"></span>
+                                      <span class="stat__dot" [style.left.%]="stat.position * 100"></span>
                                     </span>
                                     <span class="visually-hidden">{{ stat.standing }}</span>
                                   </dd>

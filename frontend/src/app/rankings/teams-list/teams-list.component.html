@@ -11,9 +11,9 @@
       <thead>
         <tr>
           <th scope="col" class="rank">#</th>
-          <th scope="col">Team</th>
+          <th scope="col" class="team-h">Team</th>
           @if (isInternational()) {
-            <th scope="col">Region</th>
+            <th scope="col" class="region-h">Region</th>
           }
           <th
             scope="col"
@@ -34,7 +34,10 @@
           </th>
           <th scope="col" class="interval-h">Confidence range</th>
           <th scope="col" class="placements-h">Last 6 int&rsquo;l</th>
-          <th scope="col" class="num">{{ isInternational() ? 'Int&rsquo;l games' : 'Games' }}</th>
+          <!-- Just "Games": the board's own description already says which
+               games it counts, and the longer label was setting this column's
+               width, taking room from the range beside it. -->
+          <th scope="col" class="num games-h">Games</th>
         </tr>
         <tr class="axis-row">
           <th scope="col" [attr.colspan]="isInternational() ? 6 : 5"></th>
@@ -68,7 +71,7 @@
               </a>
             </td>
             @if (isInternational()) {
-              <td><span class="region" [class]="'lg-' + team.leagueSlug">{{ team.leagueSlug }}</span></td>
+              <td class="region-cell"><span class="region" [class]="'lg-' + team.leagueSlug">{{ team.leagueSlug }}</span></td>
             }
             <td class="num rating">{{ team.rating | number: '1.0-0' }}</td>
             <td class="num pm">
@@ -106,7 +109,10 @@
                     [class.slot--silver]="medal(team, event) === 'silver'"
                     [class.slot--bronze]="medal(team, event) === 'bronze'"
                     [title]="slotTitle(team, event)"
-                  >{{ slotLabel(team, event) }}</span>
+                  >
+                    <span class="slot__medal" aria-hidden="true"></span>
+                    <span class="slot__place">{{ slotLabel(team, event) }}</span>
+                  </span>
                 }
                 @if (team.lastInternational) {
                   <span

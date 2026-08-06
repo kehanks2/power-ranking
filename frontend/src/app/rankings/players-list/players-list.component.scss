@@ -365,35 +365,46 @@ tr.is-open td {
   min-width: 2.2rem;
 }
 
-// A meter, not a bar chart: one ratio against a limit. The track is a faint
-// step of the SAME hue as the fill, so the whole bar reads as one scale.
-//
-// Fills right-to-left, so the bar grows back toward the placement number
-// beside it: 1st reaches furthest, last barely leaves the right edge.
-.stat__meter {
-  height: 4px;
-  border-radius: 2px;
-  background: rgb(205 164 94 / 12%);
-  overflow: hidden;
-  display: flex;
-  justify-content: flex-end;
+// A marker on a scale, not a bar. A bar's length says "how much", growing from
+// a zero -- but a place among peers has no zero to grow from, and 2nd of 27 is
+// not "90% of" anything. The dot states where they stand and claims nothing
+// beyond it. Worst at the left, best at the right, matching the direction the
+// team board's confidence range already reads.
+.stat__scale {
+  position: relative;
+  height: 12px;
 }
 
-// Square at the baseline (right), rounded at the data end (left).
-.stat__fill {
-  display: block;
-  height: 100%;
-  border-radius: 2px 0 0 2px;
-  // De-emphasis by default. Length carries the place; colour is spent only on
-  // what stands out, so nine equally loud bars do not compete for the eye.
+.stat__track {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 1px;
+  background: rgb(255 255 255 / 9%);
+}
+
+.stat__dot {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  // De-emphasis by default; colour is spent only on what stands out, so nine
+  // equally loud markers do not compete for the eye. The ring keeps the dot
+  // legible where it sits on the track.
   background: #737a8c;
+  box-shadow: 0 0 0 2px var(--color-surface-hover);
 }
 
 // Emphasis: the accent marks the top quarter of the peer group, i.e. what this
 // player is genuinely best at. Never the only signal -- the place is always
 // printed beside it.
 .stat--standout {
-  .stat__fill {
+  .stat__dot {
     background: var(--color-gold);
   }
 

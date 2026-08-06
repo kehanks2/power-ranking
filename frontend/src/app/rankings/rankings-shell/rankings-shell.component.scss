@@ -6,11 +6,6 @@
   margin-inline: auto;
 }
 
-.content {
-  max-width: 1264px;
-  margin-inline: auto;
-}
-
 // Header and control bar stick as ONE block. Previously each was sticky with
 // the second offset by a hand-written `top`, which was 4px short of the
 // first's real height -- so the control bar slid underneath and the gap
@@ -201,6 +196,12 @@
   color: var(--color-gold-contrast);
 }
 
+// No top padding. Whatever sits at the top of a board -- the teams table's
+// header, the players' role filter -- pins flush under the sticky block when
+// scrolled, so any padding here would exist at rest and vanish on scroll. The
+// gap is now the same either way, which is the tighter of the two.
 .content {
-  padding: 1.25rem 1.5rem 2rem;
+  max-width: 1264px;
+  margin-inline: auto;
+  padding: 0 1.5rem 2rem;
 }

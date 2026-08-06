@@ -10,8 +10,15 @@ interface StatView {
   display: string;
   /** "3rd", or null when the player has no value for this stat. */
   place: string | null;
-  /** 0-1, how far from last to first -- what the meter length shows. */
-  fill: number;
+  /**
+   * 0-1 along the scale, worst at 0 and best at 1 -- where the marker sits.
+   *
+   * A dot, not a bar: a bar's length says "how much", growing from zero, but
+   * this is a POSITION among peers and has no zero to grow from. 2nd of 27 is
+   * not "90% of something". The marker states where they stand and claims
+   * nothing more.
+   */
+  position: number;
   /**
    * Top quartile of their peer group. Drives emphasis: the accent hue marks
    * what this player is genuinely best at and everything else recedes, rather
@@ -108,15 +115,15 @@ export class PlayersListComponent {
     const peers = detail.peerCount;
 
     const view = (label: string, stat: PlayerStat, display: (v: number) => string): StatView => {
-      // Longest meter is 1st, shortest is last. Guarded against a peer group of
-      // one, where there is no spread to show.
-      const fill = stat.place === null || peers <= 1 ? 0 : (peers - stat.place + 1) / peers;
+      // Last sits at 0, 1st at 1. Guarded against a peer group of one, where
+      // there is no spread to place anyone along.
+      const position = stat.place === null || peers <= 1 ? 0 : (peers - stat.place) / (peers - 1);
       return {
         label,
         display: stat.value === null ? '—' : display(stat.value),
         place: stat.place === null ? null : this.ordinal(stat.place),
-        fill,
-        standout: fill >= 0.75,
+        position,
+        standout: stat.place !== null && peers > 0 && stat.place <= Math.ceil(peers / 4),
         standing:
           stat.place === null
             ? 'No games on this board to place'

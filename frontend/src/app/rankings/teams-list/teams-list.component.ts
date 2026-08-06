@@ -6,12 +6,15 @@ import { LeagueFilterService } from '../league-filter.service';
 import type { TeamSummary } from '../models';
 
 /**
- * The six most recent international events, newest first. Column order on the
+ * The six most recent international events, OLDEST first. Column order on the
  * board, and the same window the international rating is built from -- showing
  * four while rating on six had the evidence column disagree with the number
  * beside it. At three events a year this is exactly two years.
+ *
+ * Oldest-left so it runs the same direction as the confidence range beside it;
+ * two adjacent columns reading in opposite directions is a needless stumble.
  */
-const RECENT_EVENTS = ['MSI26', 'FS26', 'W25', 'MSI25', 'FS25', 'W24'] as const;
+const RECENT_EVENTS = ['W24', 'FS25', 'MSI25', 'W25', 'FS26', 'MSI26'] as const;
 
 /** Axis gridline spacing, in rating points. */
 const AXIS_STEP = 100;
@@ -104,11 +107,32 @@ export class TeamsListComponent {
   /**
    * What the slot shows: the finish where we have it, the event name where the
    * team played but standings are missing, and a dash where they did not play.
+   *
+   * Ordinals, because "1st" is how a finish is spoken. Shared finishes stay as
+   * the range Liquipedia reports ("5-8") with the ordinal on the end, since
+   * "5th-8th" would not fit and "5th" would be a claim we cannot make.
    */
   protected slotLabel(team: TeamSummary, event: string): string {
     const result = this.resultFor(team, event);
     if (!result) return '–';
-    return result.placement ?? event.slice(0, -2);
+    if (!result.placement) return event.slice(0, -2);
+    return /^\d+$/.test(result.placement) ? this.ordinal(Number(result.placement)) : result.placement;
+  }
+
+  /** 1st, 2nd, 3rd, 4th -- and 11th/12th/13th, which break the pattern. */
+  private ordinal(n: number): string {
+    const teens = n % 100;
+    if (teens >= 11 && teens <= 13) return `${n}th`;
+    switch (n % 10) {
+      case 1:
+        return `${n}st`;
+      case 2:
+        return `${n}nd`;
+      case 3:
+        return `${n}rd`;
+      default:
+        return `${n}th`;
+    }
   }
 
   protected slotTitle(team: TeamSummary, event: string): string {

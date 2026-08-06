@@ -164,7 +164,7 @@
 .team {
   font-weight: 600;
   white-space: nowrap;
-  font-size: 1rem;
+  font-size: 0.93rem;
 }
 
 // Placeholder crest: teams.logo_url is empty for every team, so initials stand
@@ -257,9 +257,27 @@
   letter-spacing: 0;
 }
 
+// The range needs room for eight tick labels without them crowding. The space
+// comes from Region, which held a ~44px badge in a column twice that wide, and
+// from Team, which had more than any name needs.
 td.interval {
-  width: 250px;
-  min-width: 215px;
+  width: 290px;
+  min-width: 266px;
+}
+
+// Region holds a fixed-width badge, so it needs no more than the badge; Games
+// is a three-digit count. Both were sized by the header text rather than the
+// content, which is where the range's breathing room came from.
+.teams-table th.region-h,
+.teams-table td.region-cell {
+  width: 58px;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
+}
+
+.teams-table th.games-h,
+.teams-table td.games {
+  width: 62px;
 }
 
 .track {
@@ -314,15 +332,30 @@ th.placements-h {
   padding-left: 1.6rem;
 }
 
+// A pill: medal badge, then the finish. The badge carries the colour so the
+// text can stay uniform across every state.
 .slot {
-  width: 34px;
-  height: 24px;
-  border-radius: 4px;
-  font-size: 0.68rem;
-  font-weight: 700;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 6px 0 4px;
+  border-radius: 999px;
+  border: 1px solid #3b4252;
+  background: rgb(255 255 255 / 2%);
+  font-size: 0.66rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+// Sized for the common finishes so pills line up as a grid, but never wrapped:
+// a five-character shared placement like "17-18" broke onto two lines inside
+// its pill. Those few pills grow instead, which costs the row a handful of
+// pixels rather than the column a whole character's width.
+.slot__place {
+  min-width: 1.75rem;
+  text-align: center;
+  white-space: nowrap;
 }
 
 // The event each box belongs to, sitting on the axis row so a finish can be
@@ -349,43 +382,76 @@ th.placements-h {
 // readers struggle to separate a pair -- they genuinely were too close. Gold
 // is brighter and bronze deeper, putting them 28.0 apart, and silver has lost
 // most of its blue while still clearing gold by 19.5 (17.8 under protanopia).
+// The medal colour lives in the BADGE, not the box. Filling the whole box
+// forced an inconsistency: a fill dark enough to read as bronze could not take
+// ink (pure black reached only 4.48:1 on it) so it needed white text while
+// gold and silver took dark -- three boxes, two opposite text treatments. With
+// the colour on a small disc, every pill keeps the same light text and the
+// contrast problem disappears.
+.slot__medal {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  border-radius: 50%;
+  border: 1.5px solid #545b6c;
+}
+
 .slot--gold {
-  background: #f0c463;
-  color: #17120a;
-  border: 1px solid #f0c463;
+  .slot__medal {
+    background: #f2cf5c;
+    border-color: #f2cf5c;
+  }
+
+  .slot__place {
+    color: #f2cf5c;
+  }
 }
 
 .slot--silver {
-  background: #9aa8bd;
-  color: #11141a;
-  border: 1px solid #9aa8bd;
+  .slot__medal {
+    background: #b9c4d6;
+    border-color: #b9c4d6;
+  }
+
+  .slot__place {
+    color: #b9c4d6;
+  }
 }
 
-// Ink on gold and silver, white on bronze -- picked per fill by luminance, not
-// for consistency. Bronze is dark enough that even pure black reaches only
-// 4.48:1, under the 4.5 needed for text this size; white on it clears at 4.69.
 .slot--bronze {
-  background: #a4652f;
-  color: #fff;
-  border: 1px solid #a4652f;
+  .slot__medal {
+    background: #e07a45;
+    border-color: #e07a45;
+  }
+
+  .slot__place {
+    color: #e07a45;
+  }
 }
 
-// Attended, finished off the podium. A visible outline: being there is worth
-// more than an absence, so it must not read as one -- but it stays quiet,
-// since the result itself was not notable. 3.53:1 border, 5.97:1 text.
+// Attended, finished off the podium: a hollow badge. Being there is worth more
+// than an absence, so it must not read as one.
 .slot--went {
-  background: transparent;
-  color: #9298a8;
-  border: 1px solid #6a7183;
+  border-color: #4b5264;
+
+  .slot__place {
+    color: #9298a8;
+  }
 }
 
-// Did not attend: dashed and dimmer. Distinguished from the above by border
-// STYLE as well as brightness, so the difference does not rest on colour
-// alone, and the dash still clears AA at 4.73:1.
+// Did not attend: dimmer still, and a dashed pill, so absence is carried by
+// shape as well as by colour.
 .slot--missed {
-  background: transparent;
-  color: #7f8698;
-  border: 1px dashed #3f4658;
+  border-style: dashed;
+  border-color: #333a4a;
+
+  .slot__medal {
+    border-color: #3b4252;
+  }
+
+  .slot__place {
+    color: #6a7183;
+  }
 }
 
 .legend {
