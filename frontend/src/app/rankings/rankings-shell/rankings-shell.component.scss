@@ -11,6 +11,17 @@
   margin-inline: auto;
 }
 
+// Header and control bar stick as ONE block. Previously each was sticky with
+// the second offset by a hand-written `top`, which was 4px short of the
+// first's real height -- so the control bar slid underneath and the gap
+// between them visibly shrank as soon as you scrolled.
+.sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--color-bg);
+}
+
 .shell-header {
   display: flex;
   align-items: center;
@@ -19,13 +30,6 @@
   gap: 1rem;
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--color-border);
-
-  // Sits above the control bar in the sticky stack, so brand and view tabs
-  // stay reachable while scrolling a long board.
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  background: var(--color-bg);
 }
 
 .brand {
@@ -60,19 +64,15 @@
   background: var(--color-gold);
 }
 
-// Sticky so the board you are on, and the regional context for reading it,
-// stay visible while scrolling a long table.
 .control-bar {
-  position: sticky;
-  // Clears the header above it rather than sliding underneath.
-  top: 4.6rem;
-  z-index: 20;
-  background: var(--color-bg);
   border-bottom: 1px solid var(--color-border);
   padding: 1rem 1.5rem 0.9rem;
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 1.5rem;
+  // Even split between the explanation and the strength box, with real space
+  // between them, rather than a wide column of text and a box squeezed against
+  // the right edge.
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
   align-items: start;
 }
 
@@ -110,8 +110,7 @@
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-surface);
-  padding: 0.7rem 0.85rem;
-  min-width: 320px;
+  padding: 0.8rem 1rem;
 
   h2 {
     font-size: 0.63rem;
@@ -122,13 +121,19 @@
     font-weight: 700;
   }
 
+  // Fills DOWN the first column before starting the second, so the order reads
+  // 1st-2nd-3rd then 4th-5th-6th. `grid-auto-flow: column` with a fixed row
+  // count is what makes it fill column-wise; the default row flow would put
+  // 2nd beside 1st.
   ol {
     list-style: none;
     margin: 0;
     padding: 0;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.3rem 0.9rem;
+    grid-template-rows: repeat(3, auto);
+    grid-auto-flow: column;
+    gap: 0.35rem 1.4rem;
   }
 
   li {
@@ -167,11 +172,10 @@
   }
 
   .foot {
-    font-size: 0.66rem;
+    font-size: 0.68rem;
     color: var(--color-text-muted);
-    margin: 0.55rem 0 0;
-    line-height: 1.4;
-    max-width: 44ch;
+    margin: 0.65rem 0 0;
+    line-height: 1.45;
   }
 }
 

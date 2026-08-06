@@ -1,58 +1,66 @@
-<header class="shell-header">
-  <h1 class="brand">PowerRanking</h1>
-  <nav class="tabs" aria-label="Ranking views">
-    <a routerLink="teams" routerLinkActive="tab--active" class="tab">Teams</a>
-    <a routerLink="players" routerLinkActive="tab--active" class="tab">Players</a>
-  </nav>
-</header>
+<!-- One sticky block, not two stacked ones. Offsetting the second by a
+     hand-written `top` left it 4px short of the first's real height, so it
+     slid underneath and the gap visibly shrank the moment you scrolled. -->
+<div class="sticky-top" #stickyTop>
+  <header class="shell-header">
+    <h1 class="brand">PowerRanking</h1>
+    <nav class="tabs" aria-label="Ranking views">
+      <a routerLink="teams" routerLinkActive="tab--active" class="tab">Teams</a>
+      <a routerLink="players" routerLinkActive="tab--active" class="tab">Players</a>
+    </nav>
+  </header>
 
-<div class="control-bar">
-  <div class="control-bar__main">
-    <div class="scope-tabs" role="group" aria-label="Choose board">
-      @for (scope of scopes; track scope) {
-        <button
-          type="button"
-          class="chip"
-          [class.chip--active]="filter.selectedScope() === scope"
-          [attr.aria-pressed]="filter.selectedScope() === scope"
-          (click)="filter.setScope(scope)"
-        >
-          {{ label(scope) }}
-        </button>
-      }
+  <div class="control-bar">
+    <div class="control-bar__main">
+      <div class="scope-tabs" role="group" aria-label="Choose board">
+        @for (scope of scopes; track scope) {
+          <button
+            type="button"
+            class="chip"
+            [class.chip--active]="filter.selectedScope() === scope"
+            [attr.aria-pressed]="filter.selectedScope() === scope"
+            (click)="filter.setScope(scope)"
+          >
+            {{ label(scope) }}
+          </button>
+        }
+      </div>
+      <p class="scope-note">
+        @if (filter.selectedScope() === 'international') {
+          Built from the <strong>last six international events</strong> — two years of First Stand,
+          MSI, and Worlds, where every team here faced the same field. Teams need at least 10 games
+          across those events to appear; without them a team isn’t ranked low, it simply doesn’t
+          appear. <strong>This is the only board that compares regions.</strong>
+        } @else {
+          Ranked within {{ filter.selectedScope() }} only. These ratings
+          <strong>are not transferable between regions</strong> — the same number on another regional
+          board does not mean the same thing.
+        }
+      </p>
     </div>
-    <p class="scope-note">
-      @if (filter.selectedScope() === 'international') {
-        Built from the <strong>last six international events</strong> — two years of First Stand, MSI
-        and Worlds, where every team here faced the same field. Teams need at least 10 games across
-        those events to appear; without them a team isn’t ranked low, it simply doesn’t appear.
-        <strong>This is the only board that compares regions.</strong>
-      } @else {
-        Ranked within {{ filter.selectedScope() }} only. These ratings
-        <strong>are not transferable between regions</strong> — the same number on another regional
-        board does not mean the same thing.
-      }
-    </p>
-  </div>
 
-  <aside class="strength" aria-labelledby="strength-heading">
-    <h2 id="strength-heading">Regional strength</h2>
-    <ol>
-      @for (league of leagues(); track league.slug) {
-        <li [class]="'lg-' + league.slug">
-          <span class="rg">{{ league.slug }}</span>
-          <span class="meter">
-            <span class="fill" [style.left.%]="barLeft(league.rating)" [style.width.%]="barWidth(league.rating)"></span>
-          </span>
-          <span class="val">{{ league.rating > 0 ? '+' : '' }}{{ league.rating | number: '1.0-0' }}</span>
-        </li>
-      }
-    </ol>
-    <p class="foot">
-      Measured only from games between regions. 0 means no region is assumed stronger. Context for
-      whichever board you are reading — not a team ranking.
-    </p>
-  </aside>
+    <aside class="strength" aria-labelledby="strength-heading">
+      <h2 id="strength-heading">Regional strength</h2>
+      <!-- Ranked list, so it reads down each column: 1st-2nd-3rd, then
+           4th-5th-6th. Filling across would put 2nd beside 1st and 3rd below
+           it, which is not how a ranking is read. -->
+      <ol>
+        @for (league of leagues(); track league.slug) {
+          <li [class]="'lg-' + league.slug">
+            <span class="rg">{{ league.slug }}</span>
+            <span class="meter">
+              <span class="fill" [style.left.%]="barLeft(league.rating)" [style.width.%]="barWidth(league.rating)"></span>
+            </span>
+            <span class="val">{{ league.rating > 0 ? '+' : '' }}{{ league.rating | number: '1.0-0' }}</span>
+          </li>
+        }
+      </ol>
+      <p class="foot">
+        Measured only from games between regions. 0 means no region is assumed stronger. Context for
+        whichever board you are reading — not a team ranking.
+      </p>
+    </aside>
+  </div>
 </div>
 
 <main class="content">

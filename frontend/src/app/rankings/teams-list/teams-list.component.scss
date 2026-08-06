@@ -15,11 +15,22 @@
   }
 }
 
+// No overflow at desktop widths, deliberately. `overflow-x: auto` computes
+// overflow-y to auto as well, which makes this a scroll container -- and a
+// sticky thead inside one pins to the container, which never scrolls
+// vertically, so it does nothing. The table fits above this breakpoint, so the
+// scroller is only introduced where it is actually needed and the sticky
+// header is given up there.
 .table-scroll {
-  overflow-x: auto;
   border: 1px solid var(--color-border);
   border-radius: 9px;
   background: var(--color-surface);
+}
+
+@media (max-width: 1000px) {
+  .table-scroll {
+    overflow-x: auto;
+  }
 }
 
 .teams-table {
@@ -27,7 +38,18 @@
   width: 100%;
   min-width: 900px;
 
+  // Pinned under the shell's sticky block, whose height is measured and
+  // published as --sticky-top-height (the scope note is taller on the
+  // International board than a regional one). Without this the confidence-range
+  // scale scrolls away and the bars lose the axis that gives them meaning.
   thead th {
+    position: sticky;
+    top: var(--sticky-top-height, 0px);
+    z-index: 5;
+    // Exactly the offset the axis row below uses. Left to its natural ~28.8px
+    // the two sticky rows leave a transparent sliver between them, and the
+    // table rows scrolling underneath show through it.
+    height: 2rem;
     text-align: left;
     font-size: 0.65rem;
     letter-spacing: 0.1em;
@@ -39,6 +61,7 @@
     background: var(--color-surface);
     vertical-align: bottom;
   }
+
 
   thead th.active {
     color: var(--color-gold);
@@ -62,9 +85,12 @@
     color: var(--color-text);
   }
 
+  // The axis is a second header row, so it pins below the first rather than on
+  // top of it -- 2rem being the height of the label row above.
   thead tr.axis-row th {
     padding: 0 0.65rem 0.5rem;
     border-bottom: 1px solid var(--color-border);
+    top: calc(var(--sticky-top-height, 0px) + 2rem);
   }
 
   tbody td {
@@ -255,6 +281,13 @@ td.interval {
   align-items: center;
 }
 
+// Real separation from the confidence range, which otherwise runs straight
+// into the first placement box.
+td.placements-cell,
+th.placements-h {
+  padding-left: 1.6rem;
+}
+
 .slot {
   width: 34px;
   height: 24px;
@@ -266,21 +299,59 @@ td.interval {
   justify-content: center;
 }
 
-.slot--went {
-  background: rgb(205 164 94 / 14%);
-  color: var(--color-gold);
-  border: 1px solid rgb(205 164 94 / 35%);
+// The event each box belongs to, sitting on the axis row so a finish can be
+// read without counting columns back from the newest event.
+.placements--key {
+  padding-bottom: 0.1rem;
 }
 
-.slot--won {
+.slot-key {
+  width: 34px;
+  text-align: center;
+  font-size: 0.55rem;
+  letter-spacing: 0.02em;
+  color: var(--color-text-dim, #6c7385);
+  font-weight: 700;
+}
+
+// Podium finishes are filled in medal colours; everything else is outlined.
+// Filling only the top three keeps the column scannable -- a wall of identical
+// filled boxes says nothing about which results mattered.
+.slot--gold {
   background: var(--color-gold);
   color: var(--color-gold-contrast);
-  border-color: var(--color-gold);
+  border: 1px solid var(--color-gold);
 }
 
-.slot--missed {
+// A cool steel rather than a near-white silver. Two reasons, both measured:
+// a light neutral outshone the gold and inverted the podium's own hierarchy,
+// and against gold it sat at dE 12.2 -- below the 15 floor where full-colour
+// readers struggle to tell a pair apart. This steel measures 16.9 normal and
+// 15.9 under protanopia.
+.slot--silver {
+  background: #8aa0c8;
+  color: #10131a;
+  border: 1px solid #8aa0c8;
+}
+
+.slot--bronze {
+  background: #b0714a;
+  color: #17100a;
+  border: 1px solid #b0714a;
+}
+
+// Attended, finished off the podium: outlined, no fill.
+.slot--went {
   background: transparent;
   color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+
+// Did not attend: dashed, so absence reads differently from a poor finish
+// rather than looking like the same kind of box.
+.slot--missed {
+  background: transparent;
+  color: var(--color-text-dim, #5b6172);
   border: 1px dashed var(--color-border);
 }
 

@@ -1,4 +1,13 @@
-import { Component, ChangeDetectionStrategy, inject, signal } from '@angular/core';
+import {
+  Component,
+  ChangeDetectionStrategy,
+  inject,
+  signal,
+  viewChild,
+  effect,
+  ElementRef,
+  DOCUMENT,
+} from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { LeagueFilterService } from '../league-filter.service';
@@ -26,8 +35,33 @@ export class RankingsShellComponent {
    */
   protected readonly leagues = signal<LeagueSummary[]>([]);
 
+  private readonly stickyTop = viewChild.required<ElementRef<HTMLElement>>('stickyTop');
+  private readonly document = inject(DOCUMENT);
+
   constructor() {
     this.api.getLeagues().subscribe((leagues) => this.leagues.set(leagues));
+
+    /**
+     * Publishes the sticky block's height so a board's table header can pin
+     * directly beneath it.
+     *
+     * Measured rather than hard-coded because the height genuinely varies: the
+     * scope note is three lines on the International board and two on a
+     * regional one, and it reflows with the viewport. A written-down `top` is
+     * what put the control bar 4px under the header in the first place.
+     */
+    effect((onCleanup) => {
+      const element = this.stickyTop().nativeElement;
+      const root = this.document.documentElement;
+      const observer = new ResizeObserver(([entry]) => {
+        root.style.setProperty('--sticky-top-height', `${Math.round(entry.contentRect.height)}px`);
+      });
+      observer.observe(element);
+      onCleanup(() => {
+        observer.disconnect();
+        root.style.removeProperty('--sticky-top-height');
+      });
+    });
   }
 
   protected label(scope: BoardScope): string {

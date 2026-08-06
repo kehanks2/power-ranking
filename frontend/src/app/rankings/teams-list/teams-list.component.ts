@@ -5,8 +5,13 @@ import { RankingsApiService } from '../rankings-api.service';
 import { LeagueFilterService } from '../league-filter.service';
 import type { TeamSummary } from '../models';
 
-/** The four most recent international events, newest first. Column order on the board. */
-const RECENT_EVENTS = ['MSI26', 'FS26', 'W25', 'MSI25'] as const;
+/**
+ * The six most recent international events, newest first. Column order on the
+ * board, and the same window the international rating is built from -- showing
+ * four while rating on six had the evidence column disagree with the number
+ * beside it. At three events a year this is exactly two years.
+ */
+const RECENT_EVENTS = ['MSI26', 'FS26', 'W25', 'MSI25', 'FS25', 'W24'] as const;
 
 /** Axis gridline spacing, in rating points. */
 const AXIS_STEP = 100;
@@ -112,9 +117,27 @@ export class TeamsListComponent {
     return result.placement ? `${event}: finished ${result.placement}` : `Played ${event}, finish unknown`;
   }
 
-  /** Winners get their own treatment -- a tournament win is the headline result. */
-  protected isWin(team: TeamSummary, event: string): boolean {
-    return this.resultFor(team, event)?.placement === '1';
+  /**
+   * Podium finishes get filled medal colours; everything else stays outlined.
+   * A podium is the result people actually remember, so filling only the top
+   * three keeps the column scannable instead of a wall of identical boxes.
+   * Returns '' for an attended-but-lower finish, and callers handle absence.
+   */
+  protected medal(team: TeamSummary, event: string): '' | 'gold' | 'silver' | 'bronze' {
+    // Shared finishes arrive as ranges ("3-4"), and the lowest number in the
+    // range is the one that decides the podium.
+    const placement = this.resultFor(team, event)?.placement;
+    if (!placement) return '';
+    switch (/^(\d+)/.exec(placement)?.[1]) {
+      case '1':
+        return 'gold';
+      case '2':
+        return 'silver';
+      case '3':
+        return 'bronze';
+      default:
+        return '';
+    }
   }
 
   /** Placeholder crest: teams.logo_url is empty for every team, so initials stand in. */

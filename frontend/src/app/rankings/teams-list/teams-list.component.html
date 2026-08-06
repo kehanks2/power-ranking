@@ -33,7 +33,7 @@
             <button type="button" (click)="setSort('floor')">Floor{{ sortKey() === 'floor' ? ' ↓' : '' }}</button>
           </th>
           <th scope="col" class="interval-h">Confidence range</th>
-          <th scope="col">Last 4 internationals</th>
+          <th scope="col" class="placements-h">Last 6 int&rsquo;l</th>
           <th scope="col" class="num">{{ isInternational() ? 'Int&rsquo;l games' : 'Games' }}</th>
         </tr>
         <tr class="axis-row">
@@ -45,7 +45,16 @@
               }
             </div>
           </th>
-          <th scope="col" colspan="2"></th>
+          <!-- Each box named, so a finish can be read without counting columns
+               back from the most recent event. -->
+          <th scope="col" class="placements-h">
+            <div class="placements placements--key">
+              @for (event of events; track event) {
+                <span class="slot-key">{{ event }}</span>
+              }
+            </div>
+          </th>
+          <th scope="col"></th>
         </tr>
       </thead>
       <tbody>
@@ -86,21 +95,23 @@
                 <span class="point" [style.left.%]="pct(team.rating)"></span>
               </div>
             </td>
-            <td>
+            <td class="placements-cell">
               <div class="placements">
                 @for (event of events; track event) {
                   <span
                     class="slot"
-                    [class.slot--went]="!!resultFor(team, event)"
+                    [class.slot--went]="!!resultFor(team, event) && !medal(team, event)"
                     [class.slot--missed]="!resultFor(team, event)"
-                    [class.slot--won]="isWin(team, event)"
+                    [class.slot--gold]="medal(team, event) === 'gold'"
+                    [class.slot--silver]="medal(team, event) === 'silver'"
+                    [class.slot--bronze]="medal(team, event) === 'bronze'"
                     [title]="slotTitle(team, event)"
                   >{{ slotLabel(team, event) }}</span>
                 }
                 @if (team.lastInternational) {
                   <span
                     class="dot dot--old"
-                    [title]="'No appearance in the last four events. Last international: ' + team.lastInternational"
+                    [title]="'No appearance in the last six events. Last international: ' + team.lastInternational"
                   ></span>
                 }
               </div>
@@ -112,6 +123,8 @@
     </table>
   </div>
 
+  <!-- Same order as the columns they explain, so the legend can be read
+       against the table rather than searched. -->
   <dl class="legend">
     <div class="term">
       <dt>Rating</dt>
@@ -119,15 +132,17 @@
     </div>
     <div class="term">
       <dt>±</dt>
-      <dd>How far off that estimate could be. Fewer games, or a recent roster change, widens it.</dd>
-    </div>
-    <div class="term">
-      <dt>Last 4 internationals</dt>
-      <dd>Where they finished at each of the last four events. A win is filled gold; a dash means they weren’t there.</dd>
+      <dd>
+        How far off that estimate could be. Fewer games, or a recent roster change, widens&nbsp;it.
+      </dd>
     </div>
     <div class="term">
       <dt class="term__floor">Floor</dt>
       <dd>Rating minus ±. What we’re confident they’re <em>at least</em> at — and what the board is ranked by.</dd>
+    </div>
+    <div class="term">
+      <dt>Last 6 int’l</dt>
+      <dd>Where they placed at each of the last six international events.</dd>
     </div>
   </dl>
 }

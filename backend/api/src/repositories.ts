@@ -108,18 +108,23 @@ export async function getLeagues(pool: Pool): Promise<LeagueSummaryDto[]> {
 }
 
 /**
- * Shared CTEs for the team boards: which events count as "the last four
+ * Shared CTEs for the team boards: which events count as "the recent
  * internationals", who attended them, each team's most recent international,
  * and whether they changed roster recently.
+ *
+ * Six events, matching the window the international rating itself is built
+ * from (INTERNATIONAL_EVENT_WINDOW). Showing four while rating on six meant
+ * the board's own evidence column disagreed with the number beside it, and
+ * with three events a year six is exactly two years.
  */
 const TEAM_CONTEXT_CTE = `
-  last_four AS (
+  recent_events AS (
     SELECT id, name, date_start,
            CASE WHEN name ILIKE '%First Stand%' THEN 'FS'
                 WHEN name ILIKE '%Mid-Season%'  THEN 'MSI'
                 ELSE 'W' END || substring(date_start::text, 3, 2) AS code
     FROM tournaments WHERE tournament_type = 'international'
-    ORDER BY date_start DESC LIMIT 4
+    ORDER BY date_start DESC LIMIT 6
   ),
   -- One row per team per event they played, carrying the finish where we have
   -- it. Ordered newest-first so the board can render fixed columns.
@@ -128,7 +133,7 @@ const TEAM_CONTEXT_CTE = `
                              ORDER BY date_start DESC) AS results
     FROM (
       SELECT DISTINCT t.id AS team_id, lf.code, lf.date_start, tp.placement
-      FROM last_four lf
+      FROM recent_events lf
       JOIN series s ON s.tournament_id = lf.id
       JOIN games g ON g.series_id = s.id
       JOIN teams t ON t.id IN (g.team1_id, g.team2_id)
