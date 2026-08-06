@@ -272,6 +272,12 @@ td.interval {
   border: 1px solid rgb(205 164 94 / 35%);
 }
 
+.slot--won {
+  background: var(--color-gold);
+  color: var(--color-gold-contrast);
+  border-color: var(--color-gold);
+}
+
 .slot--missed {
   background: transparent;
   color: var(--color-text-muted);

@@ -121,13 +121,19 @@ const TEAM_CONTEXT_CTE = `
     FROM tournaments WHERE tournament_type = 'international'
     ORDER BY date_start DESC LIMIT 4
   ),
+  -- One row per team per event they played, carrying the finish where we have
+  -- it. Ordered newest-first so the board can render fixed columns.
   attendance AS (
-    SELECT t.id AS team_id, array_agg(DISTINCT lf.code) AS codes
-    FROM last_four lf
-    JOIN series s ON s.tournament_id = lf.id
-    JOIN games g ON g.series_id = s.id
-    JOIN teams t ON t.id IN (g.team1_id, g.team2_id)
-    GROUP BY t.id
+    SELECT team_id, json_agg(json_build_object('event', code, 'placement', placement)
+                             ORDER BY date_start DESC) AS results
+    FROM (
+      SELECT DISTINCT t.id AS team_id, lf.code, lf.date_start, tp.placement
+      FROM last_four lf
+      JOIN series s ON s.tournament_id = lf.id
+      JOIN games g ON g.series_id = s.id
+      JOIN teams t ON t.id IN (g.team1_id, g.team2_id)
+      LEFT JOIN tournament_placements tp ON tp.tournament_id = lf.id AND tp.team_id = t.id
+    ) x GROUP BY team_id
   ),
   last_intl AS (
     SELECT team_id, code FROM (
@@ -178,7 +184,7 @@ interface TeamRow {
   mu: string | null;
   phi: string | null;
   games: string | null;
-  codes: string[] | null;
+  results: { event: string; placement: string | null }[] | null;
   last_code: string | null;
   churn: boolean;
 }
@@ -187,7 +193,7 @@ function toTeamSummaries(rows: TeamRow[]): TeamSummaryDto[] {
   const withRatings = rows.map((row) => {
     const state = toRatingState(row.mu, row.phi) ?? coldStartState();
     const display = fromGlicko2Scale(state);
-    const codes = row.codes ?? [];
+    const results = row.results ?? [];
     return {
       id: row.id,
       slug: row.slug,
@@ -200,8 +206,8 @@ function toTeamSummaries(rows: TeamRow[]): TeamSummaryDto[] {
       floor: display.rating - display.rd,
       games: Number(row.games ?? 0),
       recentRosterChange: row.churn,
-      attendance: codes,
-      lastInternational: codes.length === 0 ? row.last_code : null,
+      results,
+      lastInternational: results.length === 0 ? row.last_code : null,
     };
   });
 
@@ -235,7 +241,7 @@ export async function getTeams(pool: Pool, scope: string): Promise<TeamSummaryDt
     SELECT t.id, t.slug, t.name, t.logo_url, t.brand_color, l.slug AS league_slug,
            tr.mu_ctx AS mu, tr.phi_ctx AS phi,
            ${international ? 'igc.games' : 'agc.games'} AS games,
-           att.codes, li.code AS last_code,
+           att.results, li.code AS last_code,
            (rc.team_id IS NOT NULL) AS churn
     FROM teams t
     JOIN team_league_memberships tlm ON tlm.team_id = t.id AND tlm.end_date IS NULL

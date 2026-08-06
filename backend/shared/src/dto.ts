@@ -35,8 +35,12 @@ export interface TeamSummaryDto {
   games: number;
   /** A roster change in the last 60 days, which is why the range is wide. */
   recentRosterChange: boolean;
-  /** Short codes for the last four international events this team played (e.g. ["MSI26","W25"]). */
-  attendance: string[];
+  /**
+   * The team's finish at each of the last four international events it played.
+   * `placement` is text because shared finishes are reported as ranges
+   * ("5-6"), and null when the event is in our data but its standings are not.
+   */
+  results: { event: string; placement: string | null }[];
   /** Most recent international, when none of the last four were attended; otherwise null. */
   lastInternational: string | null;
 }

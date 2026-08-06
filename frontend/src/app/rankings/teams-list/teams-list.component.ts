@@ -92,13 +92,29 @@ export class TeamsListComponent {
     this.sortKey.set(key);
   }
 
-  protected attended(team: TeamSummary, event: string): boolean {
-    return team.attendance.includes(event);
+  protected resultFor(team: TeamSummary, event: string): { event: string; placement: string | null } | undefined {
+    return team.results.find((r) => r.event === event);
   }
 
-  /** Strips the two-digit year, so the chip reads "MSI" rather than "MSI26". */
-  protected eventLabel(event: string): string {
-    return event.slice(0, -2);
+  /**
+   * What the slot shows: the finish where we have it, the event name where the
+   * team played but standings are missing, and a dash where they did not play.
+   */
+  protected slotLabel(team: TeamSummary, event: string): string {
+    const result = this.resultFor(team, event);
+    if (!result) return '–';
+    return result.placement ?? event.slice(0, -2);
+  }
+
+  protected slotTitle(team: TeamSummary, event: string): string {
+    const result = this.resultFor(team, event);
+    if (!result) return `Did not play ${event}`;
+    return result.placement ? `${event}: finished ${result.placement}` : `Played ${event}, finish unknown`;
+  }
+
+  /** Winners get their own treatment -- a tournament win is the headline result. */
+  protected isWin(team: TeamSummary, event: string): boolean {
+    return this.resultFor(team, event)?.placement === '1';
   }
 
   /** Placeholder crest: teams.logo_url is empty for every team, so initials stand in. */

@@ -317,3 +317,31 @@ export async function fetchActivePlayersForTeams(pagenames: string[]): Promise<L
   }
   return results;
 }
+
+/** A final standing at one tournament, from `v3/placement`. */
+export interface LiquipediaPlacement {
+  tournament: string;
+  /** Team name as Liquipedia writes it -- not necessarily how we store it. */
+  opponentname: string;
+  /** "team" or "solo"; solo rows are individual awards, not standings. */
+  opponenttype: string;
+  /**
+   * "1", "2", "5-6" ... A range where a bracket has no third-place or
+   * consolation match, so the tied teams genuinely share a finish.
+   */
+  placement: string;
+  prizemoney: number | null;
+}
+
+/**
+ * Final standings for one tournament, by its Liquipedia name.
+ *
+ * Queried per tournament rather than wiki-wide: standings only matter for the
+ * handful of international events the board shows, and a broad pull would
+ * return every tournament on the wiki.
+ */
+export async function fetchPlacements(tournamentName: string): Promise<LiquipediaPlacement[]> {
+  return liquipediaGetAll<LiquipediaPlacement>('v3/placement', {
+    conditions: `[[tournament::${tournamentName}]]`,
+  });
+}

@@ -45,8 +45,8 @@ export interface TeamSummary {
   rank: number;
   games: number;
   recentRosterChange: boolean;
-  /** Codes for the last four international events this team played, e.g. ['MSI26','W25']. */
-  attendance: string[];
+  /** Finish at each of the last four international events this team played. */
+  results: { event: string; placement: string | null }[];
   /** Most recent international when none of the last four were attended; otherwise null. */
   lastInternational: string | null;
 }

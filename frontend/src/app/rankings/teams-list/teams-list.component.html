@@ -91,10 +91,11 @@
                 @for (event of events; track event) {
                   <span
                     class="slot"
-                    [class.slot--went]="attended(team, event)"
-                    [class.slot--missed]="!attended(team, event)"
-                    [title]="attended(team, event) ? 'Played ' + event : 'Did not play ' + event"
-                  >{{ attended(team, event) ? eventLabel(event) : '–' }}</span>
+                    [class.slot--went]="!!resultFor(team, event)"
+                    [class.slot--missed]="!resultFor(team, event)"
+                    [class.slot--won]="isWin(team, event)"
+                    [title]="slotTitle(team, event)"
+                  >{{ slotLabel(team, event) }}</span>
                 }
                 @if (team.lastInternational) {
                   <span
@@ -119,6 +120,10 @@
     <div class="term">
       <dt>±</dt>
       <dd>How far off that estimate could be. Fewer games, or a recent roster change, widens it.</dd>
+    </div>
+    <div class="term">
+      <dt>Last 4 internationals</dt>
+      <dd>Where they finished at each of the last four events. A win is filled gold; a dash means they weren’t there.</dd>
     </div>
     <div class="term">
       <dt class="term__floor">Floor</dt>
