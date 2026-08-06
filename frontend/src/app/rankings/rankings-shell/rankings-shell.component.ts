@@ -1,39 +1,50 @@
-import { Component, ChangeDetectionStrategy, inject, signal, computed } from '@angular/core';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { filter } from 'rxjs';
+import { Component, ChangeDetectionStrategy, inject, signal } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { LeagueFilterService } from '../league-filter.service';
-import { LEAGUE_SLUGS, type LeagueSlug } from '../models';
-
-const LEAGUES: (LeagueSlug | 'all')[] = ['all', ...LEAGUE_SLUGS];
+import { RankingsApiService } from '../rankings-api.service';
+import { BOARD_SCOPES, type BoardScope, type LeagueSummary } from '../models';
 
 @Component({
   selector: 'app-rankings-shell',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, DecimalPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './rankings-shell.component.html',
   styleUrl: './rankings-shell.component.scss',
 })
 export class RankingsShellComponent {
-  private readonly router = inject(Router);
+  private readonly api = inject(RankingsApiService);
 
   protected readonly filter = inject(LeagueFilterService);
-  protected readonly leagues = LEAGUES;
+  protected readonly scopes = BOARD_SCOPES;
 
-  private readonly url = signal(this.router.url);
+  /**
+   * Regional strength is shown alongside every board, not on a tab of its own.
+   * It is the only place the league rating appears now that it is no longer
+   * added to team ratings, and it is context for whichever board you are
+   * reading rather than a ranking in its own right.
+   */
+  protected readonly leagues = signal<LeagueSummary[]>([]);
 
   constructor() {
-    this.router.events
-      .pipe(filter((event) => event instanceof NavigationEnd))
-      .subscribe(() => this.url.set(this.router.url));
+    this.api.getLeagues().subscribe((leagues) => this.leagues.set(leagues));
+  }
+
+  protected label(scope: BoardScope): string {
+    return scope === 'international' ? 'International' : scope;
   }
 
   /**
-   * On Teams and Leagues, 'all' really is every league on one comparable
-   * scale -- those ratings are calibrated against each other through
-   * international play. On Players it is NOT: regional player ratings are
-   * within-league percentiles, so 'all' serves the international-only view
-   * instead. Different meaning, so it gets a different label rather than
-   * quietly reusing "All Leagues".
+   * Half-width of the diverging meter, as a percentage. League ratings are
+   * offsets from "no region assumed stronger", so the bar grows out from a
+   * centre line rather than from the left edge.
    */
-  protected readonly allLabel = computed(() => (this.url().includes('/players') ? 'Global' : 'All Leagues'));
+  protected barWidth(rating: number): number {
+    const max = Math.max(...this.leagues().map((l) => Math.abs(l.rating)), 1);
+    return (Math.abs(rating) / max) * 50;
+  }
+
+  protected barLeft(rating: number): number {
+    return rating >= 0 ? 50 : 50 - this.barWidth(rating);
+  }
 }

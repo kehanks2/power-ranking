@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import type { Observable } from 'rxjs';
-import type { LeagueSummary, TeamSummary, TeamDetail, PlayerSummary, LeagueSlug } from './models';
+import type { LeagueSummary, TeamSummary, TeamDetail, PlayerSummary, BoardScope } from './models';
 
 const API_BASE_URL = 'http://localhost:3000';
 
@@ -13,9 +13,13 @@ export class RankingsApiService {
     return this.http.get<LeagueSummary[]>(`${API_BASE_URL}/leagues`);
   }
 
-  getTeams(league?: LeagueSlug | 'all'): Observable<TeamSummary[]> {
-    const params: Record<string, string> = league && league !== 'all' ? { league } : {};
-    return this.http.get<TeamSummary[]>(`${API_BASE_URL}/teams`, { params });
+  /**
+   * `scope` is required by the API -- there is no global team board, because
+   * ranking teams that have never played each other is the guess this
+   * structure removes.
+   */
+  getTeams(scope: BoardScope): Observable<TeamSummary[]> {
+    return this.http.get<TeamSummary[]>(`${API_BASE_URL}/teams`, { params: { scope } });
   }
 
   getTeamById(id: number): Observable<TeamDetail> {
@@ -31,9 +35,9 @@ export class RankingsApiService {
    * list is much shorter (only players with an international record appear)
    * and its ratings are on a different scale from the regional ones.
    */
-  getPlayers(league?: LeagueSlug | 'all'): Observable<PlayerSummary[]> {
+  getPlayers(scope: BoardScope): Observable<PlayerSummary[]> {
     const params: Record<string, string> =
-      league && league !== 'all' ? { league } : { scope: 'international' };
+      scope === 'international' ? { scope: 'international' } : { league: scope };
     return this.http.get<PlayerSummary[]>(`${API_BASE_URL}/players`, { params });
   }
 }

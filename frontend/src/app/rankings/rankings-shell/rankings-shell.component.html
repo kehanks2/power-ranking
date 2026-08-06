@@ -2,25 +2,47 @@
   <h1 class="brand">PowerRanking</h1>
   <nav class="tabs" aria-label="Ranking views">
     <a routerLink="teams" routerLinkActive="tab--active" class="tab">Teams</a>
-    <a routerLink="leagues" routerLinkActive="tab--active" class="tab">Leagues</a>
     <a routerLink="players" routerLinkActive="tab--active" class="tab">Players</a>
   </nav>
 </header>
 
-<main class="content">
-  <div class="league-filter" role="group" aria-label="Filter by league">
-    @for (league of leagues; track league) {
-      <button
-        type="button"
-        class="chip"
-        [class.chip--active]="filter.selectedLeague() === league"
-        [attr.aria-pressed]="filter.selectedLeague() === league"
-        (click)="filter.setLeague(league)"
-      >
-        {{ league === 'all' ? allLabel() : league }}
-      </button>
-    }
+<div class="control-bar">
+  <div class="control-bar__main">
+    <div class="scope-tabs" role="group" aria-label="Choose board">
+      @for (scope of scopes; track scope) {
+        <button
+          type="button"
+          class="chip"
+          [class.chip--active]="filter.selectedScope() === scope"
+          [attr.aria-pressed]="filter.selectedScope() === scope"
+          (click)="filter.setScope(scope)"
+        >
+          {{ label(scope) }}
+        </button>
+      }
+    </div>
   </div>
 
+  <aside class="strength" aria-labelledby="strength-heading">
+    <h2 id="strength-heading">Regional strength</h2>
+    <ol>
+      @for (league of leagues(); track league.slug) {
+        <li [class]="'lg-' + league.slug">
+          <span class="rg">{{ league.slug }}</span>
+          <span class="meter">
+            <span class="fill" [style.left.%]="barLeft(league.rating)" [style.width.%]="barWidth(league.rating)"></span>
+          </span>
+          <span class="val">{{ league.rating > 0 ? '+' : '' }}{{ league.rating | number: '1.0-0' }}</span>
+        </li>
+      }
+    </ol>
+    <p class="foot">
+      Measured only from games between regions. 0 means no region is assumed stronger. Context for
+      whichever board you are reading — not a team ranking.
+    </p>
+  </aside>
+</div>
+
+<main class="content">
   <router-outlet />
 </main>

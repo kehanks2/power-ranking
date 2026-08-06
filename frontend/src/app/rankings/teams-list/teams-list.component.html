@@ -1,28 +1,143 @@
+@if (isInternational()) {
+  <p class="scope-note">
+    Built only from games between regions. Teams with at least 10 international games appear — below
+    that there isn’t enough to say anything. A team with no international record isn’t ranked low
+    here, it simply doesn’t appear. <strong>This is the only board that compares regions.</strong>
+  </p>
+} @else {
+  <p class="scope-note">
+    Ranked on games inside {{ filterService.selectedScope() }} only. These ratings compare
+    {{ filterService.selectedScope() }} teams to each other and
+    <strong>are not transferable between regions</strong> — a 1650 here does not equal a 1650 on
+    another regional board. Only the International board compares across regions.
+  </p>
+}
+
 @if (loading()) {
   <p class="status">Loading teams…</p>
-} @else if (teams().length === 0) {
-  <p class="status">No teams ranked yet for this filter.</p>
+} @else if (sorted().length === 0) {
+  <p class="status">No teams ranked yet for this board.</p>
 } @else {
-  <ul class="team-grid">
-    @for (team of teams(); track team.id) {
-      <li>
-        <a class="team-card" [routerLink]="['/rankings/teams', team.id]" [style.--team-color]="team.brandColor ?? 'var(--color-gold)'">
-          <span class="rank">#{{ team.rank }}</span>
-          @if (team.logoUrl) {
-            <img class="logo" [ngSrc]="team.logoUrl" width="48" height="48" alt="" />
-          } @else {
-            <span class="logo logo--placeholder" aria-hidden="true">{{ team.slug.slice(0, 2).toUpperCase() }}</span>
+  <div class="table-scroll">
+    <table class="teams-table">
+      <caption class="visually-hidden">
+        Teams ranked by floor, with rating, uncertainty and international appearances
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col" class="rank">#</th>
+          <th scope="col">Team</th>
+          @if (isInternational()) {
+            <th scope="col">Region</th>
           }
-          <span class="name">{{ team.name }}</span>
-          <span class="league-tag">{{ team.leagueSlug }}</span>
-          <span class="rating">{{ team.rating | number: '1.0-0' }}</span>
-          @if (isUnproven(team.rd)) {
-            <span class="badge badge--unproven">Unproven</span>
-          } @else {
-            <span class="rd">±{{ team.rd | number: '1.0-0' }}</span>
-          }
-        </a>
-      </li>
-    }
-  </ul>
+          <th
+            scope="col"
+            class="num sortable"
+            [class.active]="sortKey() === 'rating'"
+            [attr.aria-sort]="sortKey() === 'rating' ? 'descending' : 'none'"
+          >
+            <button type="button" (click)="setSort('rating')">Rating{{ sortKey() === 'rating' ? ' ↓' : '' }}</button>
+          </th>
+          <th scope="col" class="num">±</th>
+          <th
+            scope="col"
+            class="num sortable"
+            [class.active]="sortKey() === 'floor'"
+            [attr.aria-sort]="sortKey() === 'floor' ? 'descending' : 'none'"
+          >
+            <button type="button" (click)="setSort('floor')">Floor{{ sortKey() === 'floor' ? ' ↓' : '' }}</button>
+          </th>
+          <th scope="col" class="interval-h">Confidence range</th>
+          <th scope="col">Last 4 internationals</th>
+          <th scope="col" class="num">Games</th>
+        </tr>
+        <tr class="axis-row">
+          <th scope="col" [attr.colspan]="isInternational() ? 6 : 5"></th>
+          <th scope="col" class="axis-cell">
+            <div class="axis">
+              @for (tick of ticks(); track tick.value) {
+                <span class="tick" [style.left.%]="tick.left">{{ tick.value }}</span>
+              }
+            </div>
+          </th>
+          <th scope="col" colspan="2"></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (team of sorted(); track team.id; let i = $index) {
+          <tr>
+            <td class="rank">{{ i + 1 }}</td>
+            <td>
+              <a class="team-cell" [routerLink]="['/rankings/teams', team.id]">
+                <span class="crest" [class]="'lg-' + team.leagueSlug">{{ initials(team.name) }}</span>
+                <span class="team">{{ team.name }}</span>
+              </a>
+            </td>
+            @if (isInternational()) {
+              <td><span class="region" [class]="'lg-' + team.leagueSlug">{{ team.leagueSlug }}</span></td>
+            }
+            <td class="num rating">{{ team.rating | number: '1.0-0' }}</td>
+            <td class="num pm">
+              <span class="pm-cell">
+                <span>±{{ team.rd | number: '1.0-0' }}</span>
+                @if (team.recentRosterChange) {
+                  <span
+                    class="dot dot--churn"
+                    title="Roster change in the last 60 days — the range stays wide until they have played more"
+                  ></span>
+                } @else {
+                  <span class="dot-spacer" aria-hidden="true"></span>
+                }
+              </span>
+            </td>
+            <td class="num floor">{{ team.floor | number: '1.0-0' }}</td>
+            <td class="interval">
+              <div class="track">
+                @for (tick of ticks(); track tick.value) {
+                  <span class="grid-line" [style.left.%]="tick.left"></span>
+                }
+                <span class="band" [style.left.%]="pct(team.floor)" [style.width.%]="bandWidth(team)"></span>
+                <span class="floor-tick" [style.left.%]="pct(team.floor)"></span>
+                <span class="point" [style.left.%]="pct(team.rating)"></span>
+              </div>
+            </td>
+            <td>
+              <div class="placements">
+                @for (event of events; track event) {
+                  <span
+                    class="slot"
+                    [class.slot--went]="attended(team, event)"
+                    [class.slot--missed]="!attended(team, event)"
+                    [title]="attended(team, event) ? 'Played ' + event : 'Did not play ' + event"
+                  >{{ attended(team, event) ? eventLabel(event) : '–' }}</span>
+                }
+                @if (team.lastInternational) {
+                  <span
+                    class="dot dot--old"
+                    [title]="'No appearance in the last four events. Last international: ' + team.lastInternational"
+                  ></span>
+                }
+              </div>
+            </td>
+            <td class="num games">{{ team.games }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <dl class="legend">
+    <div class="term">
+      <dt>Rating</dt>
+      <dd>Our best estimate of how strong the team is, on this board’s evidence.</dd>
+    </div>
+    <div class="term">
+      <dt>±</dt>
+      <dd>How far off that estimate could be. Fewer games, or a recent roster change, widens it.</dd>
+    </div>
+    <div class="term">
+      <dt class="term__floor">Floor</dt>
+      <dd>Rating minus ±. What we’re confident they’re <em>at least</em> at — and what the board is ranked by.</dd>
+    </div>
+  </dl>
 }

@@ -47,3 +47,23 @@ button {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
+
+/* Region accents. Shared by the regional-strength meters, the team crests and
+   the region chips, so a colour always means the same league wherever it
+   appears. Each is checked for AA contrast on --color-surface. */
+:root {
+  --lg-LCK: #7aa2f7;
+  --lg-LPL: #c76b7a;
+  --lg-LEC: #9d7cd8;
+  --lg-LCS: #6fbf8e;
+  --lg-LCP: #d9a05b;
+  --lg-CBLOL: #4fb0c6;
+  --color-churn: #d98a5b;
+}
+
+.lg-LCK { color: var(--lg-LCK); }
+.lg-LPL { color: var(--lg-LPL); }
+.lg-LEC { color: var(--lg-LEC); }
+.lg-LCS { color: var(--lg-LCS); }
+.lg-LCP { color: var(--lg-LCP); }
+.lg-CBLOL { color: var(--lg-CBLOL); }

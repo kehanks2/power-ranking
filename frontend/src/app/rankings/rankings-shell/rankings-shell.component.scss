@@ -40,11 +40,103 @@
   background: var(--color-gold);
 }
 
-.league-filter {
+// Sticky so the board you are on, and the regional context for reading it,
+// stay visible while scrolling a long table.
+.control-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  padding: 1rem 1.5rem 0.9rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 940px) {
+  .control-bar {
+    grid-template-columns: 1fr;
+  }
+}
+
+.scope-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 1rem 0;
+  gap: 0.4rem;
+}
+
+// Regional strength lives beside every board rather than on a tab of its own:
+// it is the only place the league rating appears now that it is no longer
+// added to team ratings, and it is context rather than a ranking.
+.strength {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 0.7rem 0.85rem;
+  min-width: 320px;
+
+  h2 {
+    font-size: 0.63rem;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin: 0 0 0.5rem;
+    font-weight: 700;
+  }
+
+  ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem 0.9rem;
+  }
+
+  li {
+    display: grid;
+    grid-template-columns: 3.6rem 1fr auto;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .rg {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .meter {
+    height: 5px;
+    border-radius: 3px;
+    background: var(--color-border);
+    position: relative;
+  }
+
+  .fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 3px;
+    background: currentColor;
+    opacity: 0.8;
+  }
+
+  .val {
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-muted);
+  }
+
+  .foot {
+    font-size: 0.66rem;
+    color: var(--color-text-muted);
+    margin: 0.55rem 0 0;
+    line-height: 1.4;
+    max-width: 44ch;
+  }
 }
 
 .chip {
@@ -70,5 +162,5 @@
 }
 
 .content {
-  padding: 0 1.5rem 2rem;
+  padding: 1.25rem 1.5rem 2rem;
 }
