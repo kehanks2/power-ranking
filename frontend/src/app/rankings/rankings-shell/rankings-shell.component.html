@@ -23,9 +23,9 @@
     </div>
     <p class="scope-note">
       @if (filter.selectedScope() === 'international') {
-        Built only from games <strong>against another region</strong> — an LPL side beating another
-        LPL side at Worlds says nothing about how regions compare, so those games are excluded.
-        <strong>This is the only board that compares regions.</strong>
+        Built only from games played at international events, where every team here faced the same
+        field. Teams need at least 10 such games to appear; without them a team isn’t ranked low, it
+        simply doesn’t appear. <strong>This is the only board that compares regions.</strong>
       } @else {
         Ranked on games inside {{ filter.selectedScope() }} only. These ratings
         <strong>are not transferable between regions</strong> — a 1650 here does not equal a 1650 on

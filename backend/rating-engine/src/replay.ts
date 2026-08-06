@@ -32,6 +32,19 @@ export interface ReplayGame {
    * game is treated as its own series (no correlation correction).
    */
   seriesId?: string;
+  /**
+   * Whether this game was played at an international event.
+   *
+   * Distinct from `team1LeagueId !== team2LeagueId`, which asks whether the
+   * two teams are from different regions. Two LPL sides meeting at Worlds are
+   * playing international but not cross-region: that game is real evidence
+   * about both teams' standing in the international field, while carrying
+   * nothing about how LPL compares to anyone. The rating engine uses the
+   * cross-region test for league-meta updates, because that is the question
+   * the meta answers; the international BOARD uses this flag, because the
+   * question there is simply "how have you done at internationals".
+   */
+  internationalEvent?: boolean;
 }
 
 /** A roster-change decay event, already resolved by the caller (turnover + roster-implied prior). */

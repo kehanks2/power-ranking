@@ -1,7 +1,13 @@
+// Sticky elements span the viewport so their background covers what scrolls
+// under them; the inner max-width keeps the content itself measured.
 .shell-header,
-.control-bar,
+.control-bar {
+  max-width: 1264px;
+  margin-inline: auto;
+}
+
 .content {
-  max-width: 1200px;
+  max-width: 1264px;
   margin-inline: auto;
 }
 
@@ -13,6 +19,13 @@
   gap: 1rem;
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--color-border);
+
+  // Sits above the control bar in the sticky stack, so brand and view tabs
+  // stay reachable while scrolling a long board.
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--color-bg);
 }
 
 .brand {
@@ -51,7 +64,8 @@
 // stay visible while scrolling a long table.
 .control-bar {
   position: sticky;
-  top: 0;
+  // Clears the header above it rather than sliding underneath.
+  top: 4.6rem;
   z-index: 20;
   background: var(--color-bg);
   border-bottom: 1px solid var(--color-border);

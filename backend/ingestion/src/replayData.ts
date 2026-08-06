@@ -31,6 +31,7 @@ interface GameRow {
   team1_gold: number | null;
   team2_gold: number | null;
   gamelength_seconds: number | null;
+  international_event: boolean;
   team1_league_id: number;
   team2_league_id: number;
 }
@@ -74,8 +75,11 @@ export async function loadReplayData(
   const gamesResult = await pool.query<GameRow>(`
     SELECT g.series_id, g.team1_id, g.team2_id, g.winner_team_id, g.datetime_utc,
            g.team1_gold, g.team2_gold, g.gamelength_seconds,
-           tlm1.league_id AS team1_league_id, tlm2.league_id AS team2_league_id
+           tlm1.league_id AS team1_league_id, tlm2.league_id AS team2_league_id,
+           (tn.tournament_type = 'international') AS international_event
     FROM games g
+    JOIN series s ON s.id = g.series_id
+    JOIN tournaments tn ON tn.id = s.tournament_id
     JOIN team_league_memberships tlm1 ON tlm1.team_id = g.team1_id AND tlm1.end_date IS NULL
     JOIN team_league_memberships tlm2 ON tlm2.team_id = g.team2_id AND tlm2.end_date IS NULL
     ORDER BY g.datetime_utc, g.id
@@ -93,6 +97,7 @@ export async function loadReplayData(
     team1Gold: row.team1_gold,
     team2Gold: row.team2_gold,
     gamelengthSeconds: row.gamelength_seconds,
+    internationalEvent: row.international_event,
   }));
 
   const decayEvents: DecayEvent[] = [];

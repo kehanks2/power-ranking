@@ -147,25 +147,18 @@ const TEAM_CONTEXT_CTE = `
     SELECT DISTINCT team_id FROM team_ratings_history
     WHERE reason = 'roster_decay' AND as_of_date > NOW() - INTERVAL '60 days'
   ),
-  -- CROSS-REGION games, not games at international events. An LPL side beating
-  -- another LPL side at Worlds says nothing about how regions compare, so the
-  -- international rating ignores those -- and this count has to match, or the
-  -- column contradicts the threshold. Weibo Gaming played 16 games at 2024
-  -- Worlds but only 9 against other regions, which is why they fall below the
-  -- 10-game floor despite a semifinal run.
+  -- Games at international events, matching exactly what the international
+  -- board rates on. Includes intra-region matchups played there: two LPL sides
+  -- meeting at Worlds is international play.
   intl_game_count AS (
     SELECT team_id, COUNT(*) AS games FROM (
       SELECT g.team1_id AS team_id FROM games g
         JOIN series s ON s.id = g.series_id JOIN tournaments tn ON tn.id = s.tournament_id
-        JOIN team_league_memberships m1 ON m1.team_id = g.team1_id AND m1.end_date IS NULL
-        JOIN team_league_memberships m2 ON m2.team_id = g.team2_id AND m2.end_date IS NULL
-        WHERE tn.tournament_type = 'international' AND m1.league_id <> m2.league_id
+        WHERE tn.tournament_type = 'international'
       UNION ALL
       SELECT g.team2_id FROM games g
         JOIN series s ON s.id = g.series_id JOIN tournaments tn ON tn.id = s.tournament_id
-        JOIN team_league_memberships m1 ON m1.team_id = g.team1_id AND m1.end_date IS NULL
-        JOIN team_league_memberships m2 ON m2.team_id = g.team2_id AND m2.end_date IS NULL
-        WHERE tn.tournament_type = 'international' AND m1.league_id <> m2.league_id
+        WHERE tn.tournament_type = 'international'
     ) y GROUP BY team_id
   ),
   all_game_count AS (

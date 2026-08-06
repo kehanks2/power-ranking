@@ -90,7 +90,7 @@ const INTERNATIONAL_WEIGHT_MULTIPLIER = 2;
  * roster-decay prior) -- see manualRecompute.ts for the pipeline order.
  */
 /**
- * Minimum cross-region games before a team is rated internationally at all.
+ * Minimum games at international events before a team is rated on that board.
  * Below this the rating is noise: at a 5-game floor KT Rolster placed 2nd on 7
  * games with an RD of 206. Teams under the floor are not rated low -- they are
  * absent, because nothing has been demonstrated.
@@ -119,10 +119,16 @@ export async function computeRatings(pool: Pool): Promise<{ teamRows: number; le
 
   const result = runReplay(replayInput);
 
-  // Second, independent replay over cross-region games only, with the league
-  // prior switched off. This is the only rating that can compare regions,
-  // because it is built purely from teams that played each other.
-  const internationalGames = games.filter((g) => g.team1LeagueId !== g.team2LeagueId);
+  // Second, independent replay over every game played AT an international
+  // event, with the league prior switched off.
+  //
+  // Deliberately not restricted to cross-region matchups. Two LPL sides
+  // meeting at Worlds is international play, and it is real evidence about
+  // where both stand in that field -- excluding it would drop Weibo Gaming,
+  // a 2024 Worlds semifinalist, from the board because 7 of their 16 games
+  // there were against other LPL teams. Everyone in this pool played inside
+  // the same set of events, so the comparison holds without the league prior.
+  const internationalGames = games.filter((g) => g.internationalEvent);
   const internationalGameCount = new Map<string, number>();
   for (const game of internationalGames) {
     for (const teamId of [game.team1Id, game.team2Id]) {
