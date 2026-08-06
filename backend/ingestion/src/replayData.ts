@@ -17,8 +17,8 @@ import { buildTeamLineupGames } from './teamLineups.js';
 // accuracy (63.02% -> 63.18%) -- ordinary bench rotation was being counted
 // as full roster turnover, not just a display-layer problem.
 const DEFAULT_ROSTER_CHANGE_PERSISTENCE_GAMES = 5;
-const ROSTER_CHANGE_MIN_GAMES = 10; // matches rating_config schema default
-const OFFSET_SCALE = 150; // matches rating_config schema default
+const ROSTER_CHANGE_MIN_GAMES = 10; // games before an incoming player's rating is trusted in full
+const OFFSET_SCALE = 150; // rating points a maximally-rated incoming roster is worth vs the league mean
 const K_SEASON = 0.25; // matches plan's design default
 
 interface GameRow {

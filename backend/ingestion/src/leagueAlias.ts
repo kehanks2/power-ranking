@@ -1,4 +1,24 @@
 /**
+ * DEAD IN PRODUCTION -- kept deliberately, flagged rather than deleted.
+ *
+ * This resolves a raw league name at a point in time to a canonical league,
+ * and the league_aliases table it reads holds a real quirk: through 2025 the
+ * Americas ran as LTA North and LTA South, so historical records appear under
+ * "LTA N"/"LTAN" and "LTA S"/"LTAS" and must map onto LCS and CBLOL for a
+ * team's history to stay continuous across the rename.
+ *
+ * Nothing calls it any more. The only callers were the Oracle's Elixir and
+ * Leaguepedia Cargo ingest paths, both since deleted. The Liquipedia match
+ * ingest that replaced them classifies tournaments through liquipediaMappings
+ * instead and never consults this table.
+ *
+ * Deleting it would throw away the only encoding of that rename. Keeping it
+ * unused risks the next ingest path silently skipping the remap the way this
+ * one does. Neither is obviously right, so it is left here with the question
+ * stated: does the Liquipedia path handle the LTA rename correctly on its own,
+ * or is it quietly mis-attributing 2025 Americas history?
+ */
+/**
  * Resolves a raw league/region name as it appears in Leaguepedia to a
  * canonical league id, valid over a date range -- the mechanism behind the
  * LTAN->LCS / LTAS->CBLOL historical remap. Mirrors the league_aliases table.
