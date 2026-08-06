@@ -72,8 +72,13 @@ export class RankingsShellComponent {
     effect((onCleanup) => {
       const element = this.stickyTop().nativeElement;
       const root = this.document.documentElement;
+      // Ceil, not round: rounding a height of 257.6 down to 258 is fine, but
+      // rounding 257.4 to 257 leaves a sub-pixel gap that the scrolling rows
+      // show through as a flickering sliver above the table header. Ceiling it
+      // and having the header overlap by 1px (see teams-list.scss) means the
+      // seam can only ever err toward covering.
       const observer = new ResizeObserver(([entry]) => {
-        root.style.setProperty('--sticky-top-height', `${Math.round(entry.contentRect.height)}px`);
+        root.style.setProperty('--sticky-top-height', `${Math.ceil(entry.contentRect.height)}px`);
       });
       observer.observe(element);
       onCleanup(() => {

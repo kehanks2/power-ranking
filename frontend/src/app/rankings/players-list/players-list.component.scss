@@ -2,11 +2,24 @@
   color: var(--color-text-muted);
 }
 
+// Height is written down rather than measured because it is a single row of
+// fixed-size chips at every width where the sticky header is active (the
+// narrow breakpoint below hands the table back to a scroll container). The
+// table header offsets itself by this.
+$role-filter-height: 3.1rem;
+
 .role-filter {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
-  margin-bottom: 1rem;
+  height: $role-filter-height;
+  align-items: center;
+  // Pins under the shell's block so the positions stay switchable while
+  // scrolling, and 1px under it so the seam can only overlap.
+  position: sticky;
+  top: calc(var(--sticky-top-height, 0px) - 1px);
+  z-index: 6;
+  background: var(--color-bg);
 }
 
 // Same chip as the board tabs above, so the two read as the same kind of
@@ -34,11 +47,19 @@
   color: var(--color-gold-contrast);
 }
 
+// No overflow at desktop widths: `overflow-x: auto` computes overflow-y to
+// auto as well, and a sticky thead inside a scroll container pins to that
+// container -- which never scrolls vertically -- so it does nothing.
 .table-scroll {
-  overflow-x: auto;
   border: 1px solid var(--color-border);
   border-radius: 9px;
   background: var(--color-surface);
+}
+
+@media (max-width: 1000px) {
+  .table-scroll {
+    overflow-x: auto;
+  }
 }
 
 .players-table {
@@ -46,7 +67,12 @@
   width: 100%;
   min-width: 660px;
 
+  // Pinned below the shell block AND the role filter, so both the positions
+  // and the column labels stay put while scrolling a long board.
   thead th {
+    position: sticky;
+    top: calc(var(--sticky-top-height, 0px) - 1px + #{$role-filter-height});
+    z-index: 5;
     text-align: left;
     font-size: 0.65rem;
     letter-spacing: 0.1em;
@@ -55,7 +81,10 @@
     font-weight: 700;
     padding: 0.7rem 0.65rem;
     white-space: nowrap;
-    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface);
+    // Inset rather than border-bottom: `border-collapse: collapse` hands
+    // borders to the table to paint, and a sticky cell leaves them behind.
+    box-shadow: inset 0 -1px 0 var(--color-border);
   }
 
   tbody td {
@@ -338,18 +367,23 @@ tr.is-open td {
 
 // A meter, not a bar chart: one ratio against a limit. The track is a faint
 // step of the SAME hue as the fill, so the whole bar reads as one scale.
+//
+// Fills right-to-left, so the bar grows back toward the placement number
+// beside it: 1st reaches furthest, last barely leaves the right edge.
 .stat__meter {
   height: 4px;
   border-radius: 2px;
   background: rgb(205 164 94 / 12%);
   overflow: hidden;
+  display: flex;
+  justify-content: flex-end;
 }
 
-// Square at the baseline, rounded at the data end.
+// Square at the baseline (right), rounded at the data end (left).
 .stat__fill {
   display: block;
   height: 100%;
-  border-radius: 0 2px 2px 0;
+  border-radius: 2px 0 0 2px;
   // De-emphasis by default. Length carries the place; colour is spent only on
   // what stands out, so nine equally loud bars do not compete for the eye.
   background: #737a8c;

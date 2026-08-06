@@ -56,10 +56,18 @@ export class PlayersListComponent {
   protected readonly roles = ROLES;
   protected readonly roleFilter = signal<Role | null>(null);
 
+  /**
+   * Renumbered 1..n for whatever is shown. Filtering to MID and reading
+   * 2, 11, 14 asks the reader to hold two rankings at once; within a role the
+   * only question is who leads that role. The rating itself is unaffected --
+   * it was always measured against role peers, so the numbering now matches
+   * what the rating already meant.
+   */
   protected readonly players = computed(() => {
     const role = this.roleFilter();
     const rows = this.allPlayers();
-    return role === null ? rows : rows.filter((p) => p.role === role);
+    if (role === null) return rows;
+    return rows.filter((p) => p.role === role).map((p, index) => ({ ...p, rank: index + 1 }));
   });
 
   /** The row whose panel is open. Only one at a time -- a board of open panels scrolls badly. */
@@ -90,9 +98,7 @@ export class PlayersListComponent {
 
   /** What the numbers in the panel are measured over -- never left implicit. */
   protected readonly coverageNote = computed(() =>
-    this.isGlobal()
-      ? 'International games from the last 3 years — the same games this rating is built from, not their league season.'
-      : 'Every recorded game in this league, most recent weighted highest.',
+    this.isGlobal() ? 'All stats are from int’l games.' : 'All stats are from ' + this.regionLabel() + ' games.',
   );
 
   protected readonly statGroups = computed<StatGroup[]>(() => {

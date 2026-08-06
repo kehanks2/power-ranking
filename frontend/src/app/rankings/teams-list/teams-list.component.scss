@@ -44,7 +44,9 @@
   // scale scrolls away and the bars lose the axis that gives them meaning.
   thead th {
     position: sticky;
-    top: var(--sticky-top-height, 0px);
+    // Deliberately 1px UNDER the block above, so the seam always overlaps
+    // rather than risking a sub-pixel gap that scrolling rows show through.
+    top: calc(var(--sticky-top-height, 0px) - 1px);
     z-index: 5;
     // Exactly the offset the axis row below uses. Left to its natural ~28.8px
     // the two sticky rows leave a transparent sliver between them, and the
@@ -67,6 +69,15 @@
     color: var(--color-gold);
   }
 
+  // Numeric headers follow their columns. `thead th` sets text-align left and
+  // outranks the plain `.num` class, so ± and Floor sat left of the digits
+  // they label.
+  thead th.num,
+  thead th.num button {
+    text-align: right;
+    width: 100%;
+  }
+
   // The sort control is a real button so it is keyboard reachable; it inherits
   // the header's type rather than looking like a form control.
   thead th.sortable button {
@@ -85,12 +96,27 @@
     color: var(--color-text);
   }
 
+  // The last tick is centred on the track's right edge, so half of "1900" sits
+  // outside the content box. This right padding is that overhang, and it also
+  // puts real space between the range and the placements beside it. Written
+  // here, inside the table block, because the generic `thead th` padding rule
+  // outranks a bare `th.axis-cell`.
+  thead tr.axis-row th.axis-cell,
+  thead th.interval-h,
+  tbody td.interval {
+    padding-right: 2rem;
+  }
+
   // The axis is a second header row, so it pins below the first rather than on
   // top of it -- 2rem being the height of the label row above.
   thead tr.axis-row th {
     padding: 0 0.65rem 0.5rem;
-    border-bottom: 1px solid var(--color-border);
-    top: calc(var(--sticky-top-height, 0px) + 2rem);
+    top: calc(var(--sticky-top-height, 0px) - 1px + 2rem);
+    // An inset shadow, not border-bottom: `border-collapse: collapse` hands
+    // borders to the table to paint, and a sticky cell leaves them behind when
+    // it detaches. This closes the header off from the rows the way the row
+    // separators do.
+    box-shadow: inset 0 -1px 0 var(--color-border);
   }
 
   tbody td {
@@ -317,42 +343,49 @@ th.placements-h {
 // Podium finishes are filled in medal colours; everything else is outlined.
 // Filling only the top three keeps the column scannable -- a wall of identical
 // filled boxes says nothing about which results mattered.
+//
+// All three re-stepped against the validator rather than by eye. The first
+// gold and bronze measured dE 14.2 apart, below the 15 floor where full-colour
+// readers struggle to separate a pair -- they genuinely were too close. Gold
+// is brighter and bronze deeper, putting them 28.0 apart, and silver has lost
+// most of its blue while still clearing gold by 19.5 (17.8 under protanopia).
 .slot--gold {
-  background: var(--color-gold);
-  color: var(--color-gold-contrast);
-  border: 1px solid var(--color-gold);
+  background: #f0c463;
+  color: #17120a;
+  border: 1px solid #f0c463;
 }
 
-// A cool steel rather than a near-white silver. Two reasons, both measured:
-// a light neutral outshone the gold and inverted the podium's own hierarchy,
-// and against gold it sat at dE 12.2 -- below the 15 floor where full-colour
-// readers struggle to tell a pair apart. This steel measures 16.9 normal and
-// 15.9 under protanopia.
 .slot--silver {
-  background: #8aa0c8;
-  color: #10131a;
-  border: 1px solid #8aa0c8;
+  background: #9aa8bd;
+  color: #11141a;
+  border: 1px solid #9aa8bd;
 }
 
+// Ink on gold and silver, white on bronze -- picked per fill by luminance, not
+// for consistency. Bronze is dark enough that even pure black reaches only
+// 4.48:1, under the 4.5 needed for text this size; white on it clears at 4.69.
 .slot--bronze {
-  background: #b0714a;
-  color: #17100a;
-  border: 1px solid #b0714a;
+  background: #a4652f;
+  color: #fff;
+  border: 1px solid #a4652f;
 }
 
-// Attended, finished off the podium: outlined, no fill.
+// Attended, finished off the podium. A visible outline: being there is worth
+// more than an absence, so it must not read as one -- but it stays quiet,
+// since the result itself was not notable. 3.53:1 border, 5.97:1 text.
 .slot--went {
   background: transparent;
-  color: var(--color-text-muted);
-  border: 1px solid var(--color-border);
+  color: #9298a8;
+  border: 1px solid #6a7183;
 }
 
-// Did not attend: dashed, so absence reads differently from a poor finish
-// rather than looking like the same kind of box.
+// Did not attend: dashed and dimmer. Distinguished from the above by border
+// STYLE as well as brightness, so the difference does not rest on colour
+// alone, and the dash still clears AA at 4.73:1.
 .slot--missed {
   background: transparent;
-  color: var(--color-text-dim, #5b6172);
-  border: 1px dashed var(--color-border);
+  color: #7f8698;
+  border: 1px dashed #3f4658;
 }
 
 .legend {
