@@ -4,7 +4,7 @@
  * nothing, so it is safe to run against the live DB. Run with tsx.
  */
 import { createPool } from '../db.js';
-import { fetchPlayerGameRows, buildPlayerGroupStats, selectPrimaryRatings } from '../computePlayerRatings.js';
+import { fetchPlayerGameRows, buildPlayerGroupStats, selectGroupRatings } from '../computePlayerRatings.js';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const WIN_WEIGHTS = [0, 0.3, 0.4, 0.5, 0.6, 0.7];
@@ -27,12 +27,14 @@ async function main() {
   const metaById = new Map(meta.rows.map((r) => [r.id, r]));
 
   for (const winWeight of WIN_WEIGHTS) {
-    const ratings = selectPrimaryRatings(groupStats, winWeight);
-    const ranked = [...ratings.entries()]
-      .map(([playerId, r]) => ({
-        handle: metaById.get(playerId)?.handle ?? `#${playerId}`,
-        role: metaById.get(playerId)?.role ?? '--',
-        league: metaById.get(playerId)?.league ?? '--',
+    // One rating per player, so the sweep compares win weights rather than
+    // player-with-two-leagues counting twice.
+    const ranked = selectGroupRatings(groupStats, winWeight)
+      .filter((r) => r.isPrimary)
+      .map((r) => ({
+        handle: metaById.get(r.playerId)?.handle ?? `#${r.playerId}`,
+        role: metaById.get(r.playerId)?.role ?? '--',
+        league: metaById.get(r.playerId)?.league ?? '--',
         rating: r.rating,
         gamesPlayed: r.gamesPlayed,
       }))

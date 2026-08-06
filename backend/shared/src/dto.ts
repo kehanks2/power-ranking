@@ -85,17 +85,16 @@ export interface PlayerSummaryDto {
  * One stat, with the context needed to read it.
  *
  * `value` alone says very little -- 8.1 CS/min is strong for a support and
- * poor for a mid -- so every stat also carries its standing among players of
- * the same role in the same scope. That is the same percentile language the
- * rating itself is built from, rather than a second, unrelated yardstick.
+ * poor for a mid -- so every stat also carries where it places the player among
+ * the same-role players on the same board.
  *
- * `percentile` is 0-100 and always oriented so higher is better, including for
- * stats where the raw number is better when low (deaths). Null when the stat
- * is unavailable, or when the role peer group is too small to place them in.
+ * `place` is 1-based and always oriented so 1st is best, including for stats
+ * where the better raw number is the lower one (deaths). Ties share a place.
+ * Null when the stat is unavailable for this player.
  */
 export interface PlayerStatDto {
   value: number | null;
-  percentile: number | null;
+  place: number | null;
 }
 
 export interface PlayerStatsDto {
@@ -120,11 +119,11 @@ export interface PlayerStatsDto {
 export interface PlayerDetailDto extends PlayerSummaryDto {
   /**
    * Measured over exactly the games the player's rating for this scope was
-   * computed from -- international-only for the International board, all
-   * games for a regional one. Anything else would put a stat line next to a
-   * rating that disagrees with it.
+   * computed from -- international games in the window for the International
+   * board, games in that one league for a regional one. Anything else would
+   * put a stat line next to a rating that disagrees with it.
    */
   stats: PlayerStatsDto;
-  /** How many players the percentiles place them against. */
+  /** The denominator behind every `place`: same-role players on this board. */
   peerCount: number;
 }

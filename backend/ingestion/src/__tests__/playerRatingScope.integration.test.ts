@@ -63,14 +63,44 @@ describe('player rating scopes (live Postgres)', () => {
     expect(Number(thin.rows[0].count)).toBe(0);
   });
 
-  it('emits exactly one row per player within each scope', async () => {
-    const dupes = await pool.query<{ count: string }>(`
+  it('emits one row per peer group, and marks exactly one of them primary', async () => {
+    // A player with games in two leagues genuinely has two standings, so a
+    // league board can read the group for ITS league rather than rating
+    // someone on a league they left. What must stay unique is the group
+    // itself, and the primary marker readers use when no league is meant.
+    const dupeGroups = await pool.query<{ count: string }>(`
       SELECT COUNT(*) AS count FROM (
-        SELECT player_id, scope FROM player_ratings_history
-        GROUP BY player_id, scope HAVING COUNT(*) > 1
+        SELECT player_id, scope, league_id, role FROM player_ratings_history
+        GROUP BY player_id, scope, league_id, role HAVING COUNT(*) > 1
       ) d
     `);
-    expect(Number(dupes.rows[0].count)).toBe(0);
+    expect(Number(dupeGroups.rows[0].count)).toBe(0);
+
+    const badPrimary = await pool.query<{ count: string }>(`
+      SELECT COUNT(*) AS count FROM (
+        SELECT player_id, scope FROM player_ratings_history
+        WHERE is_primary GROUP BY player_id, scope HAVING COUNT(*) <> 1
+      ) d
+    `);
+    expect(Number(badPrimary.rows[0].count)).toBe(0);
+  });
+
+  it('records the league and role every rating was measured in', async () => {
+    // Without these the stored number cannot be reconciled with the games
+    // behind it -- the defect that made the board and the detail panel
+    // disagree on a player's game count.
+    const unlabelled = await pool.query<{ count: string }>(`
+      SELECT COUNT(*) AS count FROM player_ratings_history
+      WHERE role IS NULL OR (scope = 'regional' AND league_id IS NULL)
+    `);
+    expect(Number(unlabelled.rows[0].count)).toBe(0);
+
+    // International peer groups are role-only by design, which is what makes
+    // them cross-region comparable; a league there would be a fiction.
+    const leagued = await pool.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM player_ratings_history WHERE scope = 'international' AND league_id IS NOT NULL`,
+    );
+    expect(Number(leagued.rows[0].count)).toBe(0);
   });
 
   it('only counts international games from the last 3 years', async () => {

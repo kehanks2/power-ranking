@@ -8,8 +8,11 @@ import type { PlayerDetail, PlayerStat, PlayerSummary } from '../models';
 interface StatView {
   label: string;
   display: string;
-  percentile: number | null;
-  /** Spelled out for the tooltip, since a bare percentile invites misreading. */
+  /** "3rd", or null when the player has no value for this stat. */
+  place: string | null;
+  /** 0-1, how far from last to first -- what the bar length shows. */
+  fill: number;
+  /** Spelled out for the tooltip and for screen readers. */
   standing: string;
 }
 
@@ -69,11 +72,14 @@ export class PlayersListComponent {
     const view = (label: string, stat: PlayerStat, display: (v: number) => string): StatView => ({
       label,
       display: stat.value === null ? '—' : display(stat.value),
-      percentile: stat.percentile,
+      place: stat.place === null ? null : this.ordinal(stat.place),
+      // Longest bar is 1st, shortest is last. Guarded against a peer group of
+      // one, where there is no spread to show.
+      fill: stat.place === null || peers <= 1 ? 0 : (peers - stat.place + 1) / peers,
       standing:
-        stat.percentile === null
-          ? 'Not enough games to place against peers'
-          : `Ahead of ${stat.percentile}% of ${peers} ${detail.role} players on this board`,
+        stat.place === null
+          ? 'No games on this board to place'
+          : `${this.ordinal(stat.place)} of ${peers} ${detail.role} players on this board`,
     });
 
     const to = (places: number) => (v: number) => v.toFixed(places);
@@ -139,11 +145,26 @@ export class PlayersListComponent {
     return this.openPlayerId() === playerId;
   }
 
-  /** Percentile bands, so the bar reads at a glance and not only by length. */
-  protected band(percentile: number | null): string {
-    if (percentile === null) return 'none';
-    if (percentile >= 75) return 'high';
-    if (percentile >= 40) return 'mid';
+  /** Bands, so the bar reads at a glance and not only by length. */
+  protected band(fill: number): string {
+    if (fill >= 0.75) return 'high';
+    if (fill >= 0.4) return 'mid';
     return 'low';
+  }
+
+  /** 1st, 2nd, 3rd, 4th -- and 11th/12th/13th, which break the pattern. */
+  private ordinal(n: number): string {
+    const teens = n % 100;
+    if (teens >= 11 && teens <= 13) return `${n}th`;
+    switch (n % 10) {
+      case 1:
+        return `${n}st`;
+      case 2:
+        return `${n}nd`;
+      case 3:
+        return `${n}rd`;
+      default:
+        return `${n}th`;
+    }
   }
 }

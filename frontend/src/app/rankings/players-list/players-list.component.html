@@ -27,20 +27,20 @@
       </thead>
       <tbody>
         @for (player of players(); track player.id) {
-          <tr [class.is-open]="isOpen(player.id)">
+          <!-- Clicking anywhere on the row toggles the panel. The handle is
+               still a real button so the control stays reachable and announced
+               without a mouse; row click is a mouse-only convenience on top,
+               and stopPropagation keeps the two from cancelling each other. -->
+          <tr class="row-toggle" [class.is-open]="isOpen(player.id)" (click)="toggle(player.id)">
             <td class="rank">{{ player.rank }}</td>
             <td>
-              <!-- A real button, so the panel is reachable and announced
-                   without a mouse. The whole row is not clickable: that would
-                   leave the control invisible to assistive tech. -->
               <button
                 type="button"
                 class="handle-toggle"
                 [attr.aria-expanded]="isOpen(player.id)"
                 [attr.aria-controls]="'player-panel-' + player.id"
-                (click)="toggle(player.id)"
+                (click)="$event.stopPropagation(); toggle(player.id)"
               >
-                <span class="chevron" aria-hidden="true"></span>
                 <span class="handle">{{ player.handle }}</span>
               </button>
             </td>
@@ -90,25 +90,19 @@
                               <span class="stat__bar" [title]="stat.standing">
                                 <span
                                   class="stat__fill"
-                                  [class]="'band-' + band(stat.percentile)"
-                                  [style.width.%]="stat.percentile ?? 0"
+                                  [class]="'band-' + band(stat.fill)"
+                                  [style.width.%]="stat.fill * 100"
                                 ></span>
                               </span>
-                              <span class="stat__pct">
-                                @if (stat.percentile !== null) {
-                                  {{ stat.percentile }}<span class="stat__pct-unit">th</span>
-                                } @else {
-                                  —
-                                }
-                              </span>
+                              <span class="stat__place">{{ stat.place ?? '—' }}</span>
                               <span class="visually-hidden">{{ stat.standing }}</span>
                             </dd>
                           </div>
                         }
                       </dl>
                       <p class="peers">
-                        Percentiles are against the {{ d.peerCount }} {{ d.role }} players with enough
-                        games on this board. Higher is always better, including deaths.
+                        Placed against the {{ d.peerCount }} {{ d.role }} players on this board.
+                        1st is always best, including deaths.
                       </p>
                     }
                   } @else {

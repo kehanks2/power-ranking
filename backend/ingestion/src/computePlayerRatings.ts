@@ -105,22 +105,37 @@ export function buildPlayerGroupStats(
   }));
 }
 
-/** The single rating row that will be written for one player. */
-export interface PrimaryPlayerRating {
+/** One rating row: a player's standing inside one (league, role) group. */
+export interface PlayerGroupRating {
+  playerId: number;
+  leagueId: number;
+  role: string;
   rating: number;
   gamesPlayed: number;
   effectiveGames: number;
+  /** The group backed by the most recency-weighted games -- one per player. */
+  isPrimary: boolean;
 }
 
 /**
  * Percentiles every profile against its (league, role) peers, blends and
- * shrinks it, then keeps each player's primary profile -- the one backed by
- * the most recency-weighted games.
+ * shrinks it, and returns a rating for EVERY group a player has games in.
+ *
+ * It used to return only each player's biggest group, which made two things
+ * impossible to state honestly. A player who moved leagues kept a rating
+ * describing the league they left, shown on the board of the league they
+ * joined; and the games behind that rating could not be reconciled with the
+ * games they had actually played, because the group was never recorded.
+ *
+ * Keeping every group costs nothing -- they are all computed anyway, since a
+ * profile has to be percentiled against its own peers regardless -- and lets
+ * each reader ask for the group it means. `isPrimary` preserves the old
+ * "the player's rating" answer for readers with no league in mind.
  */
-export function selectPrimaryRatings(
+export function selectGroupRatings(
   groupStats: PlayerGroupStats[],
   winWeight = DEFAULT_WIN_WEIGHT,
-): Map<number, PrimaryPlayerRating> {
+): PlayerGroupRating[] {
   const weights = componentWeights(winWeight);
   const peerGroups = new Map<string, PlayerGroupStats[]>();
   for (const player of groupStats) {
@@ -129,7 +144,9 @@ export function selectPrimaryRatings(
     peerGroups.get(key)!.push(player);
   }
 
-  const bestByPlayer = new Map<number, PrimaryPlayerRating>();
+  const ratings: PlayerGroupRating[] = [];
+  const bestEffectiveByPlayer = new Map<number, number>();
+
   for (const peers of peerGroups.values()) {
     const kdaPeers = peers.map((p) => p.kda);
     const goldPeers = peers.map((p) => p.goldShare);
@@ -149,17 +166,33 @@ export function selectPrimaryRatings(
         weights,
       );
 
-      const incumbent = bestByPlayer.get(player.playerId);
-      if (!incumbent || player.effectiveGames > incumbent.effectiveGames) {
-        bestByPlayer.set(player.playerId, {
-          rating: shrinkToNeutral(blended, player.effectiveGames),
-          gamesPlayed: player.gamesPlayed,
-          effectiveGames: player.effectiveGames,
-        });
+      ratings.push({
+        playerId: player.playerId,
+        leagueId: player.leagueId,
+        role: player.role,
+        rating: shrinkToNeutral(blended, player.effectiveGames),
+        gamesPlayed: player.gamesPlayed,
+        effectiveGames: player.effectiveGames,
+        isPrimary: false,
+      });
+      const best = bestEffectiveByPlayer.get(player.playerId);
+      if (best === undefined || player.effectiveGames > best) {
+        bestEffectiveByPlayer.set(player.playerId, player.effectiveGames);
       }
     }
   }
-  return bestByPlayer;
+
+  // Marked in a second pass, because the winning group may live in a peer
+  // group processed after the player was first seen.
+  const claimed = new Set<number>();
+  for (const rating of ratings) {
+    if (claimed.has(rating.playerId)) continue;
+    if (rating.effectiveGames === bestEffectiveByPlayer.get(rating.playerId)) {
+      rating.isPrimary = true;
+      claimed.add(rating.playerId);
+    }
+  }
+  return ratings;
 }
 
 /** One row per player-game, with everything the composite needs. */
@@ -190,14 +223,15 @@ export async function fetchPlayerGameRows(pool: Pool): Promise<PlayerGameRow[]> 
  * within-league-only decision), blended via `componentWeights(winWeight)`, then
  * shrunk toward the peer-neutral 50 by sample size.
  *
- * Emits exactly ONE row per player. A player who changed role or league has
- * stats in more than one peer group; the group with the most recency-weighted
- * games wins, which is both deterministic and naturally prefers where they
- * play *now*. Every consumer reads this table with `DISTINCT ON (player_id)
- * ORDER BY as_of_date DESC` (the API's getPlayers, replayData's roster-implied
- * priors), and all rows from one run share a date -- so multiple rows per
- * player made those reads a coin flip. See playerRating.ts for the full list
- * of what v1 got wrong.
+ * Emits one row per (player, league, role) group. A player who changed role or
+ * league genuinely has more than one standing, and which one a caller wants
+ * depends on the question: a league board wants the group for THAT league, so
+ * it never rates someone on a league they left, while the roster-implied prior
+ * wants their strongest evidence regardless of league (`is_primary`).
+ *
+ * Readers must therefore name the group they mean. A bare
+ * `DISTINCT ON (player_id) ORDER BY as_of_date DESC` is a coin flip between
+ * groups, since every row from one run shares a date.
  *
  * Note: league is the team's CURRENT league (`tlm.end_date IS NULL`), not the
  * league the game was played in. That's deliberate -- the question this rating
@@ -205,8 +239,8 @@ export async function fetchPlayerGameRows(pool: Pool): Promise<PlayerGameRow[]> 
  */
 export async function computePlayerRatings(pool: Pool, winWeight = DEFAULT_WIN_WEIGHT): Promise<number> {
   const rows = await fetchPlayerGameRows(pool);
-  const bestByPlayer = selectPrimaryRatings(buildPlayerGroupStats(rows), winWeight);
-  return writeRatings(pool, bestByPlayer, 'regional');
+  const ratings = selectGroupRatings(buildPlayerGroupStats(rows), winWeight);
+  return writeRatings(pool, ratings, 'regional');
 }
 
 // --- International ("Global" tab) ratings -------------------------------------
@@ -283,8 +317,8 @@ export async function computeInternationalPlayerRatings(
 
   const groupStats = buildPlayerGroupStats(result.rows, INTERNATIONAL_HALF_LIFE_DAYS)
     .filter((g) => g.gamesPlayed >= MIN_INTERNATIONAL_GAMES);
-  const bestByPlayer = selectPrimaryRatings(groupStats, winWeight);
-  return writeRatings(pool, bestByPlayer, 'international');
+  const ratings = selectGroupRatings(groupStats, winWeight);
+  return writeRatings(pool, ratings, 'international');
 }
 
 /**
@@ -295,7 +329,7 @@ export async function computeInternationalPlayerRatings(
  */
 async function writeRatings(
   pool: Pool,
-  bestByPlayer: Map<number, PrimaryPlayerRating>,
+  ratings: PlayerGroupRating[],
   scope: 'regional' | 'international',
 ): Promise<number> {
   // Same class of bug fixed in computeRatings.ts: pin the transaction to one
@@ -307,11 +341,25 @@ async function writeRatings(
     let inserted = 0;
     const today = new Date().toISOString().slice(0, 10);
 
-    for (const [playerId, best] of bestByPlayer) {
+    for (const rating of ratings) {
       await client.query(
-        `INSERT INTO player_ratings_history (player_id, as_of_date, rating, games_played, method_version, scope)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [playerId, today, best.rating, best.gamesPlayed, PLAYER_RATING_METHOD_VERSION, scope],
+        `INSERT INTO player_ratings_history
+           (player_id, as_of_date, rating, games_played, method_version, scope, league_id, role, is_primary)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          rating.playerId,
+          today,
+          rating.rating,
+          rating.gamesPlayed,
+          PLAYER_RATING_METHOD_VERSION,
+          scope,
+          // International peer groups are role-only -- the league dimension is
+          // pinned to 0 upstream so the grouping collapses -- so there is no
+          // league to record, and NULL says that rather than inventing one.
+          scope === 'international' ? null : rating.leagueId,
+          rating.role,
+          rating.isPrimary,
+        ],
       );
       inserted += 1;
     }

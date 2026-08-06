@@ -161,6 +161,8 @@ describe('read API (live Postgres)', () => {
     }
   });
 
+  const STAT_KEYS = ['kills', 'deaths', 'assists', 'kda', 'csPerMin', 'goldDiff', 'killParticipation', 'damageShare', 'goldShare'];
+
   it('GET /players/:id returns a stat line placed against same-role peers', async () => {
     const board = await request(app).get('/players').query({ scope: 'international' });
     const top = board.body[0];
@@ -168,27 +170,50 @@ describe('read API (live Postgres)', () => {
     const res = await request(app).get(`/players/${top.id}`).query({ scope: 'international' });
     expect(res.status).toBe(200);
     expect(res.body.handle).toBe(top.handle);
-    expect(res.body.peerCount).toBeGreaterThan(1);
 
     const { stats } = res.body;
     expect(stats.wins + stats.losses).toBe(stats.games);
     expect(stats.winRate).toBeCloseTo(stats.wins / stats.games, 6);
 
-    for (const key of ['kills', 'deaths', 'assists', 'kda', 'csPerMin', 'goldDiff', 'killParticipation', 'damageShare', 'goldShare']) {
+    for (const key of STAT_KEYS) {
       const stat = stats[key];
-      // A percentile without a value would be percent_rank placing a null in
-      // the ordering, which reads as a real 0th percentile and is not one.
+      // A place without a value would be rank() placing a NULLS LAST row,
+      // which reads as a genuine last and is not one.
       if (stat.value === null) {
-        expect(stat.percentile).toBeNull();
+        expect(stat.place).toBeNull();
       } else {
-        expect(stat.percentile).toBeGreaterThanOrEqual(0);
-        expect(stat.percentile).toBeLessThanOrEqual(100);
+        expect(stat.place).toBeGreaterThanOrEqual(1);
+        expect(stat.place).toBeLessThanOrEqual(res.body.peerCount);
       }
     }
 
-    // The board's top player should not be scraping the bottom of their own
-    // role on the rating's own headline component.
-    expect(stats.kda.percentile).toBeGreaterThan(50);
+    // The board's top player should place in the upper half of their own role
+    // on the rating's own headline component.
+    expect(stats.kda.place).toBeLessThan(res.body.peerCount / 2);
+  });
+
+  it('GET /players/:id counts the same games the board Games column does', async () => {
+    // These disagreed until ratings recorded their (league, role) group: the
+    // column came from the one group the rating chose, the panel aggregated
+    // every game the player had anywhere.
+    const board = await request(app).get('/players').query({ league: 'LCS' });
+    for (const row of board.body.slice(0, 12)) {
+      const res = await request(app).get(`/players/${row.id}`);
+      expect(res.status).toBe(200);
+      expect(res.body.stats.games).toBe(row.gamesPlayed);
+    }
+  });
+
+  it('GET /players/:id places against exactly the same-role rows on that board', async () => {
+    // The denominator has to be countable on screen, so it is the board's own
+    // same-role row count -- not "players with enough games", which silently
+    // dropped fresh signings out of the total.
+    const board = await request(app).get('/players').query({ league: 'LCS' });
+    const top = board.body[0];
+    const sameRole = board.body.filter((p: { role: string }) => p.role === top.role).length;
+
+    const res = await request(app).get(`/players/${top.id}`);
+    expect(res.body.peerCount).toBe(sameRole);
   });
 
   it('GET /players/:id measures a regional rank inside the player own league, not across all of them', async () => {

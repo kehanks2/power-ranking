@@ -140,22 +140,16 @@
   }
 }
 
-.chevron {
-  width: 0;
-  height: 0;
-  flex: 0 0 auto;
-  border-left: 5px solid var(--color-text-muted);
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  transition: transform 140ms ease;
+// The whole row is the target, so the whole row shows it.
+tr.row-toggle {
+  cursor: pointer;
 }
 
 tr.is-open {
   background: var(--color-surface-hover);
 
-  .chevron {
-    transform: rotate(90deg) translateX(1px);
-    border-left-color: var(--color-gold);
+  .handle {
+    color: var(--color-gold);
   }
 }
 
@@ -293,15 +287,11 @@ tr.is-open td {
   background: var(--color-border-strong, #4a4f5e);
 }
 
-.stat__pct {
+.stat__place {
   font-size: 0.78rem;
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
   text-align: right;
-}
-
-.stat__pct-unit {
-  font-size: 0.66rem;
 }
 
 .peers {

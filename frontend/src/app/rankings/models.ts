@@ -83,13 +83,13 @@ export interface PlayerSummary {
 }
 
 /**
- * A stat and where it places the player among same-role peers in the same
- * scope. `percentile` is always oriented so higher is better, including for
- * deaths, where the better raw number is the lower one.
+ * A stat and where it places the player among the same-role players on this
+ * board. `place` is 1-based and always oriented so 1st is best, including for
+ * deaths, where the better raw number is the lower one. Ties share a place.
  */
 export interface PlayerStat {
   value: number | null;
-  percentile: number | null;
+  place: number | null;
 }
 
 export interface PlayerStats {
@@ -111,5 +111,6 @@ export interface PlayerStats {
 export interface PlayerDetail extends PlayerSummary {
   /** Measured over exactly the games this scope's rating was computed from. */
   stats: PlayerStats;
+  /** The denominator behind every `place`: same-role players on this board. */
   peerCount: number;
 }

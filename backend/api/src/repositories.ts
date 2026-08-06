@@ -346,9 +346,18 @@ export async function getPlayers(
     LEFT JOIN leagues l ON l.id = tlm.league_id
     LEFT JOIN team_last_game tlg ON tlg.team_id = t.id
     LEFT JOIN league_latest_split lls ON lls.canonical_league_id = l.id
+    -- The group has to match the board. A regional board asks "how good are
+    -- they in THIS league", so it reads the (league, role) group for the league
+    -- the player is rostered in -- otherwise someone who transferred is ranked
+    -- on games from the league they left (6 of 324 rostered players). The
+    -- international pool has no league dimension, so there it is role only.
     LEFT JOIN LATERAL (
-      SELECT rating, games_played FROM player_ratings_history
-      WHERE player_id = p.id AND scope = $2 ORDER BY as_of_date DESC LIMIT 1
+      SELECT rating, games_played FROM player_ratings_history prh_inner
+      WHERE prh_inner.player_id = p.id
+        AND prh_inner.scope = $2
+        AND prh_inner.role = rm.role
+        AND ($2 = 'international' OR prh_inner.league_id = l.id)
+      ORDER BY as_of_date DESC LIMIT 1
     ) prh ON true
     WHERE ($1::text IS NULL OR l.slug = $1)
       AND (t.id IS NULL OR tlg.last_game_at >= lls.latest_split_start)
@@ -385,29 +394,18 @@ export async function getPlayers(
  */
 const INTERNATIONAL_WINDOW_MONTHS = 36;
 
-/**
- * Minimum games to be *included in the peer group* a percentile is measured
- * against -- not a floor on being shown. A handful of players with two games
- * each would otherwise occupy both tails and squash everyone real into the
- * middle. Set to each scope's own display floor: 5 international games
- * (MIN_INTERNATIONAL_GAMES) and 10 regional (DEFAULT_SHRINKAGE_GAMES, the
- * point at which the rating stops being mostly shrinkage).
- */
-const PEER_MIN_GAMES: Record<PlayerRatingScope, number> = { international: 5, regional: 10 };
-
 interface PlayerStatsRow {
   role: string;
   games: number;
   wins: number;
-  peer_count: number;
   [metric: string]: number | string | null;
 }
 
 /**
  * Every metric the panel shows, with the direction that counts as better.
- * Deaths is the only one where a lower raw number is the better result, so its
- * percentile is ordered descending to keep "higher percentile is better" true
- * for every stat on the panel.
+ * Deaths is the only one where the better raw number is the lower one, so it
+ * sorts ascending while everything else sorts descending -- 1st always means
+ * best, whichever way the underlying number runs.
  */
 const STAT_METRICS = [
   { key: 'kills', expr: 'AVG(s.kills)', better: 'higher' },
@@ -434,45 +432,65 @@ const STAT_METRICS = [
  * A player's stat line for one scope, each figure placed against same-role
  * peers in that same scope.
  *
- * Aggregated by (player, role) and then reduced to the role they played most,
- * for the same reason computePlayerRatings picks one group: a player who
- * changed role has two genuinely different stat lines, and averaging a jungler
- * season with a mid season describes nobody.
+ * Scoped to exactly the games the rating was computed from, so the panel's
+ * game count is the board's Games column rather than a second, larger number:
+ * on a regional board that is the player's games in THAT league (Berserker has
+ * 130 in LCS and 88 in LCK, and the two are different stat lines, not one), and
+ * on the international board it is their international games in the window.
+ *
+ * Peers are taken from the board itself rather than rebuilt from a query, so
+ * "3rd of 12" always agrees with the rows a reader can count on screen. Only
+ * peers who actually have games in the group are counted -- a player who just
+ * transferred in has no stat line to place.
  */
 export async function getPlayerById(pool: Pool, playerId: number, scope: PlayerRatingScope): Promise<PlayerDetailDto | null> {
-  // Regional ratings are within-league percentiles, so the rank has to come
-  // from the player's own league list -- ranking them against a pool of every
-  // league at once is the cross-league comparison the whole design refuses to
-  // make. International is already one pool, so it needs no narrowing.
+  // Regional ratings are within-league percentiles, so the board has to be the
+  // player's own league -- ranking them against a pool of every league at once
+  // is the cross-league comparison the whole design refuses to make.
+  // International is already one pool, so it needs no narrowing.
   let leagueSlug: string | undefined;
+  let leagueId: number | undefined;
   if (scope === 'regional') {
-    const leagueRow = await pool.query<{ slug: string }>(
-      `SELECT l.slug FROM roster_memberships rm
+    const leagueRow = await pool.query<{ id: number; slug: string }>(
+      `SELECT l.id, l.slug FROM roster_memberships rm
        JOIN team_league_memberships tlm ON tlm.team_id = rm.team_id AND tlm.end_date IS NULL
        JOIN leagues l ON l.id = tlm.league_id
        WHERE rm.player_id = $1 AND rm.end_date IS NULL LIMIT 1`,
       [playerId],
     );
     leagueSlug = leagueRow.rows[0]?.slug;
+    leagueId = leagueRow.rows[0]?.id;
   }
 
   const summaries = await getPlayers(pool, leagueSlug, scope);
   const summary = summaries.find((p) => p.id === playerId);
   if (!summary) return null;
 
-  const internationalOnly =
-    scope === 'international'
-      ? `JOIN series se ON se.id = g.series_id
-         JOIN tournaments tn ON tn.id = se.tournament_id
+  const peerIds = summaries.filter((p) => p.role === summary.role).map((p) => p.id);
+
+  // Regional restricts to games played for a team in this league, matching
+  // fetchPlayerGameRows' grouping; international restricts to the event type
+  // and window computeInternationalPlayerRatings uses. Either way the set of
+  // games is the one behind the rating.
+  // The league parameter only exists on the regional path, so the role
+  // placeholder shifts with it -- passing an unreferenced parameter leaves
+  // Postgres unable to infer its type (42P18).
+  const isInternational = scope === 'international';
+  const roleParam = isInternational ? '$3' : '$4';
+  const scopeJoin = isInternational
+    ? `JOIN series se ON se.id = g.series_id
+       JOIN tournaments tn ON tn.id = se.tournament_id
          AND tn.tournament_type = 'international'
          AND g.datetime_utc > NOW() - INTERVAL '${INTERNATIONAL_WINDOW_MONTHS} months'`
-      : '';
+    : `JOIN team_league_memberships tlm ON tlm.team_id = pgp.team_id AND tlm.end_date IS NULL
+         AND tlm.league_id = $3`;
 
   const aggregates = STAT_METRICS.map((m) => `${m.expr} AS "${m.key}"`).join(',\n      ');
-  // percent_rank() is over the whole role partition, so it is computed against
-  // every qualifying peer and only then narrowed to this player.
-  const percentiles = STAT_METRICS.map(
-    (m) => `ROUND((percent_rank() OVER (PARTITION BY role ORDER BY "${m.key}" ${m.better === 'lower' ? 'DESC' : 'ASC'} NULLS FIRST) * 100)::numeric, 0) AS "${m.key}_pct"`,
+  // rank(), not percent_rank(): the panel reports a place, so ties share a
+  // place (1, 1, 3) the way a leaderboard does. NULLS LAST keeps a player with
+  // no value for a stat from taking 1st in it.
+  const places = STAT_METRICS.map(
+    (m) => `rank() OVER (ORDER BY "${m.key}" ${m.better === 'lower' ? 'ASC' : 'DESC'} NULLS LAST)::int AS "${m.key}_place"`,
   ).join(',\n      ');
 
   const result = await pool.query<PlayerStatsRow>(
@@ -485,7 +503,8 @@ export async function getPlayerById(pool: Pool, playerId: number, scope: PlayerR
              (g.winner_team_id = pgp.team_id) AS won
       FROM player_game_performance pgp
       JOIN games g ON g.id = pgp.game_id
-      ${internationalOnly}
+      ${scopeJoin}
+      WHERE pgp.player_id = ANY($2::int[]) AND pgp.role = ${roleParam}
     ),
     agg AS (
       SELECT s.player_id, s.role,
@@ -494,29 +513,28 @@ export async function getPlayerById(pool: Pool, playerId: number, scope: PlayerR
              ${aggregates}
       FROM scoped s
       GROUP BY s.player_id, s.role
-      HAVING COUNT(*) >= $2
     ),
     ranked AS (
-      SELECT *, COUNT(*) OVER (PARTITION BY role)::int AS peer_count,
-             ${percentiles}
+      SELECT *,
+             ${places}
       FROM agg
     )
-    SELECT * FROM ranked WHERE player_id = $1 ORDER BY games DESC LIMIT 1
+    SELECT * FROM ranked WHERE player_id = $1
     `,
-    [playerId, PEER_MIN_GAMES[scope]],
+    isInternational ? [playerId, peerIds, summary.role] : [playerId, peerIds, leagueId, summary.role],
   );
 
-  // Below the peer minimum the player has a rating but no placeable stat line.
-  // Reported as an empty line rather than a 404: the row exists on the board,
-  // so the panel has to say "too few games" rather than appear broken.
+  // A player with no games in this group still has a board row (rated 50,
+  // "not yet established"), so the panel reports an empty stat line rather
+  // than 404ing and looking broken.
   const row = result.rows[0];
   const num = (v: number | string | null | undefined): number | null => (v === null || v === undefined ? null : Number(v));
-  // A missing value has no standing to report. percent_rank still assigns
-  // nulls a position in the ordering, so the percentile is dropped alongside
-  // the value rather than shown as a genuine 0th percentile.
+  // A missing value has no standing to report. rank() still assigns NULLS LAST
+  // rows a place, so the place is dropped alongside the value rather than
+  // reported as a genuine last.
   const stat = (key: string) => {
     const value = num(row?.[key]);
-    return { value, percentile: value === null ? null : num(row?.[`${key}_pct`]) };
+    return { value, place: value === null ? null : num(row?.[`${key}_place`]) };
   };
 
   const games = row?.games ?? 0;
@@ -524,7 +542,11 @@ export async function getPlayerById(pool: Pool, playerId: number, scope: PlayerR
 
   return {
     ...summary,
-    peerCount: row?.peer_count ?? 0,
+    // Every same-role row on the board, not just the rankable ones, so the
+    // denominator is what a reader can count on screen. A peer who has not
+    // played in this group yet (a fresh signing) simply takes no place, which
+    // is why the highest place can be short of this number.
+    peerCount: peerIds.length,
     stats: {
       games,
       wins,

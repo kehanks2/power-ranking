@@ -139,10 +139,16 @@ export async function loadReplayData(
   // ratings, which cover a different (much smaller, elite-only) population on
   // a differently-centred scale. Mixing the two would make DISTINCT ON pick
   // between two incomparable numbers arbitrarily.
+  // is_primary is not optional either: a player with games in two leagues has
+  // a rating row for each, all sharing one run's date, so DISTINCT ON alone
+  // would pick between them arbitrarily. The prior wants their strongest
+  // evidence wherever it was earned -- a signing's track record does not stop
+  // counting because it was built in another league -- which is exactly the
+  // group is_primary marks.
   const playerRatingsResult = await pool.query<{ player_id: number; rating: string; games_played: number }>(`
     SELECT DISTINCT ON (player_id) player_id, rating, games_played
     FROM player_ratings_history
-    WHERE scope = 'regional'
+    WHERE scope = 'regional' AND is_primary
     ORDER BY player_id, as_of_date DESC
   `);
   const playerRatingById = new Map<number, { rating: number; gamesPlayed: number }>();
