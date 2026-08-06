@@ -335,6 +335,7 @@ export async function getPlayers(
     id: number;
     handle: string;
     team_slug: string | null;
+    team_name: string | null;
     league_slug: string | null;
     role: PlayerSummaryDto['role'] | null;
     rating: string | null;
@@ -343,7 +344,7 @@ export async function getPlayers(
   }>(
     `
     WITH ${LEAGUE_LATEST_SPLIT_CTE}
-    SELECT p.id, p.handle, t.slug AS team_slug, l.slug AS league_slug, rm.role,
+    SELECT p.id, p.handle, t.slug AS team_slug, t.name AS team_name, l.slug AS league_slug, rm.role,
            prh.rating, prh.games_played, rm.secondary_team
     FROM players p
     LEFT JOIN roster_memberships rm ON rm.player_id = p.id AND rm.end_date IS NULL
@@ -381,6 +382,7 @@ export async function getPlayers(
       id: row.id,
       handle: row.handle,
       teamSlug: row.team_slug,
+      teamName: row.team_name,
       leagueSlug: row.league_slug,
       role: row.role as PlayerSummaryDto['role'],
       rating: row.rating !== null ? Number(row.rating) : 50, // 50 = neutral composite score, no games yet

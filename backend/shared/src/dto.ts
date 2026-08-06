@@ -66,6 +66,8 @@ export interface PlayerSummaryDto {
   id: number;
   handle: string;
   teamSlug: string | null;
+  /** Display name ("Gen.G"), not the slug ("gen-g") the boards used to show. */
+  teamName: string | null;
   /** The player's current region/league (e.g. 'LCK'); null if unresolved. */
   leagueSlug: string | null;
   role: 'TOP' | 'JNG' | 'MID' | 'BOT' | 'SUP';

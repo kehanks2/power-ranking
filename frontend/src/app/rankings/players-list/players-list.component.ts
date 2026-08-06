@@ -2,7 +2,7 @@ import { Component, ChangeDetectionStrategy, inject, signal, computed, effect } 
 import { DecimalPipe, PercentPipe } from '@angular/common';
 import { RankingsApiService } from '../rankings-api.service';
 import { LeagueFilterService } from '../league-filter.service';
-import type { PlayerDetail, PlayerStat, PlayerSummary } from '../models';
+import { ROLES, type PlayerDetail, type PlayerStat, type PlayerSummary, type Role } from '../models';
 
 /** One stat as the panel renders it: already formatted, with its standing. */
 interface StatView {
@@ -44,8 +44,23 @@ export class PlayersListComponent {
   private readonly api = inject(RankingsApiService);
   protected readonly filterService = inject(LeagueFilterService);
 
-  protected readonly players = signal<PlayerSummary[]>([]);
+  private readonly allPlayers = signal<PlayerSummary[]>([]);
   protected readonly loading = signal(true);
+
+  /**
+   * Role filter. Client-side on the already-loaded board rather than a refetch:
+   * the list is small, and every place shown in the panel is measured against
+   * the whole role peer group regardless of what is filtered, so narrowing the
+   * view must not change the numbers.
+   */
+  protected readonly roles = ROLES;
+  protected readonly roleFilter = signal<Role | null>(null);
+
+  protected readonly players = computed(() => {
+    const role = this.roleFilter();
+    const rows = this.allPlayers();
+    return role === null ? rows : rows.filter((p) => p.role === role);
+  });
 
   /** The row whose panel is open. Only one at a time -- a board of open panels scrolls badly. */
   protected readonly openPlayerId = signal<number | null>(null);
@@ -143,7 +158,7 @@ export class PlayersListComponent {
       this.openPlayerId.set(null);
       this.detail.set(null);
       const subscription = this.api.getPlayers(scope).subscribe((players) => {
-        this.players.set(players);
+        this.allPlayers.set(players);
         this.loading.set(false);
       });
       onCleanup(() => subscription.unsubscribe());
@@ -166,6 +181,13 @@ export class PlayersListComponent {
       });
       onCleanup(() => subscription.unsubscribe());
     });
+  }
+
+  protected setRole(role: Role | null): void {
+    this.roleFilter.set(role);
+    // A panel left open can belong to a row the filter just removed.
+    this.openPlayerId.set(null);
+    this.detail.set(null);
   }
 
   protected toggle(playerId: number): void {

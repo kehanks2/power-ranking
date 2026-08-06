@@ -1,8 +1,33 @@
 @if (loading()) {
   <p class="status">Loading players…</p>
-} @else if (players().length === 0) {
-  <p class="status">No players ranked yet for this board.</p>
 } @else {
+  <div class="role-filter" role="group" aria-label="Filter by position">
+    <button
+      type="button"
+      class="chip"
+      [class.chip--active]="roleFilter() === null"
+      [attr.aria-pressed]="roleFilter() === null"
+      (click)="setRole(null)"
+    >
+      All roles
+    </button>
+    @for (role of roles; track role) {
+      <button
+        type="button"
+        class="chip"
+        [class.chip--active]="roleFilter() === role"
+        [attr.aria-pressed]="roleFilter() === role"
+        (click)="setRole(role)"
+      >
+        {{ role }}
+      </button>
+    }
+  </div>
+}
+
+@if (!loading() && players().length === 0) {
+  <p class="status">No players ranked yet for this board.</p>
+} @else if (!loading()) {
   <div class="table-scroll">
     <table class="players-table">
       <caption class="visually-hidden">
@@ -58,7 +83,7 @@
                 }
               </td>
             }
-            <td class="team">{{ player.teamSlug ?? '—' }}</td>
+            <td class="team">{{ player.teamName ?? '—' }}</td>
             <td class="num rating">{{ player.rating | number: '1.0-0' }}</td>
             <td class="num games">{{ player.gamesPlayed }}</td>
           </tr>

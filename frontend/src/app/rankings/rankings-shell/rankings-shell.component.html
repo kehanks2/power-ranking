@@ -25,8 +25,24 @@
           </button>
         }
       </div>
+      <!-- Players and teams are rated by genuinely different methods -- a
+           Glicko-2 rating on one, a percentile among role peers on the other --
+           so one shared description was wrong on whichever view it was not
+           written for. -->
       <p class="scope-note">
-        @if (filter.selectedScope() === 'international') {
+        @if (isPlayers()) {
+          @if (filter.selectedScope() === 'international') {
+            Players scored on their <strong>international games from the last three years</strong>,
+            against everyone else who has played at that level in the same role. Because that pool
+            genuinely played each other, <strong>these numbers do compare across regions</strong>.
+            Five international games to appear.
+          } @else {
+            Players scored against <strong>others in the same role in {{ filter.selectedScope() }}</strong>
+            — 50 is an average {{ filter.selectedScope() }} player at that position, not an average
+            player everywhere. <strong>The scale restarts on every regional board</strong>, so a 78
+            here and a 78 elsewhere say nothing about each other.
+          }
+        } @else if (filter.selectedScope() === 'international') {
           Built from the <strong>last six international events</strong> — two years of First Stand,
           MSI, and Worlds, where every team here faced the same field. Teams need at least 10 games
           across those events to appear; without them a team isn’t ranked low, it simply doesn’t

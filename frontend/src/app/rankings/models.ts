@@ -70,12 +70,19 @@ export interface TeamDetail extends TeamSummary {
  */
 export type PlayerRatingScope = 'regional' | 'international';
 
+/** In-game order. Every roster in the sport is read TOP-JNG-MID-BOT-SUP. */
+export const ROLES = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'] as const;
+
+export type Role = (typeof ROLES)[number];
+
 export interface PlayerSummary {
   id: number;
   handle: string;
   teamSlug: string | null;
+  /** Display name ("Gen.G"), not the slug. */
+  teamName: string | null;
   leagueSlug: string | null;
-  role: 'TOP' | 'JNG' | 'MID' | 'BOT' | 'SUP';
+  role: Role;
   rating: number;
   rank: number;
   scope: PlayerRatingScope;

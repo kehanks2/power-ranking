@@ -5,11 +5,14 @@ import {
   signal,
   viewChild,
   effect,
+  computed,
   ElementRef,
   DOCUMENT,
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { filter, map } from 'rxjs';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { LeagueFilterService } from '../league-filter.service';
 import { RankingsApiService } from '../rankings-api.service';
 import { BOARD_SCOPES, type BoardScope, type LeagueSummary } from '../models';
@@ -37,6 +40,22 @@ export class RankingsShellComponent {
 
   private readonly stickyTop = viewChild.required<ElementRef<HTMLElement>>('stickyTop');
   private readonly document = inject(DOCUMENT);
+  private readonly router = inject(Router);
+
+  /**
+   * Which view is showing, so the scope note can describe the right thing.
+   * Teams and players are rated by genuinely different methods, and one shared
+   * description was wrong on whichever view it was not written for.
+   */
+  private readonly url = toSignal(
+    this.router.events.pipe(
+      filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+      map((event) => event.urlAfterRedirects),
+    ),
+    { initialValue: this.router.url },
+  );
+
+  protected readonly isPlayers = computed(() => this.url().includes('/players'));
 
   constructor() {
     this.api.getLeagues().subscribe((leagues) => this.leagues.set(leagues));
