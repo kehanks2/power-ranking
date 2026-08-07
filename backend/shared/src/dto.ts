@@ -99,6 +99,8 @@ export type PlayerRatingScope = 'regional' | 'international';
 export interface PlayerSummaryDto {
   id: number;
   handle: string;
+  /** Their current team, for linking through to it. Null when unrostered. */
+  teamId: number | null;
   teamSlug: string | null;
   /** Display name ("Gen.G"), not the slug ("gen-g") the boards used to show. */
   teamName: string | null;

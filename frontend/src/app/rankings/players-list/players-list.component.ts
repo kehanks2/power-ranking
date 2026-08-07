@@ -1,5 +1,6 @@
 import { Component, ChangeDetectionStrategy, inject, signal, computed, effect } from '@angular/core';
 import { DecimalPipe, PercentPipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { RankingsApiService } from '../rankings-api.service';
 import { LeagueFilterService } from '../league-filter.service';
 import { ROLES, type PlayerDetail, type PlayerStat, type PlayerSummary, type Role } from '../models';
@@ -45,7 +46,7 @@ interface StatGroup {
 
 @Component({
   selector: 'app-players-list',
-  imports: [DecimalPipe, PercentPipe],
+  imports: [DecimalPipe, PercentPipe, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './players-list.component.html',
   styleUrl: './players-list.component.scss',

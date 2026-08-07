@@ -97,6 +97,8 @@ export type Role = (typeof ROLES)[number];
 export interface PlayerSummary {
   id: number;
   handle: string;
+  /** Their current team, for linking through to it. Null when unrostered. */
+  teamId: number | null;
   teamSlug: string | null;
   /** Display name ("Gen.G"), not the slug. */
   teamName: string | null;

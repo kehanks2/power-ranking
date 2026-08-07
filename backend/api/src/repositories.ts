@@ -425,6 +425,7 @@ export async function getPlayers(
   const result = await pool.query<{
     id: number;
     handle: string;
+    team_id: number | null;
     team_slug: string | null;
     team_name: string | null;
     league_slug: string | null;
@@ -435,7 +436,7 @@ export async function getPlayers(
   }>(
     `
     WITH ${LEAGUE_LATEST_SPLIT_CTE}
-    SELECT p.id, p.handle, t.slug AS team_slug, t.name AS team_name, l.slug AS league_slug, rm.role,
+    SELECT p.id, p.handle, t.id AS team_id, t.slug AS team_slug, t.name AS team_name, l.slug AS league_slug, rm.role,
            prh.rating, prh.games_played, rm.secondary_team
     FROM players p
     LEFT JOIN roster_memberships rm ON rm.player_id = p.id AND rm.end_date IS NULL
@@ -472,6 +473,7 @@ export async function getPlayers(
     .map((row) => ({
       id: row.id,
       handle: row.handle,
+      teamId: row.team_id,
       teamSlug: row.team_slug,
       teamName: row.team_name,
       leagueSlug: row.league_slug,

@@ -327,6 +327,27 @@ tr.is-open td {
   font-size: 0.86rem;
 }
 
+// Leaves the board, so it is a link and looks like one you take deliberately
+// -- not another row toggle. Pushed to the far end of the head row so it never
+// competes with the record for first read.
+.team-link {
+  margin-left: auto;
+  align-self: center;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--color-gold);
+  text-decoration: none;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.32rem 0.75rem;
+  white-space: nowrap;
+
+  &:hover {
+    background: var(--color-surface);
+    border-color: var(--color-gold);
+  }
+}
+
 .coverage {
   margin: 0;
   color: var(--color-text-muted);

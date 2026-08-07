@@ -106,6 +106,14 @@
                         </p>
                       }
                       <p class="coverage">{{ coverageNote() }}</p>
+                      <!-- The panel answers "how is this player doing"; the
+                           next question is usually about the side they play
+                           for, and there was no way there from here. -->
+                      @if (player.teamId) {
+                        <a class="team-link" [routerLink]="['/rankings/teams', player.teamId]">
+                          {{ player.teamName }} team page →
+                        </a>
+                      }
                     </div>
 
                     @if (d.stats.games === 0) {

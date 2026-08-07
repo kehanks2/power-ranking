@@ -64,13 +64,23 @@
       </thead>
       <tbody>
         @for (team of sorted(); track team.id; let i = $index) {
-          <tr>
+          <!-- Clicking anywhere on the row opens the panel. The name is still a
+               real button so the control stays reachable and announced without
+               a mouse; the row click is a mouse-only convenience on top, and
+               stopPropagation keeps the two from cancelling each other. -->
+          <tr class="row-toggle" [class.is-open]="isOpen(team.id)" (click)="toggle(team.id)">
             <td class="rank">{{ i + 1 }}</td>
             <td>
-              <a class="team-cell" [routerLink]="['/rankings/teams', team.id]">
+              <button
+                type="button"
+                class="team-cell"
+                [attr.aria-expanded]="isOpen(team.id)"
+                [attr.aria-controls]="'team-panel-' + team.id"
+                (click)="$event.stopPropagation(); toggle(team.id)"
+              >
                 <span class="crest" [class]="'lg-' + team.leagueSlug">{{ initials(team.name) }}</span>
                 <span class="team">{{ team.name }}</span>
-              </a>
+              </button>
             </td>
             @if (isInternational()) {
               <td class="region-cell"><span class="region" [class]="'lg-' + team.leagueSlug">{{ team.leagueSlug }}</span></td>
@@ -128,6 +138,49 @@
             </td>
             <td class="num games">{{ team.games }}</td>
           </tr>
+
+          @if (isOpen(team.id)) {
+            <tr class="detail-row">
+              <td [attr.colspan]="columnCount()">
+                <div class="panel" [id]="'team-panel-' + team.id">
+                  @if (detailLoading()) {
+                    <p class="status">Loading {{ team.name }}’s record…</p>
+                  } @else if (detail(); as d) {
+                    <div class="panel__head">
+                      <p class="record">
+                        <strong>{{ panelTotals().seriesWins }}–{{ panelTotals().seriesLosses }}</strong>
+                        <span class="record__unit">series</span>
+                      </p>
+                      <p class="record">
+                        <strong>{{ panelTotals().wins }}–{{ panelTotals().losses }}</strong>
+                        <span class="record__unit">games</span>
+                        <span class="record__rate">{{ panelTotals().winRate | percent: '1.0-0' }} win rate</span>
+                      </p>
+                      <a class="team-link" [routerLink]="['/rankings/teams', team.id]">Full team page →</a>
+                    </div>
+
+                    @if (d.roster.length > 0) {
+                      <ul class="mini-roster">
+                        @for (entry of d.roster; track entry.playerId) {
+                          <li>
+                            <span class="mini-roster__role">{{ entry.role }}</span>
+                            <span class="mini-roster__handle">{{ entry.handle }}</span>
+                          </li>
+                        }
+                      </ul>
+                    }
+
+                    <p class="panel__note">
+                      {{ isInternational() ? 'International games only.' : filterService.selectedScope() + ' games only.' }}
+                      The full page breaks this down by event, with the series format behind each record.
+                    </p>
+                  } @else {
+                    <p class="status">Couldn’t load {{ team.name }}’s record.</p>
+                  }
+                </div>
+              </td>
+            </tr>
+          }
         }
       </tbody>
     </table>

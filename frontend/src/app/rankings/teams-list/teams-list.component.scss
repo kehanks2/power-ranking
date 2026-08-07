@@ -180,15 +180,29 @@ $slot-width: 56px;
   font-variant-numeric: tabular-nums;
 }
 
+// A real button, so the panel stays reachable and announced without a mouse --
+// but it has to read as the team name did, since a form control here would
+// turn the column into chrome.
 .team-cell {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  text-decoration: none;
-  color: inherit;
 
   &:hover .team {
     color: var(--color-gold);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-gold);
+    outline-offset: 3px;
+    border-radius: 3px;
   }
 }
 
@@ -496,6 +510,146 @@ td.interval {
   .slot__place {
     color: #6a7183;
   }
+}
+
+// --- Detail panel ----------------------------------------------------------
+//
+// Same idiom as the players board: the row opens in place with the short
+// answer, and the full page is one click further for the long one.
+
+// The whole row is the target, so the whole row shows it.
+tr.row-toggle {
+  cursor: pointer;
+}
+
+tr.is-open {
+  background: var(--color-surface-hover);
+
+  .team {
+    color: var(--color-gold);
+  }
+}
+
+tr.is-open td {
+  border-bottom-color: transparent;
+}
+
+.detail-row td {
+  padding: 0 $cell-pad-x 1.1rem;
+  background: var(--color-surface-hover);
+}
+
+.panel {
+  border-left: 2px solid var(--color-gold);
+  padding: 0.2rem 0 0.3rem 0.9rem;
+  animation: slide-down 160ms ease;
+}
+
+// Height is not animatable from auto and the panel's height depends on the
+// roster, so the reveal is transform + opacity.
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+}
+
+.panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1.6rem;
+  margin-bottom: 0.85rem;
+}
+
+// Proportional figures deliberately: tabular-nums gives every digit the width
+// of a zero, which reads loose at this size, and nothing lines up under it.
+.record {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+
+  strong {
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+}
+
+.record__unit,
+.record__rate {
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+}
+
+// Leaves the board, so it is a link and looks like one you take deliberately
+// rather than another row toggle.
+.team-link {
+  margin-left: auto;
+  align-self: center;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--color-gold);
+  text-decoration: none;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.32rem 0.75rem;
+  white-space: nowrap;
+
+  &:hover {
+    background: var(--color-surface);
+    border-color: var(--color-gold);
+  }
+}
+
+// In-game order, as the API returns it. Five names is the whole answer to
+// "who is this", so it stays one row rather than becoming a table.
+.mini-roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 1.5rem;
+
+  li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+  }
+}
+
+.mini-roster__role {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-text-dim, #6c7385);
+  min-width: 2.1rem;
+}
+
+.mini-roster__handle {
+  font-weight: 650;
+  font-size: 0.92rem;
+}
+
+.panel__note {
+  margin: 0.9rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  max-width: 70ch;
 }
 
 .legend {

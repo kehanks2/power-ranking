@@ -1,9 +1,9 @@
 import { Component, ChangeDetectionStrategy, inject, signal, computed, effect } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import { DecimalPipe, PercentPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { RankingsApiService } from '../rankings-api.service';
 import { LeagueFilterService } from '../league-filter.service';
-import type { TeamSummary } from '../models';
+import type { TeamDetail, TeamRecord, TeamSummary } from '../models';
 
 /**
  * The six most recent international events, OLDEST first. Column order on the
@@ -28,7 +28,7 @@ interface AxisTick {
 
 @Component({
   selector: 'app-teams-list',
-  imports: [DecimalPipe, RouterLink],
+  imports: [DecimalPipe, PercentPipe, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './teams-list.component.html',
   styleUrl: './teams-list.component.scss',
@@ -43,6 +43,40 @@ export class TeamsListComponent {
   protected readonly events = RECENT_EVENTS;
 
   protected readonly isInternational = computed(() => this.filterService.selectedScope() === 'international');
+
+  /** The row whose panel is open. One at a time -- a board of open panels scrolls badly. */
+  protected readonly openTeamId = signal<number | null>(null);
+  protected readonly detail = signal<TeamDetail | null>(null);
+  protected readonly detailLoading = signal(false);
+
+  /** Panel spans the whole row, so the count has to track the conditional Region column. */
+  protected readonly columnCount = computed(() => (this.isInternational() ? 9 : 8));
+
+  /**
+   * The records that belong to the board being read. An international board
+   * showing a team's domestic splits would be answering a question nobody
+   * asked of it, and the totals would not reconcile with the Games column.
+   */
+  protected readonly panelRecords = computed<TeamRecord[]>(() => {
+    const detail = this.detail();
+    if (!detail) return [];
+    return this.isInternational() ? detail.international : detail.regional;
+  });
+
+  protected readonly panelTotals = computed(() => {
+    const rows = this.panelRecords();
+    const sum = rows.reduce(
+      (acc, row) => ({
+        wins: acc.wins + row.wins,
+        losses: acc.losses + row.losses,
+        seriesWins: acc.seriesWins + row.seriesWins,
+        seriesLosses: acc.seriesLosses + row.seriesLosses,
+      }),
+      { wins: 0, losses: 0, seriesWins: 0, seriesLosses: 0 },
+    );
+    const games = sum.wins + sum.losses;
+    return { ...sum, games, winRate: games === 0 ? 0 : sum.wins / games };
+  });
 
   protected readonly sorted = computed(() => {
     const key = this.sortKey();
@@ -73,6 +107,10 @@ export class TeamsListComponent {
     effect((onCleanup) => {
       const scope = this.filterService.selectedScope();
       this.loading.set(true);
+      // A panel left open across a tab switch would show one board's record
+      // under another board's row.
+      this.openTeamId.set(null);
+      this.detail.set(null);
       const subscription = this.api.getTeams(scope).subscribe({
         next: (teams) => {
           this.teams.set(teams);
@@ -85,6 +123,33 @@ export class TeamsListComponent {
       });
       onCleanup(() => subscription.unsubscribe());
     });
+
+    effect((onCleanup) => {
+      const teamId = this.openTeamId();
+      if (teamId === null) return;
+      this.detailLoading.set(true);
+      const subscription = this.api.getTeamById(teamId).subscribe({
+        next: (detail) => {
+          this.detail.set(detail);
+          this.detailLoading.set(false);
+        },
+        error: () => {
+          this.detail.set(null);
+          this.detailLoading.set(false);
+        },
+      });
+      onCleanup(() => subscription.unsubscribe());
+    });
+  }
+
+  protected toggle(teamId: number): void {
+    const isOpen = this.openTeamId() === teamId;
+    this.openTeamId.set(isOpen ? null : teamId);
+    if (isOpen) this.detail.set(null);
+  }
+
+  protected isOpen(teamId: number): boolean {
+    return this.openTeamId() === teamId;
   }
 
   protected pct(value: number): number {
