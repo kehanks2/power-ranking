@@ -4,6 +4,7 @@ import {
   metaToDisplayOffset,
   initialLeagueMeta,
   conservativeRank,
+  META_WEIGHT,
   DEFAULT_CONSERVATIVE_K,
   GLICKO2_SCALE,
   DEFAULT_VOLATILITY,
@@ -20,14 +21,10 @@ import type {
 } from '@power-ranking/shared';
 
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
-// Combination happens at read time, not baked into the stored mu_ctx/mu_meta
-// values, so the API has to apply the same weight+confidence-shrinkage the
-// replay used or displayed ratings won't match what was actually computed.
-//
-// Must stay identical to computeRatings.ts's META_WEIGHT -- see the reasoning
-// there. Combination happens at read time, not baked into stored mu values, so
-// a mismatch makes displayed ratings disagree with what the replay computed.
-const META_WEIGHT = 0.5;
+// META_WEIGHT is imported, not restated: combination happens at read time
+// rather than being baked into the stored mu_ctx/mu_meta, so the API has to
+// apply exactly the weight the replay used or displayed ratings disagree with
+// what was computed.
 // A team with no game in its league's latest split is treated as no longer
 // actively competing (e.g. relegated, or just not in the current split's
 // lineup) -- team_league_memberships only ever grows an open (end_date IS

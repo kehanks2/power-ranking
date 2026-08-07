@@ -6,16 +6,32 @@
  */
 import { createPool } from '../db.js';
 import { loadReplayData } from '../replayData.js';
-import { runReplay, combineContextualAndMeta, E, type ReplayGame } from '@power-ranking/rating-engine';
+import {
+  runReplay,
+  combineContextualAndMeta,
+  E,
+  MARGIN_SCALE,
+  MOV_WEIGHT_CAP,
+  META_WEIGHT,
+  SERIES_CORRELATION,
+  RATING_PERIOD_DAYS,
+  INTERNATIONAL_WEIGHT_MULTIPLIER,
+  type ReplayGame,
+} from '@power-ranking/rating-engine';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
+// Optional override so a knob can be swept through the SAME evaluation this
+// file already does, rather than a second copy of it drifting out of step --
+// which is exactly how the constants above went wrong.
+const RELIEF_OVERRIDE = process.argv.includes('--relief')
+  ? Number(process.argv[process.argv.indexOf('--relief') + 1])
+  : undefined;
 const GLICKO2_SCALE = 173.7178;
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
-// Kept in lockstep with computeRatings.ts so this measures what we actually
-// ship, not a differently-tuned hypothetical.
-const META_WEIGHT = 0.8;
-const SERIES_CORRELATION = 0.8;
-const RATING_PERIOD_DAYS = 1;
+// Imported, not restated. These were hand-copied and drifted: this file ran
+// metaWeight 0.8 and seriesCorrelation 0.8 against a shipped 0.5 and 0.6,
+// under a comment claiming lockstep -- so every figure it printed described a
+// model nobody ships.
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 function weekBucket(dateIso: string): string {
@@ -66,11 +82,13 @@ async function main() {
     config: {
       phiInitMax: PHI_INIT_MAX,
       sigmaDefault: 0.06,
-      marginScale: 1e9, // MOV disabled, matching production
-      movWeightCap: 1.5,
+      marginScale: MARGIN_SCALE,
+      movWeightCap: MOV_WEIGHT_CAP,
       metaWeight: META_WEIGHT,
       seriesCorrelation: SERIES_CORRELATION,
       ratingPeriodDays: RATING_PERIOD_DAYS,
+      internationalWeightMultiplier: INTERNATIONAL_WEIGHT_MULTIPLIER,
+      ...(RELIEF_OVERRIDE === undefined ? {} : { priorConfidenceRelief: RELIEF_OVERRIDE }),
     },
   });
   const teamSnaps = buildSnapshotLookup(result.teamHistory, (r) => r.teamId);

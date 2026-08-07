@@ -49,12 +49,25 @@ export interface RosterDecayConfig {
  * widening. At 0 the prior is ignored for uncertainty (the original
  * behaviour); at 1 a well-known incoming five would widen RD not at all.
  *
- * Deliberately not 1: even five individually well-understood players are an
- * unknown *combination*. Team synergy is real, so signing five known stars
- * still leaves genuine uncertainty about the unit. This keeps 40% of the
- * widening at full confidence.
+ * Swept end to end against the real dataset. Brier bottoms here (0.2244, vs
+ * 0.2246 at 0.6 and 0.2258 at 0), and median displayed RD falls to 82 from 92
+ * at 0.6 and 109 at 0 -- the RD movement is the meaningful part, since the
+ * scoring differences across 0.6-1.0 sit inside noise.
+ *
+ * Deliberately not 1, even though raw accuracy peaks there (64.35%): Brier is
+ * WORSE at 1.0 than at 0.8, so the extra correct calls come with less honest
+ * probabilities. And the claim 1.0 makes is wrong on its face -- five
+ * individually well-understood players are still an unknown *combination*, and
+ * team synergy is real. This keeps a fifth of the widening at full confidence
+ * to stand for that.
+ *
+ * Applied only at roster-change events, and that is the right scope rather
+ * than a limitation: RD is otherwise driven by games played, so a settled
+ * roster has already earned its confidence the ordinary way. The case a
+ * continuous version would catch -- a team we know little about whose PLAYERS
+ * we know well -- is a roster change, or a cold start, which is one.
  */
-export const DEFAULT_PRIOR_CONFIDENCE_RELIEF = 0.6;
+export const DEFAULT_PRIOR_CONFIDENCE_RELIEF = 0.8;
 
 /**
  * Regresses a team's rating toward rosterImpliedMu proportional to turnover

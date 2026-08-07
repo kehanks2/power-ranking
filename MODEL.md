@@ -105,7 +105,7 @@ accuracy it cannot be improved by shading probabilities toward 50%.
 
 | Name | Value | Why |
 |---|---|---|
-| `DEFAULT_PRIOR_CONFIDENCE_RELIEF` | 0.6 | A roster change should not reset RD to cold-start when we already know the incoming players well enough to move mu with them. 40% of the widening survives at full confidence because five known players are still an unknown combination |
+| `DEFAULT_PRIOR_CONFIDENCE_RELIEF` | 0.8 | A roster change should not reset RD to cold-start when we already know the incoming players well enough to move mu with them. Swept: Brier bottoms at 0.8 (0.2244 vs 0.2246 at 0.6, 0.2258 at 0) and median displayed RD falls to 82 from 92 and 109. Not 1.0 despite accuracy peaking there (64.35%) — Brier is worse at 1.0, and five known players are still an unknown combination, so a fifth of the widening survives |
 | `DEFAULT_ROSTER_CHANGE_PERSISTENCE_GAMES` | 5 | Backtested: 289 roster events and 63.16% accuracy at 5, against 422 events and 62.39% at 2 — bench rotation was being counted as turnover |
 | `ROSTER_CHANGE_MIN_GAMES` | 10 | Games before an incoming player's rating is trusted at full weight |
 | `OFFSET_SCALE` | 150 | Rating points a maximally-rated incoming roster is worth against the league mean |
@@ -121,10 +121,20 @@ path is kept intact so it can be re-tested, but it is off.
 
 Measured, not guessed. Re-check with the runners below.
 
-- **Overconfident.** In the >80% confidence band it predicts ~85% and delivers
-  ~79%, a 5.3pp gap. This is the reason RD cannot simply be narrowed to make the
-  board look tighter: narrower RD makes probabilities more extreme, which makes
-  this worse.
+- **Overconfident.** In the >80% confidence band it predicts ~85.4% and delivers
+  ~79.3%, a 6.1pp gap. This is the reason RD cannot simply be narrowed to make
+  the board look tighter: narrower RD makes probabilities more extreme, which
+  makes this worse.
+
+  The 5.3pp previously recorded here was measured on the wrong model.
+  `checkModelQuality.ts` hard-coded `metaWeight` 0.8 and `seriesCorrelation`
+  0.8 under a comment claiming it was "kept in lockstep with computeRatings.ts"
+  — which ships 0.5 and 0.6 — so the standing quality diagnostic described a
+  hypothetical. The tuned constants now live in `rating-engine`'s
+  `productionConfig.ts` and every consumer imports them, so that particular
+  drift cannot recur. Measured properly, the shipped model is *better* than the
+  drifted one reported on accuracy (63.97% vs 63.41% game, 68.55% vs 67.91%
+  series) and slightly worse on this gap.
 - **League spread is 1.20x the Bradley-Terry fit** of the same 435 cross-league
   games. It is honest where data is thick — the model's LCK–LPL gap predicts
   59.5% against an actual 59.2% over 103 games — and overstated at the CBLOL

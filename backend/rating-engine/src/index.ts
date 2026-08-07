@@ -5,3 +5,4 @@ export * from './contextualMeta.js';
 export * from './playerRating.js';
 export * from './rosterChangeDetection.js';
 export * from './replay.js';
+export * from './productionConfig.js';

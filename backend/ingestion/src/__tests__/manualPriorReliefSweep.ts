@@ -12,11 +12,22 @@
  */
 import { createPool } from '../db.js';
 import { loadReplayData } from '../replayData.js';
-import { runReplay, GLICKO2_SCALE, DEFAULT_VOLATILITY, type ReplayInput } from '@power-ranking/rating-engine';
+import {
+  runReplay,
+  GLICKO2_SCALE,
+  DEFAULT_VOLATILITY,
+  MARGIN_SCALE,
+  MOV_WEIGHT_CAP,
+  META_WEIGHT,
+  SERIES_CORRELATION,
+  RATING_PERIOD_DAYS,
+  INTERNATIONAL_WEIGHT_MULTIPLIER,
+  type ReplayInput,
+} from '@power-ranking/rating-engine';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
-const RELIEFS = [0, 0.3, 0.5, 0.6, 0.75, 0.9];
+const RELIEFS = [0, 0.3, 0.6, 0.8, 1.0];
 
 const pool = createPool(DATABASE_URL);
 const { teamIds, leagueIds, games, decayEvents } = await loadReplayData(pool);
@@ -37,11 +48,15 @@ for (const relief of RELIEFS) {
     config: {
       phiInitMax: PHI_INIT_MAX,
       sigmaDefault: DEFAULT_VOLATILITY,
-      marginScale: 1e9,
-      movWeightCap: 1.5,
-      metaWeight: 0.8,
-      seriesCorrelation: 0.8,
-      ratingPeriodDays: 1,
+      // Imported, not restated: this file previously ran metaWeight 0.8 and
+      // seriesCorrelation 0.8 against a shipped 0.5 and 0.6, so it swept one
+      // knob on top of a model we do not ship.
+      marginScale: MARGIN_SCALE,
+      movWeightCap: MOV_WEIGHT_CAP,
+      metaWeight: META_WEIGHT,
+      seriesCorrelation: SERIES_CORRELATION,
+      ratingPeriodDays: RATING_PERIOD_DAYS,
+      internationalWeightMultiplier: INTERNATIONAL_WEIGHT_MULTIPLIER,
       priorConfidenceRelief: relief,
     },
   };
