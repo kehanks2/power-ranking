@@ -26,6 +26,17 @@ const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powe
 const RELIEF_OVERRIDE = process.argv.includes('--relief')
   ? Number(process.argv[process.argv.indexOf('--relief') + 1])
   : undefined;
+// --window-months N feeds the replay only the last N months of games, which is
+// what a bounded regional board would do. --eval-since holds the EVALUATED
+// games fixed, so a windowed model and an unbounded one are scored on exactly
+// the same fixtures -- otherwise a shorter window scores itself on a different,
+// easier set and the comparison means nothing.
+const WINDOW_MONTHS = process.argv.includes('--window-months')
+  ? Number(process.argv[process.argv.indexOf('--window-months') + 1])
+  : undefined;
+const EVAL_SINCE = process.argv.includes('--eval-since')
+  ? process.argv[process.argv.indexOf('--eval-since') + 1]
+  : undefined;
 const GLICKO2_SCALE = 173.7178;
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 // Imported, not restated. These were hand-copied and drifted: this file ran
@@ -60,7 +71,17 @@ function snapshotBefore(snaps: { asOfDate: string; mu: number; phi: number }[] |
 
 async function main() {
   const pool = createPool(DATABASE_URL);
-  const { teamIds, leagueIds, games, decayEvents } = await loadReplayData(pool);
+  const { teamIds, leagueIds, games: allGames, decayEvents } = await loadReplayData(pool);
+  const latest = allGames.reduce((max, g) => (g.datetimeUtc > max ? g.datetimeUtc : max), allGames[0].datetimeUtc);
+  const windowStart =
+    WINDOW_MONTHS === undefined
+      ? null
+      : new Date(new Date(latest).getTime() - WINDOW_MONTHS * 30.44 * 86400000).toISOString();
+  const games = windowStart === null ? allGames : allGames.filter((g) => g.datetimeUtc >= windowStart);
+  if (windowStart !== null) {
+    console.log(`window: last ${WINDOW_MONTHS} months -> ${games.length} of ${allGames.length} games
+`);
+  }
 
   // Same ORDER BY as loadReplayData, so index i lines up with games[i].
   const seriesRows = await pool.query<{ series_id: number }>(`
@@ -103,6 +124,7 @@ async function main() {
   const bySeries = new Map<number, { p1Sum: number; n: number; team1Id: string; team1GameWins: number; team2GameWins: number }>();
 
   for (const [i, game] of (games as ReplayGame[]).entries()) {
+    if (EVAL_SINCE !== undefined && game.datetimeUtc < EVAL_SINCE) continue;
     const period = weekBucket(game.datetimeUtc);
     const t1 = snapshotBefore(teamSnaps.get(game.team1Id), period);
     const t2 = snapshotBefore(teamSnaps.get(game.team2Id), period);

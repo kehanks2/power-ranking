@@ -38,6 +38,39 @@ The second is the intuitive "the prior should yield to evidence" idea. It fails
 because a team's contextual rating is still earned mostly in regional games no
 matter how many internationals it plays, so the prior never becomes redundant.
 
+### Regional boards are deliberately unbounded
+
+The International board is cut to the last six events. Regional boards are not,
+and that asymmetry is intentional rather than an oversight.
+
+Tested by feeding the replay only the last N months and scoring every candidate
+on the **same** 1,573 recent games (`checkModelQuality --window-months N
+--eval-since`), so a shorter window cannot flatter itself by being graded on a
+different, easier set:
+
+| Input window | Accuracy | Brier |
+|---|---|---|
+| unbounded | 62.75% | 0.2253 |
+| 24 months | 62.94% | 0.2250 |
+| 18 months | 63.64% | 0.2249 |
+| 12 months | 63.38% | 0.2256 |
+
+18 months looks best on both, but the accuracy gap over unbounded is 14 games
+of 1,573 against a standard error of about 19 — inside noise — and the Brier
+gap is 0.0004. Cutting to 12 months is measurably worse, which is the useful
+part of the result: past a point a window is just discarding evidence.
+
+The mechanism explains why the two boards differ. International events run 2-3
+a year, so a half-life alone lets a 2024 result leak in forever at ever-smaller
+weight, and the board's whole claim is "who is good at this level *now*" — a
+hard cutoff is what makes that true. Regional play is continuous at 40-80 games
+a split, so Glicko's time-scaled drift plus sheer volume has already swamped old
+results. No team currently on a regional board has less than 44% of its games
+inside 18 months.
+
+A *presentational* window ("this split only") is a separate product question and
+would be easy; the model does not ask for one.
+
 ### Player transfers between leagues
 
 A player arriving from another league is not an unknown quantity, so their
@@ -186,9 +219,15 @@ uncertainty. This is an open UI decision, not a model one.
 
 ## Diagnostics
 
+All of them import the shipped constants from `rating-engine`'s
+`productionConfig.ts` rather than restating them. They used to hand-copy the
+values and drifted apart — five files, three different `metaWeight`s, one of
+them under a comment claiming it was in lockstep.
+
 | Runner | Question |
 |---|---|
 | `manualModelSweep.ts` | joint parameter grid, all metrics at once |
+| `checkModelQuality.ts` | accuracy, Brier, and calibration of what ships. `--relief`, `--window-months`, and `--eval-since` sweep a knob through this same evaluation instead of a second copy of it |
 | `manualBacktest.ts` | walk-forward accuracy |
 | `manualSeriesCorrelationSweep.ts` | rho vs calibration and RD |
 | `manualLeagueCalibration.ts` | is a region over- or under-rated |
