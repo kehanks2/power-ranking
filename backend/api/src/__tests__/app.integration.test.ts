@@ -256,6 +256,60 @@ describe('read API (live Postgres)', () => {
     expect(res.body.regional.every((r: { placement: string | null }) => r.placement === null)).toBe(true);
   });
 
+  it('GET /players?window= narrows the board to that stretch of play', async () => {
+    const all = await request(app).get('/players').query({ league: 'LCK' });
+    const year = await request(app).get('/players').query({ league: 'LCK', window: 'year' });
+    const split = await request(app).get('/players').query({ league: 'LCK', window: 'split' });
+
+    for (const [res, window] of [
+      [all, 'all'],
+      [year, 'year'],
+      [split, 'split'],
+    ] as const) {
+      expect(res.status).toBe(200);
+      expect(res.body.length).toBeGreaterThan(0);
+      for (const player of res.body) expect(player.window).toBe(window);
+    }
+
+    // A window is a subset of the one containing it, player by player. The
+    // board itself never shrinks -- an unrated player still holds their roster
+    // spot at the neutral 50 -- so the games are what has to narrow.
+    const gamesById = (body: { id: number; gamesPlayed: number }[]) =>
+      new Map(body.map((p) => [p.id, p.gamesPlayed]));
+    const allGames = gamesById(all.body);
+    const yearGames = gamesById(year.body);
+    for (const [id, games] of gamesById(split.body)) {
+      expect(games).toBeLessThanOrEqual(yearGames.get(id) ?? 0);
+    }
+    for (const [id, games] of yearGames) {
+      expect(games).toBeLessThanOrEqual(allGames.get(id) ?? 0);
+    }
+    // And it has to actually bite, or the filter is decoration.
+    const totals = (m: Map<number, number>) => [...m.values()].reduce((a, b) => a + b, 0);
+    expect(totals(gamesById(split.body))).toBeLessThan(totals(allGames));
+  });
+
+  it('GET /players?scope=international ignores the window, having only one', async () => {
+    // International events are sparse enough that a split window would leave
+    // nothing rated; asking for one must not return an empty board.
+    const res = await request(app).get('/players').query({ scope: 'international', window: 'split' });
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThan(0);
+    for (const player of res.body) expect(player.window).toBe('all');
+  });
+
+  it('GET /players/:id?window= counts the same games that window Games column does', async () => {
+    // The panel has to describe the number above it: a split rating with a
+    // career stat line under it is two different claims on one row.
+    const board = await request(app).get('/players').query({ league: 'LCK', window: 'split' });
+    for (const row of board.body.slice(0, 10)) {
+      const res = await request(app).get(`/players/${row.id}`).query({ window: 'split' });
+      expect(res.status).toBe(200);
+      expect(res.body.window).toBe('split');
+      expect(res.body.stats.games).toBe(row.gamesPlayed);
+    }
+  });
+
   it('GET /teams/:id reports the series record and the formats behind it', async () => {
     const board = await request(app).get('/teams').query({ scope: 'LCK' });
     const res = await request(app).get(`/teams/${board.body[0].id}`);

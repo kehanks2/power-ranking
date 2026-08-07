@@ -11,19 +11,40 @@
 // for the chips themselves.
 $role-filter-height: 2.5rem;
 
-.role-filter {
+// Position on the left, stretch of play on the right, in ONE row. Two rows
+// would make this height conditional on the board, and the table header pins
+// itself by that height.
+.filters {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  height: $role-filter-height;
+  flex-wrap: nowrap;
   align-items: center;
-  // Pins flush under the shell's block so the positions stay switchable while
+  justify-content: space-between;
+  gap: 1.5rem;
+  height: $role-filter-height;
+  // Pins flush under the shell's block so the filters stay switchable while
   // scrolling; the block paints its own pixel of background below itself, so
   // nothing has to be pulled up over the seam.
   position: sticky;
   top: var(--sticky-top-height, 0px);
   z-index: 6;
   background: var(--color-bg);
+}
+
+.chip-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+// Names what the chips beside it do. Without it "All time" reads as another
+// role filter, since the two groups share a chip.
+.chip-group__label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-text-dim, #6c7385);
+  margin-right: 0.1rem;
 }
 
 // Same chip as the board tabs above, so the two read as the same kind of

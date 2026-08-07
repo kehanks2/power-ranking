@@ -1,26 +1,50 @@
 @if (loading()) {
   <p class="status">Loading players…</p>
 } @else {
-  <div class="role-filter" role="group" aria-label="Filter by position">
-    <button
-      type="button"
-      class="chip"
-      [class.chip--active]="roleFilter() === null"
-      [attr.aria-pressed]="roleFilter() === null"
-      (click)="setRole(null)"
-    >
-      All roles
-    </button>
-    @for (role of roles; track role) {
+  <!-- Both filters share one row so the sticky bar keeps a single, fixed
+       height -- the table header offsets itself by it. -->
+  <div class="filters">
+    <div class="chip-group" role="group" aria-label="Filter by position">
       <button
         type="button"
         class="chip"
-        [class.chip--active]="roleFilter() === role"
-        [attr.aria-pressed]="roleFilter() === role"
-        (click)="setRole(role)"
+        [class.chip--active]="roleFilter() === null"
+        [attr.aria-pressed]="roleFilter() === null"
+        (click)="setRole(null)"
       >
-        {{ role }}
+        All roles
       </button>
+      @for (role of roles; track role) {
+        <button
+          type="button"
+          class="chip"
+          [class.chip--active]="roleFilter() === role"
+          [attr.aria-pressed]="roleFilter() === role"
+          (click)="setRole(role)"
+        >
+          {{ role }}
+        </button>
+      }
+    </div>
+
+    <!-- Regional only: the international pass rates a single, sparse body of
+         events, so there is no split to slice it into. -->
+    @if (!isGlobal()) {
+      <div class="chip-group chip-group--window" role="group" aria-label="Rate over">
+        <span class="chip-group__label" aria-hidden="true">Rated over</span>
+        @for (w of windows; track w) {
+          <button
+            type="button"
+            class="chip"
+            [class.chip--active]="window() === w"
+            [attr.aria-pressed]="window() === w"
+            [title]="windowHint(w)"
+            (click)="setWindow(w)"
+          >
+            {{ windowLabel(w) }}
+          </button>
+        }
+      </div>
     }
   </div>
 }
@@ -155,6 +179,9 @@
                         Placement ranks each stat among the {{ d.peerCount }} {{ d.role }} players on
                         this board, lower always being better (including deaths). Highlighted stats
                         are top 25%.
+                        @if (windowCaveat(); as caveat) {
+                          {{ caveat }}
+                        }
                       </p>
                     }
                   } @else {

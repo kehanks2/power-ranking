@@ -13,6 +13,12 @@ import {
   NEUTRAL_SCORE,
   DEFAULT_SHRINKAGE_GAMES,
 } from '@power-ranking/rating-engine';
+import {
+  LEAGUE_SPLIT_START_CTE,
+  playerWindowPredicate,
+  RATING_WINDOWS,
+  type RatingWindow,
+} from '@power-ranking/shared';
 
 /** Bumped from 1 when the flat career average was replaced -- see playerRating.ts. */
 const PLAYER_RATING_METHOD_VERSION = 2;
@@ -257,8 +263,9 @@ function applyTransferAnchors(ratings: PlayerGroupRating[]): void {
 }
 
 /** One row per player-game, with everything the composite needs. */
-export async function fetchPlayerGameRows(pool: Pool): Promise<PlayerGameRow[]> {
+export async function fetchPlayerGameRows(pool: Pool, window: RatingWindow = 'all'): Promise<PlayerGameRow[]> {
   const result = await pool.query<PlayerGameRow>(`
+    WITH ${LEAGUE_SPLIT_START_CTE}
     SELECT
       pgp.player_id,
       pgp.role,
@@ -272,6 +279,8 @@ export async function fetchPlayerGameRows(pool: Pool): Promise<PlayerGameRow[]> 
     FROM player_game_performance pgp
     JOIN games g ON g.id = pgp.game_id
     JOIN team_league_memberships tlm ON tlm.team_id = pgp.team_id AND tlm.end_date IS NULL
+    LEFT JOIN league_split_start lss ON lss.canonical_league_id = tlm.league_id
+    WHERE ${playerWindowPredicate(window, 'g.datetime_utc', 'lss.latest_split_start')}
   `);
   return result.rows;
 }
@@ -298,10 +307,30 @@ export async function fetchPlayerGameRows(pool: Pool): Promise<PlayerGameRow[]> 
  * league the game was played in. That's deliberate -- the question this rating
  * answers is "how good is this player relative to the peers they face now."
  */
-export async function computePlayerRatings(pool: Pool, winWeight = DEFAULT_WIN_WEIGHT): Promise<number> {
-  const rows = await fetchPlayerGameRows(pool);
+export async function computePlayerRatings(
+  pool: Pool,
+  winWeight = DEFAULT_WIN_WEIGHT,
+  window: RatingWindow = 'all',
+): Promise<number> {
+  const rows = await fetchPlayerGameRows(pool, window);
   const ratings = selectGroupRatings(buildPlayerGroupStats(rows), winWeight);
-  return writeRatings(pool, ratings, 'regional');
+  return writeRatings(pool, ratings, 'regional', window);
+}
+
+/**
+ * All three regional windows.
+ *
+ * The bounded ones are the same method over fewer games, deliberately -- not a
+ * separate award formula. Shrinkage does the rest: a split is a few dozen
+ * games, so those ratings sit closer to the neutral 50 than the all-time board
+ * does, which is the honest answer to "how sure are we after six weeks".
+ */
+export async function computeAllPlayerRatingWindows(pool: Pool, winWeight = DEFAULT_WIN_WEIGHT): Promise<number> {
+  let total = 0;
+  for (const window of RATING_WINDOWS) {
+    total += await computePlayerRatings(pool, winWeight, window);
+  }
+  return total;
 }
 
 // --- International ("Global" tab) ratings -------------------------------------
@@ -383,30 +412,31 @@ export async function computeInternationalPlayerRatings(
 }
 
 /**
- * Replaces every row for one scope. Deletes only that scope -- the two passes
- * share a table, so a blanket DELETE would have each run wipe the other's
- * output (the same footgun that made the two roster populators clobber each
- * other -- see git history for populateRosterMemberships).
+ * Replaces every row for one (scope, window). Deletes only that pair -- all
+ * four passes share a table, so a blanket DELETE would have each run wipe the
+ * others' output (the same footgun that made the two roster populators clobber
+ * each other -- see git history for populateRosterMemberships).
  */
 async function writeRatings(
   pool: Pool,
   ratings: PlayerGroupRating[],
   scope: 'regional' | 'international',
+  window: RatingWindow = 'all',
 ): Promise<number> {
   // Same class of bug fixed in computeRatings.ts: pin the transaction to one
   // dedicated client, not pool.query() (which can hop connections per call).
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM player_ratings_history WHERE scope = $1', [scope]);
+    await client.query('DELETE FROM player_ratings_history WHERE scope = $1 AND rating_window = $2', [scope, window]);
     let inserted = 0;
     const today = new Date().toISOString().slice(0, 10);
 
     for (const rating of ratings) {
       await client.query(
         `INSERT INTO player_ratings_history
-           (player_id, as_of_date, rating, games_played, method_version, scope, league_id, role, is_primary)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+           (player_id, as_of_date, rating, games_played, method_version, scope, league_id, role, is_primary, rating_window)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           rating.playerId,
           today,
@@ -420,6 +450,7 @@ async function writeRatings(
           scope === 'international' ? null : rating.leagueId,
           rating.role,
           rating.isPrimary,
+          window,
         ],
       );
       inserted += 1;

@@ -3,7 +3,15 @@ import { DecimalPipe, PercentPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { RankingsApiService } from '../rankings-api.service';
 import { LeagueFilterService } from '../league-filter.service';
-import { ROLES, type PlayerDetail, type PlayerStat, type PlayerSummary, type Role } from '../models';
+import {
+  RATING_WINDOWS,
+  ROLES,
+  type PlayerDetail,
+  type PlayerStat,
+  type PlayerSummary,
+  type RatingWindow,
+  type Role,
+} from '../models';
 
 /** One stat as the panel renders it: already formatted, with its standing. */
 interface StatView {
@@ -68,6 +76,18 @@ export class PlayersListComponent {
   protected readonly roleFilter = signal<Role | null>(null);
 
   /**
+   * Which stretch of play the board is ranked over. Server-side, unlike the
+   * role filter: each window is its own set of ratings computed from its own
+   * games, not a subset of one board's rows.
+   *
+   * Exists because the two questions people bring to a player board in season
+   * -- All-Pro and MVP -- are both about a specific stretch, and the all-time
+   * rating with its 120-day half-life is not an answer to either.
+   */
+  protected readonly windows = RATING_WINDOWS;
+  protected readonly window = signal<RatingWindow>('all');
+
+  /**
    * Renumbered 1..n for whatever is shown. Filtering to MID and reading
    * 2, 11, 14 asks the reader to hold two rankings at once; within a role the
    * only question is who leads that role. The rating itself is unaffected --
@@ -108,10 +128,29 @@ export class PlayersListComponent {
   protected readonly columnCount = computed(() => (this.isGlobal() ? 7 : 6));
 
   /** What the numbers in the panel are measured over -- never left implicit. */
-  protected readonly coverageNote = computed(() =>
-    this.isGlobal()
-      ? 'All stats are from international games.'
-      : 'All stats are from ' + this.regionLabel() + ' games.',
+  protected readonly coverageNote = computed(() => {
+    if (this.isGlobal()) return 'All stats are from international games.';
+    const region = this.regionLabel();
+    switch (this.window()) {
+      case 'year':
+        return `All stats are from ${region} games this year.`;
+      case 'split':
+        return `All stats are from ${region} games this split.`;
+      default:
+        return `All stats are from ${region} games.`;
+    }
+  });
+
+  /**
+   * Said out loud on the short windows, because it changes how the board reads:
+   * ratings are shrunk toward 50 by sample size, so a split's worth of games
+   * gives a genuinely narrower spread than a career does. That is the honest
+   * answer to "how sure are we after six weeks", not a bug in the filter.
+   */
+  protected readonly windowCaveat = computed(() =>
+    this.window() === 'all'
+      ? null
+      : 'Fewer games behind every rating here, so they sit closer to the neutral 50 than the all-time board does.',
   );
 
   protected readonly statGroups = computed<StatGroup[]>(() => {
@@ -171,12 +210,13 @@ export class PlayersListComponent {
   constructor() {
     effect((onCleanup) => {
       const scope = this.filterService.selectedScope();
+      const window = this.window();
       this.loading.set(true);
       // A panel left open across a tab switch would show one board's stats
       // under another board's row.
       this.openPlayerId.set(null);
       this.detail.set(null);
-      const subscription = this.api.getPlayers(scope).subscribe((players) => {
+      const subscription = this.api.getPlayers(scope, window).subscribe((players) => {
         this.allPlayers.set(players);
         this.loading.set(false);
       });
@@ -187,8 +227,9 @@ export class PlayersListComponent {
       const playerId = this.openPlayerId();
       if (playerId === null) return;
       const scope = this.filterService.selectedScope();
+      const window = this.window();
       this.detailLoading.set(true);
-      const subscription = this.api.getPlayerById(playerId, scope).subscribe({
+      const subscription = this.api.getPlayerById(playerId, scope, window).subscribe({
         next: (detail) => {
           this.detail.set(detail);
           this.detailLoading.set(false);
@@ -200,6 +241,32 @@ export class PlayersListComponent {
       });
       onCleanup(() => subscription.unsubscribe());
     });
+  }
+
+  protected setWindow(window: RatingWindow): void {
+    this.window.set(window);
+  }
+
+  protected windowLabel(window: RatingWindow): string {
+    switch (window) {
+      case 'year':
+        return 'This year';
+      case 'split':
+        return 'This split';
+      default:
+        return 'All time';
+    }
+  }
+
+  protected windowHint(window: RatingWindow): string {
+    switch (window) {
+      case 'year':
+        return 'Games from the calendar year this league’s current split sits in';
+      case 'split':
+        return 'Games from this league’s current split only';
+      default:
+        return 'Every game we hold, with recent ones counting for more';
+    }
   }
 
   protected setRole(role: Role | null): void {

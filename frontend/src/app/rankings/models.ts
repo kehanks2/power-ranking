@@ -89,6 +89,17 @@ export interface TeamDetail extends TeamSummary {
  */
 export type PlayerRatingScope = 'regional' | 'international';
 
+/**
+ * Which stretch of play a regional rating covers. 'all' is everything we hold,
+ * recency-weighted; the other two are that league's current calendar year and
+ * its current split. Per-league, because the leagues don't run on the same
+ * calendar. The international board only has 'all' — its events are sparse
+ * enough that a split window would leave nothing rated.
+ */
+export const RATING_WINDOWS = ['all', 'year', 'split'] as const;
+
+export type RatingWindow = (typeof RATING_WINDOWS)[number];
+
 /** In-game order. Every roster in the sport is read TOP-JNG-MID-BOT-SUP. */
 export const ROLES = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'] as const;
 
@@ -107,6 +118,8 @@ export interface PlayerSummary {
   rating: number;
   rank: number;
   scope: PlayerRatingScope;
+  /** Which stretch of play it was measured over. Always 'all' internationally. */
+  window: RatingWindow;
   gamesPlayed: number;
   /**
    * Another squad they are concurrently active on -- almost always an academy

@@ -1,6 +1,7 @@
 import express, { type Express } from 'express';
 import cors from 'cors';
 import type { Pool } from 'pg';
+import { isRatingWindow } from '@power-ranking/shared';
 import { getLeagues, getTeams, getTeamById, getPlayers, getPlayerById } from './repositories.js';
 
 /** Thin, precomputed-only read API -- no request-time rating computation, per plan. */
@@ -47,7 +48,10 @@ export function createApp(pool: Pool): Express {
     // an unrecognised scope must not silently return a differently-scaled
     // rating, so this never passes the raw query value through.
     const scope = req.query.scope === 'international' ? 'international' : 'regional';
-    const players = await getPlayers(pool, league, scope);
+    // Same rule for the window: an unrecognised value falls back to the full
+    // record rather than to an empty board.
+    const window = isRatingWindow(req.query.window) ? req.query.window : 'all';
+    const players = await getPlayers(pool, league, scope, window);
     res.json(players);
   });
 
@@ -60,7 +64,8 @@ export function createApp(pool: Pool): Express {
     // Same narrowing as /players: an unrecognised scope must never fall
     // through to a differently-scaled rating.
     const scope = req.query.scope === 'international' ? 'international' : 'regional';
-    const player = await getPlayerById(pool, playerId, scope);
+    const window = isRatingWindow(req.query.window) ? req.query.window : 'all';
+    const player = await getPlayerById(pool, playerId, scope, window);
     if (!player) {
       res.status(404).json({ error: 'player not found' });
       return;

@@ -1,7 +1,15 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import type { Observable } from 'rxjs';
-import type { LeagueSummary, TeamSummary, TeamDetail, PlayerSummary, PlayerDetail, BoardScope } from './models';
+import type {
+  LeagueSummary,
+  TeamSummary,
+  TeamDetail,
+  PlayerSummary,
+  PlayerDetail,
+  BoardScope,
+  RatingWindow,
+} from './models';
 
 const API_BASE_URL = 'http://localhost:3000';
 
@@ -35,9 +43,9 @@ export class RankingsApiService {
    * list is much shorter (only players with an international record appear)
    * and its ratings are on a different scale from the regional ones.
    */
-  getPlayers(scope: BoardScope): Observable<PlayerSummary[]> {
+  getPlayers(scope: BoardScope, window: RatingWindow = 'all'): Observable<PlayerSummary[]> {
     const params: Record<string, string> =
-      scope === 'international' ? { scope: 'international' } : { league: scope };
+      scope === 'international' ? { scope: 'international' } : { league: scope, window };
     return this.http.get<PlayerSummary[]>(`${API_BASE_URL}/players`, { params });
   }
 
@@ -46,8 +54,9 @@ export class RankingsApiService {
    * over the same games the rating was: on the International board a player's
    * numbers are their international games only, not their season.
    */
-  getPlayerById(id: number, scope: BoardScope): Observable<PlayerDetail> {
-    const params: Record<string, string> = scope === 'international' ? { scope: 'international' } : {};
+  getPlayerById(id: number, scope: BoardScope, window: RatingWindow = 'all'): Observable<PlayerDetail> {
+    const params: Record<string, string> =
+      scope === 'international' ? { scope: 'international' } : { window };
     return this.http.get<PlayerDetail>(`${API_BASE_URL}/players/${id}`, { params });
   }
 }

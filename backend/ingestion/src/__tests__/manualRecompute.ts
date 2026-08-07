@@ -9,15 +9,16 @@
  */
 import { createPool } from '../db.js';
 import { computeRatings } from '../computeRatings.js';
-import { computePlayerRatings, computeInternationalPlayerRatings } from '../computePlayerRatings.js';
+import { computeAllPlayerRatingWindows, computeInternationalPlayerRatings } from '../computePlayerRatings.js';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 
 async function main() {
   const pool = createPool(DATABASE_URL);
 
-  console.log('Computing player ratings (regional)...');
-  const playerRatingRows = await computePlayerRatings(pool);
+  // All three regional windows: all-time, this calendar year, this split.
+  console.log('Computing player ratings (regional, all windows)...');
+  const playerRatingRows = await computeAllPlayerRatingWindows(pool);
   console.log('Regional player rating rows:', playerRatingRows);
 
   // Independent of the regional pass -- different games, different peer pool,

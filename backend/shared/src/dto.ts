@@ -96,6 +96,48 @@ export interface TeamDetailDto extends TeamSummaryDto {
  */
 export type PlayerRatingScope = 'regional' | 'international';
 
+/**
+ * Which stretch of play a regional rating covers -- see db/migrations/0011.
+ * 'all' is the default and the only window the international board has.
+ * Both bounded windows are per-league, keyed off that league's own current
+ * split, because the leagues do not run on the same calendar.
+ */
+export const RATING_WINDOWS = ['all', 'year', 'split'] as const;
+
+export type RatingWindow = (typeof RATING_WINDOWS)[number];
+
+export function isRatingWindow(value: unknown): value is RatingWindow {
+  return typeof value === 'string' && (RATING_WINDOWS as readonly string[]).includes(value);
+}
+
+/** Each league's current split start, which both bounded windows key off. */
+export const LEAGUE_SPLIT_START_CTE = `
+  league_split_start AS (
+    SELECT canonical_league_id, MAX(date_start) AS latest_split_start
+    FROM tournaments
+    WHERE canonical_league_id IS NOT NULL
+    GROUP BY canonical_league_id
+  )
+`;
+
+/**
+ * SQL keeping only games inside a window. Lives here, in the package both
+ * sides import, because ingestion decides which games a rating was computed
+ * from and the API has to draw the panel's stat line from exactly those games
+ * -- two copies of this would drift, and the panel would quietly stop
+ * describing the number above it.
+ */
+export function playerWindowPredicate(window: RatingWindow, gameTime: string, splitStart: string): string {
+  switch (window) {
+    case 'split':
+      return `${gameTime} >= ${splitStart}`;
+    case 'year':
+      return `${gameTime} >= date_trunc('year', ${splitStart})`;
+    default:
+      return 'TRUE';
+  }
+}
+
 export interface PlayerSummaryDto {
   id: number;
   handle: string;
@@ -111,6 +153,8 @@ export interface PlayerSummaryDto {
   rank: number;
   /** Which pool `rating` was measured against -- it is meaningless without this. */
   scope: PlayerRatingScope;
+  /** Which stretch of play it was measured over. Always 'all' internationally. */
+  window: RatingWindow;
   /**
    * Games behind `rating`, in whichever scope it was computed. Worth showing:
    * ratings are shrunk toward 50 by sample size, so a low rating on few games

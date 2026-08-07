@@ -17,8 +17,10 @@ import type {
   PlayerSummaryDto,
   PlayerDetailDto,
   PlayerRatingScope,
+  RatingWindow,
   RosterEntryDto,
 } from '@power-ranking/shared';
+import { LEAGUE_SPLIT_START_CTE, playerWindowPredicate } from '@power-ranking/shared';
 
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 // META_WEIGHT is imported, not restated: combination happens at read time
@@ -421,7 +423,12 @@ export async function getPlayers(
   pool: Pool,
   leagueSlug?: string,
   scope: PlayerRatingScope = 'regional',
+  window: RatingWindow = 'all',
 ): Promise<PlayerSummaryDto[]> {
+  // The international pass only ever writes 'all' -- international events are
+  // sparse enough that a split window would leave nothing to rate -- so asking
+  // for a bounded one there would return an empty board rather than an error.
+  const ratingWindow: RatingWindow = scope === 'international' ? 'all' : window;
   const result = await pool.query<{
     id: number;
     handle: string;
@@ -454,6 +461,7 @@ export async function getPlayers(
       SELECT rating, games_played FROM player_ratings_history prh_inner
       WHERE prh_inner.player_id = p.id
         AND prh_inner.scope = $2
+        AND prh_inner.rating_window = $3
         AND prh_inner.role = rm.role
         AND ($2 = 'international' OR prh_inner.league_id = l.id)
       ORDER BY as_of_date DESC LIMIT 1
@@ -465,7 +473,7 @@ export async function getPlayers(
       -- (new signings) at the neutral 50 so a roster is never missing anyone.
       AND ($2 <> 'international' OR prh.rating IS NOT NULL)
     `,
-    [leagueSlug ?? null, scope],
+    [leagueSlug ?? null, scope, ratingWindow],
   );
 
   const withRatings = result.rows
@@ -480,6 +488,7 @@ export async function getPlayers(
       role: row.role as PlayerSummaryDto['role'],
       rating: row.rating !== null ? Number(row.rating) : 50, // 50 = neutral composite score, no games yet
       scope,
+      window: ratingWindow,
       gamesPlayed: row.games_played ?? 0,
       // Only surfaced where it explains something. Liquipedia lists plenty of
       // established pros on a second squad for reasons that are not academy
@@ -551,7 +560,14 @@ const STAT_METRICS = [
  * peers who actually have games in the group are counted -- a player who just
  * transferred in has no stat line to place.
  */
-export async function getPlayerById(pool: Pool, playerId: number, scope: PlayerRatingScope): Promise<PlayerDetailDto | null> {
+export async function getPlayerById(
+  pool: Pool,
+  playerId: number,
+  scope: PlayerRatingScope,
+  window: RatingWindow = 'all',
+): Promise<PlayerDetailDto | null> {
+  // Internationally there is only ever an 'all' window to draw from.
+  const ratingWindow: RatingWindow = scope === 'international' ? 'all' : window;
   // Regional ratings are within-league percentiles, so the board has to be the
   // player's own league -- ranking them against a pool of every league at once
   // is the cross-league comparison the whole design refuses to make.
@@ -570,7 +586,7 @@ export async function getPlayerById(pool: Pool, playerId: number, scope: PlayerR
     leagueId = leagueRow.rows[0]?.id;
   }
 
-  const summaries = await getPlayers(pool, leagueSlug, scope);
+  const summaries = await getPlayers(pool, leagueSlug, scope, ratingWindow);
   const summary = summaries.find((p) => p.id === playerId);
   if (!summary) return null;
 
@@ -591,7 +607,16 @@ export async function getPlayerById(pool: Pool, playerId: number, scope: PlayerR
          AND tn.tournament_type = 'international'
          AND g.datetime_utc > NOW() - INTERVAL '${INTERNATIONAL_WINDOW_MONTHS} months'`
     : `JOIN team_league_memberships tlm ON tlm.team_id = pgp.team_id AND tlm.end_date IS NULL
-         AND tlm.league_id = $3`;
+         AND tlm.league_id = $3
+       LEFT JOIN league_split_start lss ON lss.canonical_league_id = tlm.league_id`;
+
+  // The same predicate the ratings were computed under, from the same package,
+  // so a windowed panel describes the windowed number above it rather than a
+  // career stat line sitting under a split rating.
+  const windowCte = isInternational ? '' : `${LEAGUE_SPLIT_START_CTE},`;
+  const windowFilter = isInternational
+    ? ''
+    : ` AND ${playerWindowPredicate(ratingWindow, 'g.datetime_utc', 'lss.latest_split_start')}`;
 
   const aggregates = STAT_METRICS.map((m) => `${m.expr} AS "${m.key}"`).join(',\n      ');
   // rank(), not percent_rank(): the panel reports a place, so ties share a
@@ -603,7 +628,7 @@ export async function getPlayerById(pool: Pool, playerId: number, scope: PlayerR
 
   const result = await pool.query<PlayerStatsRow>(
     `
-    WITH scoped AS (
+    WITH ${windowCte} scoped AS (
       SELECT pgp.player_id, pgp.role, pgp.kills, pgp.deaths, pgp.assists,
              pgp.creep_score, pgp.gold_diff, pgp.kill_participation,
              pgp.damage_share, pgp.gold_share,
@@ -612,7 +637,7 @@ export async function getPlayerById(pool: Pool, playerId: number, scope: PlayerR
       FROM player_game_performance pgp
       JOIN games g ON g.id = pgp.game_id
       ${scopeJoin}
-      WHERE pgp.player_id = ANY($2::int[]) AND pgp.role = ${roleParam}
+      WHERE pgp.player_id = ANY($2::int[]) AND pgp.role = ${roleParam}${windowFilter}
     ),
     agg AS (
       SELECT s.player_id, s.role,

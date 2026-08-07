@@ -101,6 +101,38 @@ This does nothing for a player with no record anywhere — currently 28 of 352
 rostered players, mostly academy call-ups and new teams. That gap needs tier-2
 data, not a better prior.
 
+### Player boards do carry a window; team boards still do not
+
+The regional player board is computed over three windows — `all`, `year`,
+`split` (`db/migrations/0011`) — and the international one over `all` only.
+
+This does not contradict the section above. That result is about **prediction**:
+throwing away a team's older games does not forecast their next game any better,
+so the team boards stay unbounded. The player windows answer a different
+question. All-Pro and MVP are awards for a stated stretch of play, and "who has
+been best this split" is not a prediction at all — it is a description of a
+period, and a career-shaped rating with a 120-day half-life is not one.
+
+Both bounded windows key off each league's **own** current split start, not a
+shared date: the leagues do not run on the same calendar, and one cutoff for all
+six would hand one region three months of play and another three days.
+
+Nothing about the method changes between windows — same components, same
+weights, same shrinkage, fewer games. Shrinkage is what keeps the short windows
+honest: a split is a few dozen games, so those ratings sit closer to the neutral
+50 than the all-time board does, and the UI says so rather than letting a
+narrower spread read as a bug.
+
+| Window | Groups rated | Mean games behind a rating |
+|---|---|---|
+| all | 671 | 81.8 |
+| year | 397 | 45.9 |
+| split | 299 | 13.5 |
+
+The ordering is genuinely different, which is the point — on LCK the all-time
+board leads Peyz, Chovy, Ruler, while the current split leads Peyz, Chovy,
+Aiming.
+
 ## Parameters
 
 ### Glicko-2 core — published defaults, not tuned
