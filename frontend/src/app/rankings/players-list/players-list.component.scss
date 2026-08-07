@@ -17,10 +17,11 @@ $role-filter-height: 2.5rem;
   gap: 0.4rem;
   height: $role-filter-height;
   align-items: center;
-  // Pins under the shell's block so the positions stay switchable while
-  // scrolling, and 1px under it so the seam can only overlap.
+  // Pins flush under the shell's block so the positions stay switchable while
+  // scrolling; the block paints its own pixel of background below itself, so
+  // nothing has to be pulled up over the seam.
   position: sticky;
-  top: calc(var(--sticky-top-height, 0px) - 1px);
+  top: var(--sticky-top-height, 0px);
   z-index: 6;
   background: var(--color-bg);
 }
@@ -50,23 +51,39 @@ $role-filter-height: 2.5rem;
   color: var(--color-gold-contrast);
 }
 
+// The same horizontal padding the teams board uses, so a column gap means the
+// same thing on either tab.
+$cell-pad-x: 0.7rem;
+
 // No overflow at desktop widths: `overflow-x: auto` computes overflow-y to
 // auto as well, and a sticky thead inside a scroll container pins to that
 // container -- which never scrolls vertically -- so it does nothing.
+//
+// No top border: that edge belongs to the sticky header, which stays on
+// screen. Drawn here it scrolled away on the first scroll and the table lost
+// its lid.
 .table-scroll {
   border: 1px solid var(--color-border);
+  border-top: 0;
   border-radius: 9px;
   background: var(--color-surface);
+  // `clip`, not `hidden`: hidden would make this a scroll container and kill
+  // the sticky header. It is only here so the rounded corners cut the cells.
+  overflow: clip;
 }
 
 @media (max-width: 1000px) {
   .table-scroll {
-    overflow-x: auto;
+    overflow: auto;
   }
 }
 
 .players-table {
-  border-collapse: collapse;
+  // Separate, so the sticky header keeps its own borders -- collapsed borders
+  // belong to the table and a detached cell leaves them behind -- and so the
+  // corner cells can round, which collapsed borders do not allow at all.
+  border-collapse: separate;
+  border-spacing: 0;
   width: 100%;
   min-width: 660px;
 
@@ -74,7 +91,7 @@ $role-filter-height: 2.5rem;
   // and the column labels stay put while scrolling a long board.
   thead th {
     position: sticky;
-    top: calc(var(--sticky-top-height, 0px) - 1px + #{$role-filter-height});
+    top: calc(var(--sticky-top-height, 0px) + #{$role-filter-height});
     z-index: 5;
     text-align: left;
     font-size: 0.65rem;
@@ -82,16 +99,25 @@ $role-filter-height: 2.5rem;
     text-transform: uppercase;
     color: var(--color-text-muted);
     font-weight: 700;
-    padding: 0.7rem 0.65rem;
+    padding: 0.7rem $cell-pad-x;
     white-space: nowrap;
     background: var(--color-surface);
-    // Inset rather than border-bottom: `border-collapse: collapse` hands
-    // borders to the table to paint, and a sticky cell leaves them behind.
-    box-shadow: inset 0 -1px 0 var(--color-border);
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  // Rounded with the container, at 8px rather than 9 because they sit inside
+  // its 1px side borders.
+  thead th:first-child {
+    border-top-left-radius: 8px;
+  }
+
+  thead th:last-child {
+    border-top-right-radius: 8px;
   }
 
   tbody td {
-    padding: 0.95rem 0.7rem;
+    padding: 0.95rem $cell-pad-x;
     border-bottom: 1px solid var(--color-border);
     vertical-align: middle;
     font-size: 0.98rem;
@@ -238,7 +264,7 @@ tr.is-open td {
 }
 
 .detail-row td {
-  padding: 0 0.7rem 1.1rem;
+  padding: 0 $cell-pad-x 1.1rem;
   background: var(--color-surface-hover);
 }
 

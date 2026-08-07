@@ -42,10 +42,12 @@
         <tr class="axis-row">
           <th scope="col" [attr.colspan]="isInternational() ? 6 : 5"></th>
           <th scope="col" class="axis-cell">
-            <div class="axis">
-              @for (tick of ticks(); track tick.value) {
-                <span class="tick" [style.left.%]="tick.left">{{ tick.value }}</span>
-              }
+            <div class="interval__inner">
+              <div class="axis">
+                @for (tick of ticks(); track tick.value) {
+                  <span class="tick" [style.left.%]="tick.left">{{ tick.value }}</span>
+                }
+              </div>
             </div>
           </th>
           <!-- Each box named, so a finish can be read without counting columns
@@ -89,13 +91,15 @@
             </td>
             <td class="num floor">{{ team.floor | number: '1.0-0' }}</td>
             <td class="interval">
-              <div class="track">
-                @for (tick of ticks(); track tick.value) {
-                  <span class="grid-line" [style.left.%]="tick.left"></span>
-                }
-                <span class="band" [style.left.%]="pct(team.floor)" [style.width.%]="bandWidth(team)"></span>
-                <span class="floor-tick" [style.left.%]="pct(team.floor)"></span>
-                <span class="point" [style.left.%]="pct(team.rating)"></span>
+              <div class="interval__inner">
+                <div class="track">
+                  @for (tick of ticks(); track tick.value) {
+                    <span class="grid-line" [style.left.%]="tick.left"></span>
+                  }
+                  <span class="band" [style.left.%]="pct(team.floor)" [style.width.%]="bandWidth(team)"></span>
+                  <span class="floor-tick" [style.left.%]="pct(team.floor)"></span>
+                  <span class="point" [style.left.%]="pct(team.rating)"></span>
+                </div>
               </div>
             </td>
             <td class="placements-cell">

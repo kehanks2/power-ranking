@@ -15,26 +15,53 @@
   }
 }
 
+// Every cell in both tables uses this horizontal padding, so the gaps between
+// columns are the same gap everywhere. Anything that needs more room asks its
+// own content for it (see .interval) rather than widening its cell, which
+// would show up as one column sitting further from its neighbour than the rest.
+$cell-pad-x: 0.7rem;
+
+// One width for every placement pill and for the event label above it, so the
+// column reads as a grid and a finish lines up with the event it belongs to.
+// Sized for the widest finish the data holds -- "17-18" -- since a pill that
+// grows to fit its text is exactly the inconsistency this removes.
+$slot-width: 56px;
+
 // No overflow at desktop widths, deliberately. `overflow-x: auto` computes
 // overflow-y to auto as well, which makes this a scroll container -- and a
 // sticky thead inside one pins to the container, which never scrolls
 // vertically, so it does nothing. The table fits above this breakpoint, so the
 // scroller is only introduced where it is actually needed and the sticky
 // header is given up there.
+//
+// No top border: that edge belongs to the sticky header instead, because the
+// container scrolls and the header does not. Drawn here it went under the
+// block above on the first scroll and the table lost its lid.
 .table-scroll {
   border: 1px solid var(--color-border);
+  border-top: 0;
   border-radius: 9px;
   background: var(--color-surface);
+  // `clip`, not `hidden`: hidden would make this a scroll container and kill
+  // the sticky header. This is only here so the rounded corners actually cut
+  // the cells; a square header background otherwise paints over them.
+  overflow: clip;
 }
 
 @media (max-width: 1000px) {
   .table-scroll {
-    overflow-x: auto;
+    overflow: auto;
   }
 }
 
 .teams-table {
-  border-collapse: collapse;
+  // Separate, not collapse: collapsed borders belong to the table and a sticky
+  // cell leaves them behind when it detaches, which is why the header's rules
+  // used to be inset shadows. With spacing at zero the rows look identical and
+  // the header can carry a real border -- and a border-radius, which collapsed
+  // borders do not support at all.
+  border-collapse: separate;
+  border-spacing: 0;
   width: 100%;
   min-width: 900px;
 
@@ -44,9 +71,10 @@
   // scale scrolls away and the bars lose the axis that gives them meaning.
   thead th {
     position: sticky;
-    // Deliberately 1px UNDER the block above, so the seam always overlaps
-    // rather than risking a sub-pixel gap that scrolling rows show through.
-    top: calc(var(--sticky-top-height, 0px) - 1px);
+    // Flush with the block above, not 1px under it. The overlap that used to
+    // live here hid the top border, and the block now paints its own pixel of
+    // background below itself to close the seam instead.
+    top: var(--sticky-top-height, 0px);
     z-index: 5;
     // Exactly the offset the axis row below uses. Left to its natural ~28.8px
     // the two sticky rows leave a transparent sliver between them, and the
@@ -58,10 +86,25 @@
     text-transform: uppercase;
     color: var(--color-text-dim, #6c7385);
     font-weight: 700;
-    padding: 0.7rem 0.65rem 0.35rem;
+    padding: 0.7rem $cell-pad-x 0.35rem;
     white-space: nowrap;
     background: var(--color-surface);
     vertical-align: bottom;
+  }
+
+  // The table's top edge, carried by the one part of it that stays on screen.
+  // The corner cells round with the container so the frame still closes at
+  // rest, at 8px rather than 9 because they sit inside its 1px side borders.
+  thead tr:first-child th {
+    border-top: 1px solid var(--color-border);
+  }
+
+  thead tr:first-child th:first-child {
+    border-top-left-radius: 8px;
+  }
+
+  thead tr:first-child th:last-child {
+    border-top-right-radius: 8px;
   }
 
 
@@ -96,31 +139,19 @@
     color: var(--color-text);
   }
 
-  // The last tick is centred on the track's right edge, so half of "1900" sits
-  // outside the content box. This right padding is that overhang, and it also
-  // puts real space between the range and the placements beside it. Written
-  // here, inside the table block, because the generic `thead th` padding rule
-  // outranks a bare `th.axis-cell`.
-  thead tr.axis-row th.axis-cell,
-  thead th.interval-h,
-  tbody td.interval {
-    padding-right: 2rem;
-  }
-
-  // The axis is a second header row, so it pins below the first rather than on
-  // top of it -- 2rem being the height of the label row above.
+  // The axis is a second header row, so it pins below the first -- 2rem being
+  // the written-down height of the label row above. The extra pixel is an
+  // overlap: at fractional device-pixel ratios the two rounded to positions a
+  // pixel apart and the rows scrolling underneath showed through the gap. It
+  // eats into the label row's bottom padding, which has nothing in it.
   thead tr.axis-row th {
-    padding: 0 0.65rem 0.5rem;
-    top: calc(var(--sticky-top-height, 0px) - 1px + 2rem);
-    // An inset shadow, not border-bottom: `border-collapse: collapse` hands
-    // borders to the table to paint, and a sticky cell leaves them behind when
-    // it detaches. This closes the header off from the rows the way the row
-    // separators do.
-    box-shadow: inset 0 -1px 0 var(--color-border);
+    padding: 0 $cell-pad-x 0.5rem;
+    top: calc(var(--sticky-top-height, 0px) + 2rem - 1px);
+    border-bottom: 1px solid var(--color-border);
   }
 
   tbody td {
-    padding: 0.95rem 0.7rem;
+    padding: 0.95rem $cell-pad-x;
     border-bottom: 1px solid var(--color-border);
     vertical-align: middle;
     font-size: 0.98rem;
@@ -261,18 +292,25 @@
 // comes from Region, which held a ~44px badge in a column twice that wide, and
 // from Team, which had more than any name needs.
 td.interval {
-  width: 290px;
-  min-width: 266px;
+  width: 278px;
+  min-width: 258px;
 }
 
-// Region holds a fixed-width badge, so it needs no more than the badge; Games
-// is a three-digit count. Both were sized by the header text rather than the
-// content, which is where the range's breathing room came from.
+// The last tick is centred on the track's right edge, so half of "1900" hangs
+// past it. That overhang is reserved by insetting the CONTENT, not by padding
+// the cell: padding here is what made the gap between the range and the
+// placements read as twice every other gap on the board.
+.interval__inner {
+  margin-right: 1.3rem;
+}
+
+// Region holds a fixed-width badge, so it needs no more than the badge plus
+// the shared padding; Games is a three-digit count. Both were sized by the
+// header text rather than the content, which is where the range's breathing
+// room came from.
 .teams-table th.region-h,
 .teams-table td.region-cell {
-  width: 58px;
-  padding-left: 0.35rem;
-  padding-right: 0.35rem;
+  width: 68px;
 }
 
 .teams-table th.games-h,
@@ -325,13 +363,6 @@ td.interval {
   align-items: center;
 }
 
-// Real separation from the confidence range, which otherwise runs straight
-// into the first placement box.
-td.placements-cell,
-th.placements-h {
-  padding-left: 1.6rem;
-}
-
 // A pill: medal badge, then the finish. The badge carries the colour so the
 // text can stay uniform across every state.
 .slot {
@@ -339,6 +370,10 @@ th.placements-h {
   align-items: center;
   gap: 4px;
   height: 24px;
+  // Fixed, not sized to its text. Letting the pill grow for a five-character
+  // finish like "17-18" made every row a slightly different set of widths, so
+  // the event labels above could only line up with one of them.
+  width: $slot-width;
   padding: 0 6px 0 4px;
   border-radius: 999px;
   border: 1px solid #3b4252;
@@ -348,12 +383,8 @@ th.placements-h {
   font-variant-numeric: tabular-nums;
 }
 
-// Sized for the common finishes so pills line up as a grid, but never wrapped:
-// a five-character shared placement like "17-18" broke onto two lines inside
-// its pill. Those few pills grow instead, which costs the row a handful of
-// pixels rather than the column a whole character's width.
 .slot__place {
-  min-width: 1.75rem;
+  flex: 1;
   text-align: center;
   white-space: nowrap;
 }
@@ -364,8 +395,11 @@ th.placements-h {
   padding-bottom: 0.1rem;
 }
 
+// Same width as the pill it labels, and the same 3px gap, so the two rows are
+// one track. At 34px the labels drifted a little further left with every
+// column until FS25 sat over MSI25's pill.
 .slot-key {
-  width: 34px;
+  width: $slot-width;
   text-align: center;
   font-size: 0.55rem;
   letter-spacing: 0.02em;
@@ -396,7 +430,13 @@ th.placements-h {
   border: 1.5px solid #545b6c;
 }
 
+// A win is the one result worth seeing from across the page, so first place
+// takes the pill's outline as well as its badge. Held well under the badge's
+// own chroma: at full strength six of these down a column would read as the
+// point of the table, and the point is the ranking.
 .slot--gold {
+  border-color: rgb(242 207 92 / 45%);
+
   .slot__medal {
     background: #f2cf5c;
     border-color: #f2cf5c;

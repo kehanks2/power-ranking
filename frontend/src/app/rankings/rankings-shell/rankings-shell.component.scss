@@ -21,6 +21,13 @@
   // the moment the table header went flush -- and it applies to both boards
   // equally, whether what follows is a table header or the role filter.
   padding-bottom: 1rem;
+  // One extra pixel of the same background, painted BELOW the block. The
+  // measured height is ceiled, so the block can sit a fraction of a pixel
+  // above where a board pins under it, and rows scrolling through that
+  // fraction were the ghost line. Closing it here rather than by pinning the
+  // board 1px higher is what lets the table's top border stay visible: pulled
+  // up, the border was the pixel that went under this block.
+  box-shadow: 0 1px 0 var(--color-bg);
 }
 
 .shell-header {
@@ -137,9 +144,13 @@
     gap: 0.35rem 1.4rem;
   }
 
+  // The value column is a fixed width, not `auto`. Sized to its content it was
+  // ~10px narrower on "+42 ±24" than on "-208 ±32", which left every row a
+  // different length of track -- so the bands were drawn at six slightly
+  // different scales and could not be compared, which is the whole job here.
   li {
     display: grid;
-    grid-template-columns: 3.6rem 1fr auto;
+    grid-template-columns: 2.9rem 1fr 5rem;
     align-items: center;
     gap: 0.4rem;
   }
@@ -151,25 +162,54 @@
   }
 
   .meter {
-    height: 5px;
-    border-radius: 3px;
-    background: var(--color-border);
+    height: 12px;
     position: relative;
+    cursor: help;
   }
 
-  .fill {
+  // The reference the whole box is read against, so it is drawn on every row
+  // rather than left implicit in the middle of the track.
+  .zero {
     position: absolute;
+    left: 50%;
     top: 0;
     bottom: 0;
-    border-radius: 3px;
+    width: 1px;
+    background: var(--color-border);
+  }
+
+  // The range the evidence supports. Held under the tick's weight so the
+  // estimate still reads as the headline.
+  .band {
+    position: absolute;
+    top: 4px;
+    height: 4px;
+    border-radius: 2px;
     background: currentColor;
-    opacity: 0.8;
+    opacity: 0.45;
+  }
+
+  .point {
+    position: absolute;
+    top: 1px;
+    width: 2px;
+    height: 10px;
+    border-radius: 1px;
+    background: currentColor;
   }
 
   .val {
     font-size: 0.72rem;
     font-variant-numeric: tabular-nums;
     color: var(--color-text-muted);
+    white-space: nowrap;
+    text-align: right;
+  }
+
+  // The ± recedes: it qualifies the estimate rather than competing with it.
+  .val__rd {
+    font-size: 0.64rem;
+    opacity: 0.75;
   }
 
   .foot {

@@ -64,16 +64,29 @@
         @for (league of leagues(); track league.slug) {
           <li [class]="'lg-' + league.slug">
             <span class="rg">{{ league.slug }}</span>
-            <span class="meter">
-              <span class="fill" [style.left.%]="barLeft(league.rating)" [style.width.%]="barWidth(league.rating)"></span>
+            <!-- A band and a tick, the same language the teams board's
+                 confidence range uses. A bar growing from the centre line said
+                 "this much stronger" with no admission of how sure we are, and
+                 read as a range while being a single number. -->
+            <span class="meter" [title]="rangeTitle(league)">
+              <span class="zero" aria-hidden="true"></span>
+              <span
+                class="band"
+                [style.left.%]="scalePct(league.rating - league.rd)"
+                [style.width.%]="spanPct(league)"
+              ></span>
+              <span class="point" [style.left.%]="scalePct(league.rating)"></span>
             </span>
-            <span class="val">{{ league.rating > 0 ? '+' : '' }}{{ league.rating | number: '1.0-0' }}</span>
+            <span class="val">
+              {{ signed(league.rating) }}
+              <span class="val__rd">±{{ league.rd | number: '1.0-0' }}</span>
+            </span>
           </li>
         }
       </ol>
       <p class="foot">
-        Measured only from games between regions. 0 means no region is assumed stronger. Context for
-        whichever board you are reading — not a team ranking.
+        Measured only from games between regions. 0 means no region is assumed stronger. The bar is
+        the range the evidence supports; the tick is the best estimate inside it.
       </p>
     </aside>
   </div>

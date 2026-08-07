@@ -78,8 +78,8 @@ export class RankingsShellComponent {
       // gap it was meant to preserve.
       //
       // Ceil, not round: rounding 257.4 down to 257 leaves a sub-pixel gap the
-      // scrolling rows show through. Ceiling it, plus the 1px overlap the
-      // headers apply, means the seam can only ever err toward covering.
+      // scrolling rows show through. Ceiling it errs the other way, and the
+      // 1px of background the block paints below itself covers what is left.
       const observer = new ResizeObserver(([entry]) => {
         const height = entry.borderBoxSize?.[0]?.blockSize ?? element.getBoundingClientRect().height;
         root.style.setProperty('--sticky-top-height', `${Math.ceil(height)}px`);
@@ -97,16 +97,34 @@ export class RankingsShellComponent {
   }
 
   /**
-   * Half-width of the diverging meter, as a percentage. League ratings are
-   * offsets from "no region assumed stronger", so the bar grows out from a
-   * centre line rather than from the left edge.
+   * Half-width of the shared scale, in rating points, rounded out past the
+   * widest range on the board. Symmetric about zero so the centre line -- "no
+   * region assumed stronger" -- stays where it can be read, and shared across
+   * all six so their ranges can be compared against each other.
    */
-  protected barWidth(rating: number): number {
-    const max = Math.max(...this.leagues().map((l) => Math.abs(l.rating)), 1);
-    return (Math.abs(rating) / max) * 50;
+  private readonly halfScale = computed(() => {
+    const widest = Math.max(...this.leagues().map((l) => Math.abs(l.rating) + l.rd), 1);
+    return Math.ceil(widest / 50) * 50;
+  });
+
+  /** Where a rating sits on that scale, as a percentage across the track. */
+  protected scalePct(value: number): number {
+    const half = this.halfScale();
+    return ((value + half) / (2 * half)) * 100;
   }
 
-  protected barLeft(rating: number): number {
-    return rating >= 0 ? 50 : 50 - this.barWidth(rating);
+  /** Width of the ± band: the whole range the evidence supports. */
+  protected spanPct(league: LeagueSummary): number {
+    return this.scalePct(league.rating + league.rd) - this.scalePct(league.rating - league.rd);
+  }
+
+  protected signed(rating: number): string {
+    return `${rating > 0 ? '+' : ''}${Math.round(rating)}`;
+  }
+
+  protected rangeTitle(league: LeagueSummary): string {
+    const lo = Math.round(league.rating - league.rd);
+    const hi = Math.round(league.rating + league.rd);
+    return `${league.name}: ${this.signed(league.rating)}, and the evidence supports anywhere from ${this.signed(lo)} to ${this.signed(hi)}`;
   }
 }
