@@ -244,7 +244,13 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
 
     const team1Score = opp1.score ?? 0;
     const team2Score = opp2.score ?? 0;
-    const winnerTeamId = team1Score >= team2Score ? team1Id : team2Id;
+    // Null unless the series was actually played and actually decided.
+    // Liquipedia reports a scheduled match as -1 to -1, and the `>=` this
+    // replaces handed every one of those to team1 -- along with every drawn
+    // Bo2. See db/migrations/0010.
+    const seriesDecided = team1Score >= 0 && team2Score >= 0 && team1Score !== team2Score;
+    let winnerTeamId: number | null = null;
+    if (seriesDecided) winnerTeamId = team1Score > team2Score ? team1Id : team2Id;
     const seriesId = await upsertSeries(pool, {
       tournamentId,
       leaguepediaMatchId: `liquipedia:${match.match2id}`,

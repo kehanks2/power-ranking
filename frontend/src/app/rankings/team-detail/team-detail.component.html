@@ -32,6 +32,8 @@
           <thead>
             <tr>
               <th scope="col">Event</th>
+              <th scope="col" class="fmt">Format</th>
+              <th scope="col" class="num">Series</th>
               <th scope="col" class="num">Games</th>
               <th scope="col" class="num">Win rate</th>
               <th scope="col" class="num">Finish</th>
@@ -41,6 +43,8 @@
             @for (row of t.international; track row.event) {
               <tr>
                 <td>{{ row.event }}</td>
+                <td class="fmt">{{ formatLabel(row.formats) }}</td>
+                <td class="num"><span class="wl">{{ row.seriesWins }}–{{ row.seriesLosses }}</span></td>
                 <td class="num"><span class="wl">{{ row.wins }}–{{ row.losses }}</span></td>
                 <td class="num rate">{{ winRate([row]) | percent: '1.0-0' }}</td>
                 <td class="num finish">{{ finish(row.placement) }}</td>
@@ -50,6 +54,8 @@
           <tfoot>
             <tr>
               <td>Total</td>
+              <td class="fmt">{{ formatLabel(allFormats(t.international)) }}</td>
+              <td class="num"><span class="wl">{{ seriesTotal(t.international).wins }}–{{ seriesTotal(t.international).losses }}</span></td>
               <td class="num"><span class="wl">{{ total(t.international).wins }}–{{ total(t.international).losses }}</span></td>
               <td class="num rate">{{ winRate(t.international) | percent: '1.0-0' }}</td>
               <!-- No total finish: placements do not add up. -->
@@ -69,6 +75,8 @@
           <thead>
             <tr>
               <th scope="col">Split</th>
+              <th scope="col" class="fmt">Format</th>
+              <th scope="col" class="num">Series</th>
               <th scope="col" class="num">Games</th>
               <th scope="col" class="num">Win rate</th>
             </tr>
@@ -77,6 +85,8 @@
             @for (row of t.regional; track row.event) {
               <tr>
                 <td>{{ row.event }}</td>
+                <td class="fmt">{{ formatLabel(row.formats) }}</td>
+                <td class="num"><span class="wl">{{ row.seriesWins }}–{{ row.seriesLosses }}</span></td>
                 <td class="num"><span class="wl">{{ row.wins }}–{{ row.losses }}</span></td>
                 <td class="num rate">{{ winRate([row]) | percent: '1.0-0' }}</td>
               </tr>
@@ -85,6 +95,8 @@
           <tfoot>
             <tr>
               <td>Total</td>
+              <td class="fmt">{{ formatLabel(allFormats(t.regional)) }}</td>
+              <td class="num"><span class="wl">{{ seriesTotal(t.regional).wins }}–{{ seriesTotal(t.regional).losses }}</span></td>
               <td class="num"><span class="wl">{{ total(t.regional).wins }}–{{ total(t.regional).losses }}</span></td>
               <td class="num rate">{{ winRate(t.regional) | percent: '1.0-0' }}</td>
             </tr>
@@ -95,8 +107,9 @@
   </div>
 
   <p class="records-note">
-    Counted in games, not series: the leagues don’t agree on series format, so a
-    series record wouldn’t mean the same thing in each.
+    Win rate is games. The series record is only readable next to its format,
+    which is why the two sit together — a 12–6 in Bo1s is a different season
+    from a 12–6 in Bo5s.
   </p>
 
   <h3>Current Roster</h3>

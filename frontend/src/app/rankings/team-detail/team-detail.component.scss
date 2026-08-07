@@ -93,10 +93,12 @@
 
 // Two records side by side: international first, since that is the record
 // people ask about, and the splits below it as the fuller history.
+// Wide enough for six columns before the two tables sit side by side; below
+// that they stack rather than squeezing the event names to two lines each.
 .records {
   display: grid;
   gap: 1.2rem 2rem;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
   margin-top: 1.6rem;
 }
 
@@ -136,6 +138,15 @@
   .num {
     text-align: right;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  // The unit the series record is counted in. Set as a label, not a value: it
+  // qualifies the columns beside it rather than being a figure of its own.
+  td.fmt {
+    color: var(--color-text-muted);
+    font-size: 0.76rem;
+    letter-spacing: 0.02em;
     white-space: nowrap;
   }
 }

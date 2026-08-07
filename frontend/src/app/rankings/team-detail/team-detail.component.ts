@@ -54,10 +54,33 @@ export class TeamDetailComponent {
     );
   }
 
+  protected seriesTotal(rows: TeamRecord[]): { wins: number; losses: number } {
+    return rows.reduce(
+      (acc, row) => ({ wins: acc.wins + row.seriesWins, losses: acc.losses + row.seriesLosses }),
+      { wins: 0, losses: 0 },
+    );
+  }
+
   /** 0 rather than NaN for a team with no games, so an empty row still renders. */
   protected winRate(rows: TeamRecord[]): number {
     const { wins, losses } = this.total(rows);
     return wins + losses === 0 ? 0 : wins / (wins + losses);
+  }
+
+  /**
+   * "Bo3 · Bo5" -- what the series record is a record OF. A 12-6 in Bo1s and a
+   * 12-6 in Bo5s are different seasons, and this is the column that says which
+   * one you are reading; most events run a shorter regular season and a longer
+   * playoff, so more than one is normal rather than a data problem.
+   */
+  protected formatLabel(formats: number[]): string {
+    if (formats.length === 0) return '—';
+    return formats.map((n) => `Bo${n}`).join(' · ');
+  }
+
+  /** The set across a whole section, for the totals row. */
+  protected allFormats(rows: TeamRecord[]): number[] {
+    return [...new Set(rows.flatMap((row) => row.formats))].sort((a, b) => a - b);
   }
 
   /**

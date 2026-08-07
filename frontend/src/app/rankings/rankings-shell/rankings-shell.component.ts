@@ -57,6 +57,13 @@ export class RankingsShellComponent {
 
   protected readonly isPlayers = computed(() => this.url().includes('/players'));
 
+  /**
+   * One team's page is not a board. The scope tabs would switch a board that
+   * isn't showing, and the description and strength box both describe one --
+   * so on that route the block is just the header and the tabs.
+   */
+  protected readonly isBoard = computed(() => !/\/teams\/\d/.test(this.url()));
+
   constructor() {
     this.api.getLeagues().subscribe((leagues) => this.leagues.set(leagues));
 

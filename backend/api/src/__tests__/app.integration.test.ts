@@ -256,6 +256,36 @@ describe('read API (live Postgres)', () => {
     expect(res.body.regional.every((r: { placement: string | null }) => r.placement === null)).toBe(true);
   });
 
+  it('GET /teams/:id reports the series record and the formats behind it', async () => {
+    const board = await request(app).get('/teams').query({ scope: 'LCK' });
+    const res = await request(app).get(`/teams/${board.body[0].id}`);
+
+    for (const row of [...res.body.regional, ...res.body.international]) {
+      expect(row.seriesWins + row.seriesLosses).toBeGreaterThan(0);
+      // A series is at least one game long, and a series win needs a game win.
+      expect(row.seriesWins + row.seriesLosses).toBeLessThanOrEqual(row.wins + row.losses);
+      expect(row.seriesWins).toBeLessThanOrEqual(row.wins);
+
+      // Lengths a series can actually have run to. "Bo4" is what reading
+      // series.best_of gave us, and a 3-1 is a Bo5 that ended early.
+      expect(row.formats.length).toBeGreaterThan(0);
+      for (const format of row.formats) expect([1, 2, 3, 5, 7]).toContain(format);
+      expect(row.formats).toEqual([...row.formats].sort((a: number, b: number) => a - b));
+    }
+  });
+
+  it('never records a winner for a series that was never played', async () => {
+    // Liquipedia reports a scheduled match as -1 to -1, and the ingest handed
+    // that to whichever team was listed first. Invisible while everything
+    // counted games; a free win the moment the team page counted series.
+    const { rows } = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM series s
+       WHERE s.winner_team_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM games g WHERE g.series_id = s.id)`,
+    );
+    expect(rows[0].n).toBe(0);
+  });
+
   it('GET /players/:id rejects a non-numeric id and 404s an unknown one', async () => {
     expect((await request(app).get('/players/not-a-number')).status).toBe(400);
     expect((await request(app).get('/players/99999999')).status).toBe(404);

@@ -307,35 +307,78 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     isStarter: row.is_starter,
   }));
 
-  // One row per tournament the team played, counting GAMES rather than series:
-  // the leagues do not agree on series format, so a series record is not
-  // comparable across them, and games is what every other count on the board
-  // already means. Placements exist for internationals only -- we hold no
-  // regional standings.
+  // One row per tournament the team played, in games AND in series, with the
+  // series lengths that were played. A series record on its own is not
+  // comparable between leagues -- a 12-6 in Bo1s is a different season from a
+  // 12-6 in Bo5s -- so the formats column is what makes it readable rather
+  // than a reason to withhold it. Placements exist for internationals only;
+  // we hold no regional standings.
   const recordResult = await pool.query<{
     event: string;
     start_date: string;
     tournament_type: string;
     wins: number;
     losses: number;
+    series_wins: number;
+    series_losses: number;
+    formats: number[] | null;
     placement: string | null;
   }>(
     `
+    WITH team_series AS (
+      SELECT s.id,
+             s.tournament_id,
+             s.winner_team_id,
+             -- Derived from the scoreline, NOT from series.best_of, which
+             -- Liquipedia fills with the declared format on some rows and the
+             -- number of games played on others -- so a Bo5 won 3-1 arrives
+             -- as "Bo4" and a Bo3 won 2-0 as "Bo2". A decided series always
+             -- ran to (2 * winner's score - 1) games' worth of format; a draw
+             -- is the one even format there is.
+             CASE
+               WHEN s.team1_score IS NULL OR s.team2_score IS NULL THEN NULL
+               WHEN GREATEST(s.team1_score, s.team2_score) <= 0 THEN NULL
+               WHEN s.team1_score = s.team2_score THEN 2 * s.team1_score
+               ELSE 2 * GREATEST(s.team1_score, s.team2_score) - 1
+             END AS format
+      FROM series s
+      WHERE $1 IN (s.team1_id, s.team2_id)
+    ),
+    game_record AS (
+      SELECT s.tournament_id,
+             COUNT(*) FILTER (WHERE g.winner_team_id = $1)::int AS wins,
+             COUNT(*) FILTER (WHERE g.winner_team_id <> $1)::int AS losses
+      FROM games g
+      JOIN series s ON s.id = g.series_id
+      WHERE $1 IN (g.team1_id, g.team2_id)
+      GROUP BY s.tournament_id
+    ),
+    series_record AS (
+      -- Only decided series count. An unplayed fixture has a null winner (see
+      -- migration 0010) and would otherwise land in the loss column.
+      SELECT tournament_id,
+             COUNT(*) FILTER (WHERE winner_team_id = $1)::int AS wins,
+             COUNT(*) FILTER (WHERE winner_team_id IS NOT NULL AND winner_team_id <> $1)::int AS losses,
+             ARRAY_AGG(DISTINCT format) FILTER (WHERE format IS NOT NULL) AS formats
+      FROM team_series
+      GROUP BY tournament_id
+    )
     SELECT tn.name AS event,
            -- ::text, so node-pg hands back the ISO string rather than parsing
            -- it into a Date that stringifies as "Wed Apr 01" -- and without
            -- the timezone shift a Date round-trip can introduce.
            tn.date_start::text AS start_date,
            tn.tournament_type,
-           COUNT(*) FILTER (WHERE g.winner_team_id = $1)::int AS wins,
-           COUNT(*) FILTER (WHERE g.winner_team_id <> $1)::int AS losses,
+           gr.wins,
+           gr.losses,
+           sr.wins AS series_wins,
+           sr.losses AS series_losses,
+           sr.formats,
            tp.placement
-    FROM games g
-    JOIN series s ON s.id = g.series_id
-    JOIN tournaments tn ON tn.id = s.tournament_id
+    FROM game_record gr
+    JOIN series_record sr ON sr.tournament_id = gr.tournament_id
+    JOIN tournaments tn ON tn.id = gr.tournament_id
     LEFT JOIN tournament_placements tp ON tp.tournament_id = tn.id AND tp.team_id = $1
-    WHERE $1 IN (g.team1_id, g.team2_id)
-    GROUP BY tn.id, tn.name, tn.date_start, tn.tournament_type, tp.placement
     ORDER BY tn.date_start DESC
     `,
     [teamId],
@@ -346,6 +389,9 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     startDate: String(row.start_date).slice(0, 10),
     wins: row.wins,
     losses: row.losses,
+    seriesWins: row.series_wins,
+    seriesLosses: row.series_losses,
+    formats: (row.formats ?? []).map(Number).sort((a, b) => a - b),
     placement: row.placement,
     type: row.tournament_type,
   }));

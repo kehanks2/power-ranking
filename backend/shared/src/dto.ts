@@ -60,6 +60,15 @@ export interface TeamRecordDto {
   startDate: string;
   wins: number;
   losses: number;
+  seriesWins: number;
+  seriesLosses: number;
+  /**
+   * The series lengths played here, ascending: [3, 5] is a Bo3 stage and a Bo5
+   * playoff. Derived from the scoreline rather than read from `series.best_of`,
+   * which Liquipedia fills inconsistently -- sometimes the declared format,
+   * sometimes the number of games actually played, so a 3-1 arrives as "Bo4".
+   */
+  formats: number[];
   /**
    * Finish, where standings exist. Text, because shared finishes are reported
    * as ranges ("5-8"). Null for regional splits, which we hold no standings
