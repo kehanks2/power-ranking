@@ -307,7 +307,55 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     isStarter: row.is_starter,
   }));
 
-  return { ...team, roster };
+  // One row per tournament the team played, counting GAMES rather than series:
+  // the leagues do not agree on series format, so a series record is not
+  // comparable across them, and games is what every other count on the board
+  // already means. Placements exist for internationals only -- we hold no
+  // regional standings.
+  const recordResult = await pool.query<{
+    event: string;
+    start_date: string;
+    tournament_type: string;
+    wins: number;
+    losses: number;
+    placement: string | null;
+  }>(
+    `
+    SELECT tn.name AS event,
+           -- ::text, so node-pg hands back the ISO string rather than parsing
+           -- it into a Date that stringifies as "Wed Apr 01" -- and without
+           -- the timezone shift a Date round-trip can introduce.
+           tn.date_start::text AS start_date,
+           tn.tournament_type,
+           COUNT(*) FILTER (WHERE g.winner_team_id = $1)::int AS wins,
+           COUNT(*) FILTER (WHERE g.winner_team_id <> $1)::int AS losses,
+           tp.placement
+    FROM games g
+    JOIN series s ON s.id = g.series_id
+    JOIN tournaments tn ON tn.id = s.tournament_id
+    LEFT JOIN tournament_placements tp ON tp.tournament_id = tn.id AND tp.team_id = $1
+    WHERE $1 IN (g.team1_id, g.team2_id)
+    GROUP BY tn.id, tn.name, tn.date_start, tn.tournament_type, tp.placement
+    ORDER BY tn.date_start DESC
+    `,
+    [teamId],
+  );
+
+  const records = recordResult.rows.map((row) => ({
+    event: row.event,
+    startDate: String(row.start_date).slice(0, 10),
+    wins: row.wins,
+    losses: row.losses,
+    placement: row.placement,
+    type: row.tournament_type,
+  }));
+
+  return {
+    ...team,
+    roster,
+    regional: records.filter((r) => r.type !== 'international').map(({ type: _type, ...rest }) => rest),
+    international: records.filter((r) => r.type === 'international').map(({ type: _type, ...rest }) => rest),
+  };
 }
 
 /**

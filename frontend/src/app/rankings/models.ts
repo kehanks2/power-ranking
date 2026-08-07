@@ -58,8 +58,23 @@ export interface RosterEntry {
   isStarter: boolean;
 }
 
+/** A team's game record at one tournament. */
+export interface TeamRecord {
+  /** The tournament as Liquipedia names it: "LEC 2026 Summer". */
+  event: string;
+  startDate: string;
+  wins: number;
+  losses: number;
+  /** Finish where standings exist; text, since shared finishes are ranges. */
+  placement: string | null;
+}
+
 export interface TeamDetail extends TeamSummary {
   roster: RosterEntry[];
+  /** Split by split, newest first. Games, not series -- formats differ by league. */
+  regional: TeamRecord[];
+  /** Each international event, newest first. */
+  international: TeamRecord[];
 }
 
 /**

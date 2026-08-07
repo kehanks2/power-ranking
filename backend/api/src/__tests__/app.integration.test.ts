@@ -228,6 +228,34 @@ describe('read API (live Postgres)', () => {
     expect(res.body.rank).toBe(top.rank);
   });
 
+  it('GET /teams/:id breaks the record down by split and by international event', async () => {
+    const board = await request(app).get('/teams').query({ scope: 'LCK' });
+    const res = await request(app).get(`/teams/${board.body[0].id}`);
+    expect(res.status).toBe(200);
+
+    for (const row of [...res.body.regional, ...res.body.international]) {
+      expect(row.wins + row.losses).toBeGreaterThan(0);
+      // ::text in the query, so this stays an ISO date rather than becoming a
+      // Date that stringifies as "Wed Apr 01".
+      expect(row.startDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+
+    // Newest first, both lists.
+    for (const rows of [res.body.regional, res.body.international]) {
+      const dates = rows.map((r: { startDate: string }) => r.startDate);
+      expect(dates).toEqual([...dates].sort().reverse());
+    }
+
+    // The breakdown must reconcile with the board's own count for this scope,
+    // or the page is telling two different stories about the same team.
+    const regionalGames = res.body.regional.reduce((n: number, r: { wins: number; losses: number }) => n + r.wins + r.losses, 0);
+    const intlGames = res.body.international.reduce((n: number, r: { wins: number; losses: number }) => n + r.wins + r.losses, 0);
+    expect(regionalGames + intlGames).toBe(board.body[0].games);
+
+    // Placements belong to internationals; we hold no regional standings.
+    expect(res.body.regional.every((r: { placement: string | null }) => r.placement === null)).toBe(true);
+  });
+
   it('GET /players/:id rejects a non-numeric id and 404s an unknown one', async () => {
     expect((await request(app).get('/players/not-a-number')).status).toBe(400);
     expect((await request(app).get('/players/99999999')).status).toBe(404);

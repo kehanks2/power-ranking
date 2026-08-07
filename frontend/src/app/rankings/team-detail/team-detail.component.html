@@ -22,6 +22,83 @@
     </div>
   </header>
 
+  <div class="records">
+    <section>
+      <h3>International</h3>
+      @if (t.international.length === 0) {
+        <p class="status">No international appearances in our data.</p>
+      } @else {
+        <table class="record-table">
+          <thead>
+            <tr>
+              <th scope="col">Event</th>
+              <th scope="col" class="num">Games</th>
+              <th scope="col" class="num">Win rate</th>
+              <th scope="col" class="num">Finish</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of t.international; track row.event) {
+              <tr>
+                <td>{{ row.event }}</td>
+                <td class="num"><span class="wl">{{ row.wins }}–{{ row.losses }}</span></td>
+                <td class="num rate">{{ winRate([row]) | percent: '1.0-0' }}</td>
+                <td class="num finish">{{ finish(row.placement) }}</td>
+              </tr>
+            }
+          </tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td class="num"><span class="wl">{{ total(t.international).wins }}–{{ total(t.international).losses }}</span></td>
+              <td class="num rate">{{ winRate(t.international) | percent: '1.0-0' }}</td>
+              <!-- No total finish: placements do not add up. -->
+              <td class="num"></td>
+            </tr>
+          </tfoot>
+        </table>
+      }
+    </section>
+
+    <section>
+      <h3>By split</h3>
+      @if (t.regional.length === 0) {
+        <p class="status">No regional games in our data.</p>
+      } @else {
+        <table class="record-table">
+          <thead>
+            <tr>
+              <th scope="col">Split</th>
+              <th scope="col" class="num">Games</th>
+              <th scope="col" class="num">Win rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of t.regional; track row.event) {
+              <tr>
+                <td>{{ row.event }}</td>
+                <td class="num"><span class="wl">{{ row.wins }}–{{ row.losses }}</span></td>
+                <td class="num rate">{{ winRate([row]) | percent: '1.0-0' }}</td>
+              </tr>
+            }
+          </tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td class="num"><span class="wl">{{ total(t.regional).wins }}–{{ total(t.regional).losses }}</span></td>
+              <td class="num rate">{{ winRate(t.regional) | percent: '1.0-0' }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      }
+    </section>
+  </div>
+
+  <p class="records-note">
+    Counted in games, not series: the leagues don’t agree on series format, so a
+    series record wouldn’t mean the same thing in each.
+  </p>
+
   <h3>Current Roster</h3>
   @if (t.roster.length === 0) {
     <p class="status">No roster data yet.</p>

@@ -52,8 +52,33 @@ export interface RosterEntryDto {
   isStarter: boolean;
 }
 
+/** A team's game record at one tournament. */
+export interface TeamRecordDto {
+  /** The tournament as Liquipedia names it: "LEC 2026 Summer". */
+  event: string;
+  /** ISO date the tournament started, for ordering and for showing the year. */
+  startDate: string;
+  wins: number;
+  losses: number;
+  /**
+   * Finish, where standings exist. Text, because shared finishes are reported
+   * as ranges ("5-8"). Null for regional splits, which we hold no standings
+   * for, and for internationals whose standings are missing.
+   */
+  placement: string | null;
+}
+
 export interface TeamDetailDto extends TeamSummaryDto {
   roster: RosterEntryDto[];
+  /**
+   * Game record split by split, newest first. Games rather than series: the
+   * leagues do not agree on series format (Bo1 in places, Bo3 in others), so a
+   * series record is not comparable across them, and games is what every other
+   * count on the board already means.
+   */
+  regional: TeamRecordDto[];
+  /** Game record at each international event, newest first. */
+  international: TeamRecordDto[];
 }
 
 /**
