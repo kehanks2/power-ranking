@@ -19,34 +19,15 @@ interface StatView {
   display: string;
   /** "3rd", or null when the player has no value for this stat. */
   place: string | null;
-  /**
-   * 0-1 along the scale, BEST at 0 and worst at 1 -- where the marker sits.
-   *
-   * 1st sits at the left because the scale is a ranking, and a ranking starts
-   * at 1. It is not a magnitude axis, where more would belong further right.
-   *
-   * A dot, not a bar: a bar's length says "how much", growing from zero, but
-   * this is a POSITION among peers and has no zero to grow from. 2nd of 27 is
-   * not "90% of something". The marker states where they stand and claims
-   * nothing more.
-   */
+  /** 0-1 along the ranking, best at 0. A dot marking position, not a magnitude bar. */
   position: number;
-  /**
-   * Top quartile of their peer group. Drives emphasis: the accent hue marks
-   * what this player is genuinely best at and everything else recedes, rather
-   * than nine equally loud bars. A fraction, not a fixed place, so it means the
-   * same thing in a group of 10 and a group of 27.
-   */
+  /** Top quartile of the peer group (a fraction, so it holds across group sizes). */
   standout: boolean;
   /** Spelled out for the tooltip and for screen readers. */
   standing: string;
 }
 
-/**
- * Grouped because the nine stats answer three different questions, and a
- * reader arrives with one of them in mind -- "does he farm" goes to Economy,
- * not down a flat list of nine.
- */
+/** The nine stats grouped by the question they answer (Combat / Economy / Team impact). */
 interface StatGroup {
   title: string;
   stats: StatView[];
@@ -66,34 +47,18 @@ export class PlayersListComponent {
   private readonly allPlayers = signal<PlayerSummary[]>([]);
   protected readonly loading = signal(true);
 
-  /**
-   * Role filter. Client-side on the already-loaded board rather than a refetch:
-   * the list is small, and every place shown in the panel is measured against
-   * the whole role peer group regardless of what is filtered, so narrowing the
-   * view must not change the numbers.
-   */
+  // Role filter is client-side: places in the panel are measured against the
+  // whole role peer group, so narrowing the view must not change the numbers.
   protected readonly roles = ROLES;
   protected readonly roleFilter = signal<Role | null>(null);
 
-  /**
-   * Which stretch of play the board is ranked over. Server-side, unlike the
-   * role filter: each window is its own set of ratings computed from its own
-   * games, not a subset of one board's rows.
-   *
-   * Exists because the two questions people bring to a player board in season
-   * -- All-Pro and MVP -- are both about a specific stretch, and the all-time
-   * rating with its 120-day half-life is not an answer to either.
-   */
+  // Window is server-side, unlike the role filter: each is its own set of
+  // ratings from its own games, not a subset of one board.
   protected readonly windows = RATING_WINDOWS;
   protected readonly window = signal<RatingWindow>('all');
 
-  /**
-   * Renumbered 1..n for whatever is shown. Filtering to MID and reading
-   * 2, 11, 14 asks the reader to hold two rankings at once; within a role the
-   * only question is who leads that role. The rating itself is unaffected --
-   * it was always measured against role peers, so the numbering now matches
-   * what the rating already meant.
-   */
+  // Renumbered 1..n for whatever is shown; the rating is unaffected (always
+  // measured against role peers).
   protected readonly players = computed(() => {
     const role = this.roleFilter();
     const rows = this.allPlayers();
@@ -106,13 +71,8 @@ export class PlayersListComponent {
   protected readonly detail = signal<PlayerDetail | null>(null);
   protected readonly detailLoading = signal(false);
 
-  /**
-   * There is no meaningful cross-league list of REGIONAL player ratings --
-   * they are within-league percentiles, so every league's distribution is
-   * centred on ~50 and pooling them ranks nothing. The International board
-   * serves that need instead, rating players purely on games they played
-   * against each other.
-   */
+  // Regional player ratings are within-league percentiles (each league centred
+  // on ~50), so they can't be pooled cross-league; the International board does that.
   protected readonly isGlobal = computed(() => this.filterService.selectedScope() === 'international');
   protected readonly regionLabel = computed(() => {
     const scope = this.filterService.selectedScope();
@@ -127,30 +87,27 @@ export class PlayersListComponent {
   /** Panel spans the whole row, so the count has to track the conditional Region column. */
   protected readonly columnCount = computed(() => (this.isGlobal() ? 7 : 6));
 
-  /** What the numbers in the panel are measured over -- never left implicit. */
+  // What the panel's numbers are measured over. Phrased to match the teams
+  // board's panel word for word.
   protected readonly coverageNote = computed(() => {
-    if (this.isGlobal()) return 'All stats are from international games.';
+    if (this.isGlobal()) return 'International Only.';
     const region = this.regionLabel();
     switch (this.window()) {
       case 'year':
-        return `All stats are from ${region} games this year.`;
+        return `${region} Only, this year.`;
       case 'split':
-        return `All stats are from ${region} games this split.`;
+        return `${region} Only, this split.`;
       default:
-        return `All stats are from ${region} games.`;
+        return `${region} Only.`;
     }
   });
 
-  /**
-   * Said out loud on the short windows, because it changes how the board reads:
-   * ratings are shrunk toward 50 by sample size, so a split's worth of games
-   * gives a genuinely narrower spread than a career does. That is the honest
-   * answer to "how sure are we after six weeks", not a bug in the filter.
-   */
+  // Said on the short windows: fewer games means ratings sit closer to the
+  // neutral 50, which is honest, not a filter bug.
   protected readonly windowCaveat = computed(() =>
     this.window() === 'all'
       ? null
-      : 'Fewer games behind every rating here, so they sit closer to the neutral 50 than the all-time board does.',
+      : 'Fewer games behind every rating here, so they sit closer to the neutral 50 than the full-history board does.',
   );
 
   protected readonly statGroups = computed<StatGroup[]>(() => {
@@ -254,7 +211,8 @@ export class PlayersListComponent {
       case 'split':
         return 'This split';
       default:
-        return 'All time';
+        // Not "All time": every game we hold is nowhere near a career.
+        return 'All data';
     }
   }
 

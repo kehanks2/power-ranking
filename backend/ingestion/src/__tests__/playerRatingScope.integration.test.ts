@@ -73,19 +73,16 @@ describe('player rating scopes (live Postgres)', () => {
     // Each has to hold something, or "independent" is trivially true.
     for (const count of before.values()) expect(count).toBeGreaterThan(0);
 
-    // Recomputing ONE window must not touch the other two. All three go
-    // through the same writeRatings, so one is enough to catch a DELETE that
-    // named the scope without the window -- which would have each window wipe
-    // the last one's board.
+    // Recomputing one window must not touch the other two -- catches a DELETE
+    // that named the scope without the window.
     await computePlayerRatings(pool, DEFAULT_WIN_WEIGHT, 'split');
     expect(await countByWindow(pool, 'all')).toBe(before.get('all'));
     expect(await countByWindow(pool, 'year')).toBe(before.get('year'));
   }, 30_000);
 
   it('rates each player over strictly fewer games as the window narrows', async () => {
-    // A window is a subset of the one containing it, so the evidence behind a
-    // rating can only shrink. If it ever grew, the window predicate would be
-    // letting in games from outside the stretch it names.
+    // A window is a subset of the one containing it, so its evidence can only
+    // shrink; if it grew, the window predicate is letting in outside games.
     const leaked = await pool.query<{ count: string }>(`
       SELECT COUNT(*) AS count FROM (
         SELECT split.player_id
@@ -118,13 +115,9 @@ describe('player rating scopes (live Postgres)', () => {
   });
 
   it('emits one row per peer group, and marks exactly one of them primary', async () => {
-    // A player with games in two leagues genuinely has two standings, so a
-    // league board can read the group for ITS league rather than rating
-    // someone on a league they left. What must stay unique is the group
-    // itself, and the primary marker readers use when no league is meant.
-    // Both invariants are per WINDOW as well as per scope: each window is its
-    // own board, so a player has one row per group in each of them and one
-    // primary in each of them.
+    // A player with games in two leagues has two standings, so the (group) row
+    // and the primary marker must be unique per (scope, window) -- each window
+    // is its own board.
     const dupeGroups = await pool.query<{ count: string }>(`
       SELECT COUNT(*) AS count FROM (
         SELECT player_id, scope, rating_window, league_id, role FROM player_ratings_history
@@ -143,9 +136,8 @@ describe('player rating scopes (live Postgres)', () => {
   });
 
   it('records the league and role every rating was measured in', async () => {
-    // Without these the stored number cannot be reconciled with the games
-    // behind it -- the defect that made the board and the detail panel
-    // disagree on a player's game count.
+    // Without these the rating can't be reconciled with its games -- the defect
+    // that made the board and detail panel disagree on a game count.
     const unlabelled = await pool.query<{ count: string }>(`
       SELECT COUNT(*) AS count FROM player_ratings_history
       WHERE role IS NULL OR (scope = 'regional' AND league_id IS NULL)

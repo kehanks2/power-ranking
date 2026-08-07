@@ -1,11 +1,8 @@
 /**
- * Manual one-off runner: recompute ratings from already-ingested game data.
- * Run with tsx. Deliberately does NOT touch roster_memberships -- that's now
- * populated from Liquipedia (see manualLiquipediaRosterRun.ts), a separate,
- * deliberately-invoked step, not bundled into every ratings recompute (which
- * would mean hitting Liquipedia's rate-limited API on every routine run).
- * roster_memberships is a pure display table rating computation never reads
- * (see teamLineups.ts's comment) -- skipping it here doesn't affect ratings.
+ * Manual runner: recompute ratings from already-ingested game data. Does NOT
+ * touch roster_memberships -- that's a display-only table populated separately
+ * from Liquipedia's rate-limited API (manualLiquipediaRosterRun.ts), and rating
+ * computation never reads it, so skipping it here changes nothing.
  */
 import { createPool } from '../db.js';
 import { computeRatings } from '../computeRatings.js';

@@ -14,10 +14,8 @@ export function createApp(pool: Pool): Express {
     res.json(leagues);
   });
 
-  // There is no global team board. Every board is one pool of evidence: a
-  // single region's games, or cross-region games only. Ranking teams that have
-  // never played each other is exactly the guess this design removes, so
-  // `scope` is required rather than defaulting to "everything".
+  // No global team board: every board is one pool of evidence (one region, or
+  // cross-region only), so `scope` is required rather than defaulting.
   app.get('/teams', async (req, res) => {
     const scope = typeof req.query.scope === 'string' ? req.query.scope : undefined;
     if (!scope) {
@@ -44,12 +42,10 @@ export function createApp(pool: Pool): Express {
 
   app.get('/players', async (req, res) => {
     const league = typeof req.query.league === 'string' ? req.query.league : undefined;
-    // Anything other than an explicit 'international' is the regional view --
-    // an unrecognised scope must not silently return a differently-scaled
-    // rating, so this never passes the raw query value through.
+    // Anything but explicit 'international' is regional -- an unrecognised scope
+    // must not pass through and return a differently-scaled rating.
     const scope = req.query.scope === 'international' ? 'international' : 'regional';
-    // Same rule for the window: an unrecognised value falls back to the full
-    // record rather than to an empty board.
+    // Unrecognised window falls back to the full record, not an empty board.
     const window = isRatingWindow(req.query.window) ? req.query.window : 'all';
     const players = await getPlayers(pool, league, scope, window);
     res.json(players);
@@ -61,8 +57,7 @@ export function createApp(pool: Pool): Express {
       res.status(400).json({ error: 'invalid player id' });
       return;
     }
-    // Same narrowing as /players: an unrecognised scope must never fall
-    // through to a differently-scaled rating.
+    // Same narrowing as /players.
     const scope = req.query.scope === 'international' ? 'international' : 'regional';
     const window = isRatingWindow(req.query.window) ? req.query.window : 'all';
     const player = await getPlayerById(pool, playerId, scope, window);

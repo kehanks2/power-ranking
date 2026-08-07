@@ -1,17 +1,8 @@
 /**
- * Manual walk-forward prediction-accuracy backtest -- the plan's
- * "Verification" step. Hold nothing out artificially: at the moment of each
- * game, check whether the rating each team had strictly BEFORE that game
- * (no leakage) correctly predicted the winner. Uses the exact same data
- * loadReplayData feeds the real computeRatings run (games + roster-change +
- * seasonal decay events), so this reflects the system as it actually behaves,
- * not a simplified backtest scenario.
- *
- * Sweeps metaWeight (see contextualMeta.ts's DEFAULT_META_WEIGHT) to find the
- * best-performing weight rather than guessing -- confirmed via real user
- * feedback that an unweighted (1.0) contextual+meta sum let region-level
- * swings dominate individual team merit (a weak team in a strong region
- * outranking a team that just beat top opponents in a weaker region).
+ * Manual walk-forward prediction-accuracy backtest. At each game, check whether
+ * the rating each team had strictly before it (no leakage) predicted the
+ * winner, over the same real data computeRatings runs on. Sweeps metaWeight:
+ * an unweighted (1.0) sum let region swings dominate individual team merit.
  */
 import { createPool } from '../db.js';
 import { loadReplayData } from '../replayData.js';
@@ -132,10 +123,8 @@ async function main() {
   const { teamIds, leagueIds, games, decayEvents } = await loadReplayData(pool);
   console.log(`Loaded ${games.length} games, ${decayEvents.length} decay events.`);
 
-  // seriesCorrelation matches computeRatings.ts so these sweeps tune AROUND
-  // the shipped configuration rather than a stale one (an earlier version of
-  // this harness silently swept a different marginScale/metaWeight than
-  // production actually ran).
+  // seriesCorrelation matches computeRatings.ts, so sweeps tune around the
+  // shipped config, not a stale one.
   const baseConfig = { phiInitMax: PHI_INIT_MAX, sigmaDefault: 0.06, marginScale: 15, movWeightCap: 1.5, seriesCorrelation: 0.8 };
   const intlDatesByTeam = buildIntlDatesByTeam(games);
 

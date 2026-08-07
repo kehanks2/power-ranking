@@ -1,33 +1,9 @@
 /**
- * Client for Liquipedia's LiquipediaDB API v3 (https://api.liquipedia.net/api/v3).
- * Used as the authoritative source for CURRENT roster data -- see
- * populateRosterFromLiquipedia.ts for why this replaced the OE-lineup-derived
- * heuristic entirely: it independently confirms real "shared role" rosters
- * (e.g. Cloud9 running two players at MID) that a starter/substitute-only
- * model can't represent.
- *
- * Rate limit, per Liquipedia's published API Terms of Use: 60 requests/hour
- * for the LiquipediaDB API (v3 endpoints here). Confirmed the hard way this
- * session that a naive one-request-per-team loop blows through that in
- * minutes, and that an in-memory-only limiter is not good enough: every
- * fresh `tsx` process starts a NEW empty counter with zero memory of
- * requests a prior run already made, so it can walk straight into a window
- * Liquipedia's own server-side counter still considers exhausted. State here
- * is persisted to disk (RATE_LIMIT_STATE_FILE) specifically so that doesn't
- * happen again. On top of the sliding-window estimate, any endpoint that
- * actually receives a 429 gets a hard one-hour block from that moment,
- * because we've seen the estimate be wrong -- trust their explicit signal
- * over our own math. There is deliberately NO auto-retry on 429 anywhere in
- * this file: a retry loop still issues real requests against an endpoint
- * that just said stop, which made things worse in practice, not better.
- *
- * Also per their terms for this key: don't scrape (use documented
- * conditions/query filtering, which this client does), query BROADLY and
- * paginate instead of looping per team/player/game (every call site here
- * does this), re-use the HTTP client/connection (fetch's default keep-alive
- * agent handles this), accept gzip, use a descriptive User-Agent, credit
- * Liquipedia for the data (see frontend attribution), and keep this project
- * open source.
+ * Client for Liquipedia's LiquipediaDB API v3, the authoritative source for
+ * current rosters. Rate limit is 60 requests/hour; an in-memory limiter isn't
+ * enough because every fresh `tsx` process starts an empty counter, so state is
+ * persisted to RATE_LIMIT_STATE_FILE. A 429 hard-blocks that endpoint for an
+ * hour, and there is NO auto-retry anywhere.
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -73,20 +49,14 @@ function saveState(state: RateLimitState): void {
   writeFileSync(RATE_LIMIT_STATE_FILE, JSON.stringify(state, null, 2));
 }
 
-// 60/hour is their documented ceiling; kept well under it for real margin,
-// since our own count and their server-side count have already disagreed
-// once this session.
+// 40, under the documented 60/hour ceiling, since our count and theirs have
+// disagreed before.
 export const REQUESTS_PER_HOUR = 40;
 export const WINDOW_MS = 60 * 60 * 1000;
 
 export type CallCheck = { allowed: true } | { allowed: false; reason: string };
 
-/**
- * Pure decision function -- no I/O, no Date.now() side effects, so it's
- * directly unit-testable. Two independent gates: an explicit hard block
- * (set the moment we've actually seen a 429 -- trusted over our own count)
- * and the sliding-window request budget.
- */
+// Two gates: a hard block set on a real 429, and the sliding-window budget.
 export function checkCanCall(state: RateLimitState, endpoint: string, now: number): CallCheck {
   const blockedUntil = state.blockedUntilByEndpoint[endpoint];
   if (blockedUntil && now < blockedUntil) {
@@ -127,13 +97,7 @@ function recordHardBlock(endpoint: string): void {
   saveState(state);
 }
 
-/**
- * Deliberately NO auto-retry on 429 -- see module doc. Also deliberately
- * fails FAST (assertCanCall throws synchronously) rather than sleeping
- * through a wait internally, so a caller/script never silently blocks for
- * up to an hour without the person running it knowing that's what's
- * happening.
- */
+// No 429 retry; fails fast rather than sleeping internally.
 async function liquipediaGet<T>(endpoint: string, params: Record<string, string>): Promise<T[]> {
   assertCanCall(endpoint);
 
@@ -159,19 +123,8 @@ async function liquipediaGet<T>(endpoint: string, params: Record<string, string>
   return json.result;
 }
 
-/**
- * Rows per page, by endpoint. The documented max is what flat endpoints
- * (team, player, placement) happily serve, but v3/match is not flat: one row
- * carries every game in the series, each with both full ten-player stat
- * lines. Asking for 1000 of those makes the server give up with a 500 --
- * observed against an unbounded LCK pull of only ~450 matches, so the ceiling
- * is payload size, not row count.
- *
- * Paging smaller costs no extra budget worth caring about: request count is
- * total rows / page size, so the whole ~2,700-series sweep is still ~20
- * requests of the 60/hour. Date-chunking instead would cost far more, because
- * every chunk spends a request even when it matches almost nothing.
- */
+// Rows per page. v3/match rows are huge (every game, two ten-player stat lines),
+// so they page smaller; the ceiling is payload size, not row count.
 const PAGE_SIZE_BY_ENDPOINT: Record<string, number> = { 'v3/match': 200 };
 
 /** Paginates a single condition set to exhaustion, a page at a time. */
@@ -262,44 +215,25 @@ export interface LiquipediaSquadPlayer {
   id: string; // in-game handle
   name: string; // real name
   nationality: string;
-  position: string; // "Top" | "Jungle" | "Mid" | "Bot" | "Support" for players; role/title text for staff
-  /**
-   * Surveyed across every active player row on the wiki: "" (942), "Substitute"
-   * (56), and "Loan" (2). "Inactive" also exists but only ever on `former`
-   * rows, so it never reaches an active roster.
-   */
-  role: string;
+  position: string; // "Top" | "Jungle" | ... for players; role/title text for staff
+  role: string; // "" (starter), "Substitute", or "Loan" on active rows
   type: string; // "player" | "staff"
   status: string;
   joindate: string;
-  /**
-   * `loanedto` says which DIRECTION a loan runs -- true means this player is
-   * out at another team and is not part of this squad. The role string alone
-   * cannot tell the two apart.
-   */
+  // loanedto true = this player is loaned OUT, not part of this squad (the role
+  // string alone can't tell the direction).
   extradata?: { loanedto?: boolean } | null;
 }
 
-/**
- * EVERY currently-active player across the whole wiki, in one broad paginated
- * pull -- callers filter by team pagename client-side. Replaces what used to
- * be one request per team (55+ requests) with a small, fixed number of
- * requests regardless of how many teams are being resolved.
- */
+/** Every active player wiki-wide in one paginated pull; callers filter by team. */
 export async function fetchAllActiveSquadPlayers(): Promise<LiquipediaSquadPlayer[]> {
   return liquipediaGetAll<LiquipediaSquadPlayer>('v3/squadplayer', {
     conditions: '[[status::active]] AND [[type::player]]',
   });
 }
 
-/**
- * A row from `v3/player` -- a different dataset from `v3/squadplayer`, keyed on
- * the PLAYER's page rather than the team's, and carrying the player's current
- * team directly.
- *
- * Note the case difference: squadplayer uses status "active", player uses
- * "Active". They are separate Cargo tables, not two views of one table.
- */
+// A `v3/player` row, keyed on the player's page. A separate Cargo table from
+// squadplayer, with different status casing ("Active" vs "active").
 export interface LiquipediaPlayer {
   pagename: string; // the player's own page
   id: string; // in-game handle
@@ -312,21 +246,8 @@ export interface LiquipediaPlayer {
   extradata: { role?: string; roles?: Record<string, string> } | null;
 }
 
-/**
- * Current active players for specific teams, read from `v3/player`.
- *
- * Exists because `v3/squadplayer` is NOT complete: it has zero rows -- not even
- * historical ones -- for some teams whose rosters are plainly visible on the
- * rendered wiki page. Confirmed against Leviatán (CBLOL), where `v3/team`
- * returns the team as active but `v3/squadplayer` knows nothing about its
- * squad, while `v3/player` returns all five starters with the correct
- * positions in `extradata.role`.
- *
- * Deliberately queried per-team rather than pulled wiki-wide like
- * squadplayer: this is a fallback for the handful of teams squadplayer misses,
- * and every active player across the whole wiki is a far larger result set
- * than we need.
- */
+// Fallback for teams v3/squadplayer returns nothing for (e.g. Leviatán), read
+// per-team from v3/player rather than a wiki-wide pull.
 export async function fetchActivePlayersForTeams(pagenames: string[]): Promise<LiquipediaPlayer[]> {
   if (pagenames.length === 0) return [];
 
@@ -360,15 +281,21 @@ export interface LiquipediaPlacement {
   prizemoney: number | null;
 }
 
-/**
- * Final standings for one tournament, by its Liquipedia name.
- *
- * Queried per tournament rather than wiki-wide: standings only matter for the
- * handful of international events the board shows, and a broad pull would
- * return every tournament on the wiki.
- */
-export async function fetchPlacements(tournamentName: string): Promise<LiquipediaPlacement[]> {
-  return liquipediaGetAll<LiquipediaPlacement>('v3/placement', {
-    conditions: `[[tournament::${tournamentName}]]`,
-  });
+// Standings for a set of tournaments, OR-ed names per request rather than one
+// each, so ~57 tournaments don't eat the hourly budget.
+export async function fetchPlacements(tournamentNames: string[]): Promise<LiquipediaPlacement[]> {
+  if (tournamentNames.length === 0) return [];
+
+  const results: LiquipediaPlacement[] = [];
+  // Chunked so the OR-condition string stays a sane URL length, matching
+  // fetchActivePlayersForTeams.
+  const CHUNK_SIZE = 10;
+  for (let i = 0; i < tournamentNames.length; i += CHUNK_SIZE) {
+    const chunk = tournamentNames.slice(i, i + CHUNK_SIZE);
+    const clause = chunk.map((name) => `[[tournament::${name}]]`).join(' OR ');
+    const page = await liquipediaGetAll<LiquipediaPlacement>('v3/placement', { conditions: `(${clause})` });
+    results.push(...page);
+    if (i + CHUNK_SIZE < tournamentNames.length) await sleep(500);
+  }
+  return results;
 }

@@ -92,8 +92,8 @@
               >
                 <span class="handle">{{ player.handle }}</span>
                 @if (player.alsoPlaysFor) {
-                  <span class="dot dot--academy" [title]="'No games on this board — currently playing for ' + player.alsoPlaysFor"></span>
-                  <span class="visually-hidden">No games on this board; currently playing for {{ player.alsoPlaysFor }}</span>
+                  <span class="dot dot--academy" [title]="'No games on this board — Liquipedia also lists them on ' + player.alsoPlaysFor"></span>
+                  <span class="visually-hidden">No games on this board; Liquipedia also lists them on {{ player.alsoPlaysFor }}</span>
                 }
               </button>
             </td>
@@ -123,10 +123,18 @@
                       <!-- A 0-0 record and a 0% win rate say nothing the empty
                            state below does not say better. -->
                       @if (d.stats.games > 0) {
+                        <!-- Series first, matching the teams board: it is the
+                             unit placement is decided in, and the two records
+                             routinely disagree. -->
+                        <p class="record">
+                          <strong>{{ d.stats.seriesWins }}–{{ d.stats.seriesLosses }}</strong>
+                          <span class="record__unit">series</span>
+                          <span class="record__rate">{{ d.stats.seriesWinRate | percent: '1.0-0' }} win rate</span>
+                        </p>
                         <p class="record">
                           <strong>{{ d.stats.wins }}–{{ d.stats.losses }}</strong>
+                          <span class="record__unit">games</span>
                           <span class="record__rate">{{ d.stats.winRate | percent: '1.0-0' }} win rate</span>
-                          <span class="record__games">{{ d.stats.games }} games</span>
                         </p>
                       }
                       <p class="coverage">{{ coverageNote() }}</p>
@@ -143,9 +151,14 @@
                     @if (d.stats.games === 0) {
                       <p class="status">
                         @if (d.alsoPlaysFor) {
-                          No games on this board — {{ d.handle }} is on the roster but currently playing
-                          for <strong>{{ d.alsoPlaysFor }}</strong>. The rating above sits at the neutral 50
-                          because nothing here has been earned yet.
+                          <!-- "Liquipedia also lists", not "is currently playing for". A squad row
+                               cannot tell a concurrent academy slot from a transfer the wiki has
+                               not closed yet, and it said the wrong one about Dardoch the week DIG
+                               signed him. Attributing the claim to the source is the part we can
+                               stand behind. -->
+                          No games on this board — {{ d.handle }} is on the roster, and Liquipedia also
+                          lists them on <strong>{{ d.alsoPlaysFor }}</strong>. The rating above sits at
+                          the neutral 50 because nothing here has been earned yet.
                         } @else {
                           No games on this board yet, so the rating above sits at the neutral 50 rather
                           than claiming anything.

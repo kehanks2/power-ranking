@@ -51,10 +51,9 @@ describe('runReplay', () => {
   });
 
   it('an international game moves BOTH the winning team\'s own contextual rating and its league meta', () => {
-    // Confirmed against real data: a team personally winning an international
-    // tournament (HLE at MSI 2026) must be rewarded on its own rating, not just
-    // via a league-wide meta bump every peer team gets equally whether or not
-    // they even played -- see replay.ts's ownContextualGamesByTeam comment.
+    // A team winning internationally (HLE at MSI 2026) must gain on its own
+    // rating, not only via a league-wide meta bump -- see replay.ts's
+    // ownContextualGamesByTeam.
     const games: ReplayGame[] = [
       {
         gameId: 'g1',
@@ -135,8 +134,8 @@ describe('runReplay', () => {
   });
 
   it('accrues drift across a gap with no games, not just per occupied period', () => {
-    // The offseason bug: sortedPeriods only holds periods that contain a game
-    // or decay event, so a long gap used to contribute NO uncertainty growth.
+    // Offseason bug: sortedPeriods holds only occupied periods, so a long gap
+    // used to contribute no uncertainty growth.
     const game = (gameId: string, datetimeUtc: string): ReplayGame => ({
       gameId,
       datetimeUtc,
@@ -169,8 +168,8 @@ describe('runReplay', () => {
   });
 
   it('accumulates the same total drift regardless of rating-period length', () => {
-    // ratingPeriodDays is meant to be a free knob: slicing the same span more
-    // finely must not change how much uncertainty accumulates over it.
+    // ratingPeriodDays is a free knob: slicing the same span finer must not
+    // change accumulated uncertainty.
     const games: ReplayGame[] = [
       {
         gameId: 'g1',

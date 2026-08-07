@@ -9,13 +9,8 @@ import {
 } from '@power-ranking/rating-engine';
 import { buildTeamLineupGames } from './teamLineups.js';
 
-// Originally 2 -- confirmed via backtest this was too trigger-happy: 463
-// roster-decay events fired across the dataset (some teams 16-24 times over
-// 2.5 years, far more than real personnel turnover), each spiking RD hard.
-// Raising to 5 (matching ROSTER_DISPLAY_PERSISTENCE_GAMES in
-// computePlayerRatings.ts) cut that to 317 events AND improved predictive
-// accuracy (63.02% -> 63.18%) -- ordinary bench rotation was being counted
-// as full roster turnover, not just a display-layer problem.
+// 5, not 2: at 2, ordinary bench rotation counted as full roster turnover and
+// spiked RD. Matches ROSTER_DISPLAY_PERSISTENCE_GAMES in computePlayerRatings.ts.
 const DEFAULT_ROSTER_CHANGE_PERSISTENCE_GAMES = 5;
 const ROSTER_CHANGE_MIN_GAMES = 10; // games before an incoming player's rating is trusted in full
 const OFFSET_SCALE = 150; // rating points a maximally-rated incoming roster is worth vs the league mean
@@ -36,25 +31,11 @@ interface GameRow {
   team2_league_id: number;
 }
 
-/**
- * How many international events the International board looks back over.
- *
- * A multiple of three on purpose. The calendar now runs First Stand -> MSI ->
- * Worlds, so any six consecutive events contain exactly two of each. That
- * keeps the evidence base constant: with a non-multiple the window would hold
- * three of one type and two of the others, and which type is over-represented
- * would rotate through the year. Since Worlds is roughly twice the size of
- * First Stand (84-106 games against 35-45), that would make the board
- * Worlds-heavy for part of the year and First-Stand-heavy for the rest.
- *
- * Six rather than three or nine, measured against the current data: six spans
- * two years and 421 games and qualifies 22 teams, against 23 for every event
- * we hold -- so it costs one team while giving a genuinely bounded window.
- * Three spans one year and qualifies only 15: a team that skipped a year
- * disappears entirely, which is too harsh when rosters persist across a
- * season. Nine would be a no-op today and would eventually reach back to
- * rosters sharing almost no players with the current team.
- */
+// How many international events the International board looks back over. A
+// multiple of three so each window holds equal counts of First Stand / MSI /
+// Worlds (they differ in size, so an uneven mix would swing the evidence base
+// through the year). Six spans two years; three drops any team that skipped a
+// year, nine is a no-op today.
 export const INTERNATIONAL_EVENT_WINDOW = 6;
 
 export interface ReplayData {
@@ -63,20 +44,15 @@ export interface ReplayData {
   games: ReplayGame[];
   decayEvents: DecayEvent[];
   /**
-   * Start date of the oldest international event inside the window. Games at
-   * international events before this are excluded from the International
-   * board (they still count everywhere else).
+   * Start date of the oldest international event inside the window. Earlier
+   * international games are excluded from the International board only.
    */
   internationalWindowStart: string | null;
 }
 
 /**
- * Loads everything a replay needs from Postgres -- games, roster-change decay
- * events (with real player-implied priors), and seasonal split-boundary decay
- * events. Shared by computeRatings.ts (persists the result) and
- * manualBacktest.ts (evaluates prediction accuracy in-memory only) so both
- * exercise the exact same real data, not a hand-simplified backtest scenario.
- *
+ * Loads everything a replay needs from Postgres -- games plus roster-change and
+ * seasonal decay events. Shared by computeRatings.ts and manualBacktest.ts.
  * Must run AFTER computePlayerRatings (player_ratings_history feeds the
  * roster-decay prior below).
  */
@@ -90,15 +66,11 @@ export async function loadReplayData(
   const teamsResult = await pool.query<{ id: number }>('SELECT id FROM teams');
   const teamIds = teamsResult.rows.map((row) => String(row.id));
 
-  // Resolves each game's per-side league via team_league_memberships. Uses the
-  // team's CURRENT membership (end_date IS NULL) rather than a strict date-range
-  // match against the game's own date: we ingest bridge events from before a
-  // team's earliest regional-season row in this dataset (e.g. Worlds 2025,
-  // played months before our 2026 regional ingestion's start_date), and a
-  // strict date-range join would silently drop those games. Trade-off: a team
-  // that genuinely changed leagues across seasons would be mis-attributed for
-  // its older games -- not a concern yet since this dataset only spans one
-  // season per team, but worth revisiting once multi-season history exists.
+  // Per-side league via the team's CURRENT membership (end_date IS NULL), not a
+  // date-range match: bridge events (e.g. Worlds 2025) predate a team's earliest
+  // regional row, and a date-range join would drop them. Mis-attributes older
+  // games if a team changes leagues across seasons -- fine while data spans one
+  // season per team.
   const gamesResult = await pool.query<GameRow>(`
     SELECT g.series_id, g.team1_id, g.team2_id, g.winner_team_id, g.datetime_utc,
            g.team1_gold, g.team2_gold, g.gamelength_seconds,
@@ -130,21 +102,12 @@ export async function loadReplayData(
   const decayEvents: DecayEvent[] = [];
 
   // --- Roster-change decay, using real player-implied priors where available ---
-  // Player ratings (0-100 percentile scale) come from player_ratings_history,
-  // already computed by computePlayerRatings before this runs. A player with
-  // no rating yet (e.g. true rookie) gets confidence 0, which
-  // computeRosterImpliedMu collapses back to the flat league mean -- the
-  // designed cold-start fallback, not a shortcut anymore.
-  // scope='regional' is not optional: the table also holds international-only
-  // ratings, which cover a different (much smaller, elite-only) population on
-  // a differently-centred scale. Mixing the two would make DISTINCT ON pick
-  // between two incomparable numbers arbitrarily.
-  // is_primary is not optional either: a player with games in two leagues has
-  // a rating row for each, all sharing one run's date, so DISTINCT ON alone
-  // would pick between them arbitrarily. The prior wants their strongest
-  // evidence wherever it was earned -- a signing's track record does not stop
-  // counting because it was built in another league -- which is exactly the
-  // group is_primary marks.
+  // A player with no rating (rookie) gets confidence 0, which
+  // computeRosterImpliedMu collapses to the flat league mean.
+  // scope='regional' AND is_primary are both required for DISTINCT ON: the table
+  // also holds international ratings on a differently-centred scale, and a player
+  // with games in two leagues has a row per league sharing one run's date --
+  // without both filters DISTINCT ON picks between incomparable rows arbitrarily.
   const playerRatingsResult = await pool.query<{ player_id: number; rating: string; games_played: number }>(`
     SELECT DISTINCT ON (player_id) player_id, rating, games_played
     FROM player_ratings_history
@@ -166,23 +129,14 @@ export async function loadReplayData(
       eventsByDate.get(dateKey)!.push(event);
     }
     for (const [effectiveDate, dateEvents] of eventsByDate) {
-      // Don't count an internal role RESHUFFLE the same as real personnel
-      // turnover. This guards against corrupted/mislabeled source rows, not
-      // real in-game behavior -- confirmed against real data (Cloud9,
-      // 2026-08-01) that the source CSV can have genuinely scrambled position
-      // labels for a team's existing 5 players (nobody new, nobody left) while
-      // the actual game had no such role swap at all. Detected naively,
-      // scrambled labels read as "5 roles changed" = 100% turnover, which
-      // would spike a team's RD to the maximum and torch their rating right
-      // when they should be most confident, after a season of stable data. A
-      // role-change only counts as real turnover if the incoming player
-      // wasn't ALSO one of this same batch's outgoing players -- i.e. they're
-      // genuinely new to the team, not just relabeled data for an existing
-      // teammate.
+      // An internal role reshuffle among the existing 5 isn't turnover. Source
+      // CSVs sometimes scramble position labels (Cloud9, 2026-08-01), which read
+      // naively as 100% turnover and would torch a stable team's rating. Only
+      // count an incoming player who wasn't also outgoing in this same batch.
       const outgoingPlayerIds = new Set(dateEvents.map((event) => event.previousPlayerId));
       const genuinelyNewEvents = dateEvents.filter((event) => !outgoingPlayerIds.has(event.newPlayerId));
 
-      if (genuinelyNewEvents.length === 0) continue; // pure reshuffle -- not a real roster event at all
+      if (genuinelyNewEvents.length === 0) continue;
 
       const incomingPlayers: IncomingPlayerSignal[] = genuinelyNewEvents.map((event) => {
         const playerRating = playerRatingById.get(Number(event.newPlayerId));
@@ -192,8 +146,7 @@ export async function loadReplayData(
         };
       });
       const rosterImpliedMu = computeRosterImpliedMu(0, incomingPlayers, OFFSET_SCALE);
-      // The same confidence that shaped rosterImpliedMu also governs how much
-      // uncertainty the change really creates -- see applyRosterChangeDecay.
+      // Also governs how much uncertainty the change creates -- see applyRosterChangeDecay.
       const rosterImpliedConfidence =
         incomingPlayers.reduce((sum, player) => sum + player.confidence, 0) / incomingPlayers.length;
 
@@ -209,17 +162,11 @@ export async function loadReplayData(
   }
 
   // --- Seasonal soft-decay at split boundaries ---
-  // Each distinct tournament date_start, per league, is a split boundary
-  // (Lock-In -> Spring -> Summer, or a year rollover). The first boundary for
-  // a league has no "before" to decay from, so it's skipped. leagueMeanMu is
-  // simplified to neutral (0) rather than the league's true mean at that
-  // point in time, which only the replay engine's mid-run state would know --
-  // same simplification already used for the roster-decay cold-start
-  // fallback. This addresses "recent results should count for more than a
-  // team's result from a year ago": without this, nothing in the system ever
-  // reduced the lingering influence of old results for a continuously-active
-  // team (Glicko-2's own inactivity-driven RD growth only kicks in across a
-  // real gap in games, which a busy team never has).
+  // Each distinct tournament date_start per league is a split boundary; the
+  // first has no "before" to decay from, so it's skipped. Without this, a
+  // continuously-active team never sheds old results -- Glicko-2's RD growth
+  // only kicks in across a real gap in games. leagueMeanMu is neutral (0)
+  // rather than the true mid-run mean, which only the replay engine would know.
   const boundariesResult = await pool.query<{ canonical_league_id: number; date_start: string }>(`
     SELECT DISTINCT canonical_league_id, date_start::text
     FROM tournaments
@@ -256,8 +203,8 @@ export async function loadReplayData(
     }
   }
 
-  // Oldest event still inside the window; null when there are fewer events
-  // than the window holds, which simply means nothing is excluded yet.
+  // Oldest event still inside the window; null when fewer events exist than
+  // the window holds (nothing excluded yet).
   const windowResult = await pool.query<{ date_start: string }>(
     `SELECT date_start::text FROM tournaments
      WHERE tournament_type = 'international'

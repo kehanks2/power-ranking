@@ -1,12 +1,9 @@
 /**
  * Tunes ReplayConfig.seriesCorrelation (rho) -- see seriesEvidenceWeight in
- * replay.ts for the statistics.
- *
- * Deliberately judged on CALIBRATION (Brier / log loss / high-confidence
- * error), not accuracy. Down-weighting correlated evidence barely reorders
- * predictions, so accuracy is close to flat by construction; what it should
- * fix is the model claiming 90% and delivering 79%. Optimising this on
- * accuracy alone would hide the entire effect.
+ * replay.ts. Judged on calibration (Brier / log loss / high-confidence error),
+ * not accuracy: down-weighting correlated evidence barely reorders predictions,
+ * so accuracy is flat by construction; the fix is the model claiming 90% and
+ * delivering 79%.
  */
 import { createPool } from '../db.js';
 import { loadReplayData } from '../replayData.js';

@@ -150,6 +150,7 @@
                       <p class="record">
                         <strong>{{ panelTotals().seriesWins }}–{{ panelTotals().seriesLosses }}</strong>
                         <span class="record__unit">series</span>
+                        <span class="record__rate">{{ panelTotals().seriesWinRate | percent: '1.0-0' }} win rate</span>
                       </p>
                       <p class="record">
                         <strong>{{ panelTotals().wins }}–{{ panelTotals().losses }}</strong>
@@ -171,8 +172,8 @@
                     }
 
                     <p class="panel__note">
-                      {{ isInternational() ? 'International games only.' : filterService.selectedScope() + ' games only.' }}
-                      The full page breaks this down by event, with the series format behind each record.
+                      {{ isInternational() ? 'International' : filterService.selectedScope() }} Only.
+                      See Team Page for detailed stats and information.
                     </p>
                   } @else {
                     <p class="status">Couldn’t load {{ team.name }}’s record.</p>

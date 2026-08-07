@@ -4,11 +4,9 @@ import { filter } from 'rxjs';
 import { isBoardScope, type BoardScope } from './models';
 
 /**
- * Single source of truth for the board being shown, synced to the `?scope=`
- * query param so it is bookmarkable and shareable.
- *
- * Defaults to 'international' rather than a region: it is the only board that
- * ranks across regions, so it is the closest thing to a headline ranking.
+ * Source of truth for the board being shown, synced to the `?scope=` query
+ * param so it is bookmarkable. Defaults to 'international' -- the only
+ * cross-region board, so the closest thing to a headline ranking.
  */
 @Injectable({ providedIn: 'root' })
 export class LeagueFilterService {
@@ -35,9 +33,8 @@ export class LeagueFilterService {
   }
 
   private readFromUrl(): BoardScope {
-    // Validated rather than cast: `?scope=` is user-editable, and an
-    // unrecognised value would reach the API, match nothing, and render an
-    // empty board with no tab selected.
+    // Validated, not cast: `?scope=` is user-editable, and a bad value would
+    // reach the API and render an empty board with no tab selected.
     const value = this.route.snapshot.queryParamMap.get('scope');
     return isBoardScope(value) ? value : 'international';
   }

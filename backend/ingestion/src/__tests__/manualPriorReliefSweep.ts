@@ -1,14 +1,9 @@
 /**
- * Manual one-off runner (read-only): sweep DEFAULT_PRIOR_CONFIDENCE_RELIEF.
- *
- * How much should a confident roster-implied prior damp the RD widening a
- * roster change causes? 0 reproduces the old behaviour (RD resets toward
- * phiInitMax on turnover alone, ignoring that we know who joined); 1 would let
- * a fully-known incoming five widen RD not at all.
- *
- * Reports both predictive accuracy AND the resulting RD spread, because the
- * motivating complaint was about displayed +/- being implausibly wide, not
- * about accuracy. Run with tsx.
+ * Manual read-only sweep of DEFAULT_PRIOR_CONFIDENCE_RELIEF: how much a
+ * confident roster-implied prior should damp the RD widening a roster change
+ * causes. 0 = old behaviour (RD resets toward phiInitMax on turnover alone);
+ * 1 = a fully-known incoming five widens RD not at all. Reports the RD spread,
+ * since the complaint was about implausibly wide displayed +/-.
  */
 import { createPool } from '../db.js';
 import { loadReplayData } from '../replayData.js';
@@ -35,9 +30,8 @@ console.log(`${games.length} games, ${decayEvents.length} decay events\n`);
 
 const sortedGames = [...games].sort((a, b) => (a.datetimeUtc < b.datetimeUtc ? -1 : 1));
 
-// Accuracy is NOT measured here -- manualBacktest.ts owns that, with a
-// proper no-leakage walk-forward. This sweep answers the display question:
-// how wide is the resulting +/- spread?
+// Accuracy is manualBacktest.ts's job; this sweep answers only the display
+// question: how wide is the resulting +/- spread?
 console.log('relief   medianRD  p90RD  maxRD');
 for (const relief of RELIEFS) {
   const input: ReplayInput = {
@@ -48,9 +42,7 @@ for (const relief of RELIEFS) {
     config: {
       phiInitMax: PHI_INIT_MAX,
       sigmaDefault: DEFAULT_VOLATILITY,
-      // Imported, not restated: this file previously ran metaWeight 0.8 and
-      // seriesCorrelation 0.8 against a shipped 0.5 and 0.6, so it swept one
-      // knob on top of a model we do not ship.
+      // Imported, not restated, so the sweep runs on the shipped config.
       marginScale: MARGIN_SCALE,
       movWeightCap: MOV_WEIGHT_CAP,
       metaWeight: META_WEIGHT,

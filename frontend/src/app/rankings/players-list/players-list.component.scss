@@ -2,28 +2,25 @@
   color: var(--color-text-muted);
 }
 
-// Height is written down rather than measured because it is a single row of
-// fixed-size chips at every width where the sticky header is active (the
-// narrow breakpoint below hands the table back to a scroll container). The
-// table header offsets itself by this.
-// Tighter than it was: the space above now comes from the sticky block's own
-// bottom padding, shared with the teams board, so the filter only needs room
-// for the chips themselves.
+// Written down, not measured: a single fixed row of chips, and the table header
+// offsets itself by this.
 $role-filter-height: 2.5rem;
 
-// Position on the left, stretch of play on the right, in ONE row. Two rows
-// would make this height conditional on the board, and the table header pins
-// itself by that height.
+// Lives INSIDE the sticky bar -- a gap outside it would let rows scroll through
+// a strip of page background between two pinned elements.
+$filter-gap: 1rem;
+
+// One row: two would make the height board-conditional, and the table header
+// pins by that height.
 .filters {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 1.5rem;
-  height: $role-filter-height;
-  // Pins flush under the shell's block so the filters stay switchable while
-  // scrolling; the block paints its own pixel of background below itself, so
-  // nothing has to be pulled up over the seam.
+  box-sizing: border-box;
+  height: $role-filter-height + $filter-gap;
+  padding-bottom: $filter-gap;
   position: sticky;
   top: var(--sticky-top-height, 0px);
   z-index: 6;
@@ -36,8 +33,7 @@ $role-filter-height: 2.5rem;
   gap: 0.4rem;
 }
 
-// Names what the chips beside it do. Without it "All time" reads as another
-// role filter, since the two groups share a chip.
+// Names the chip group, so "All time" doesn't read as another role filter.
 .chip-group__label {
   font-size: 0.6rem;
   font-weight: 700;
@@ -47,8 +43,6 @@ $role-filter-height: 2.5rem;
   margin-right: 0.1rem;
 }
 
-// Same chip as the board tabs above, so the two read as the same kind of
-// control rather than two different filter idioms on one page.
 .chip {
   padding: 0.32rem 0.75rem;
   border-radius: 999px;
@@ -72,24 +66,15 @@ $role-filter-height: 2.5rem;
   color: var(--color-gold-contrast);
 }
 
-// The same horizontal padding the teams board uses, so a column gap means the
-// same thing on either tab.
 $cell-pad-x: 0.7rem;
 
-// No overflow at desktop widths: `overflow-x: auto` computes overflow-y to
-// auto as well, and a sticky thead inside a scroll container pins to that
-// container -- which never scrolls vertically -- so it does nothing.
-//
-// No top border: that edge belongs to the sticky header, which stays on
-// screen. Drawn here it scrolled away on the first scroll and the table lost
-// its lid.
+// `overflow: clip`, not `auto`/`hidden`: those make this a scroll container, and
+// a sticky thead inside one pins to a container that never scrolls vertically.
+// No top border -- that edge belongs to the sticky header.
 .table-scroll {
   border: 1px solid var(--color-border);
   border-top: 0;
-  border-radius: 9px;
   background: var(--color-surface);
-  // `clip`, not `hidden`: hidden would make this a scroll container and kill
-  // the sticky header. It is only here so the rounded corners cut the cells.
   overflow: clip;
 }
 
@@ -100,19 +85,16 @@ $cell-pad-x: 0.7rem;
 }
 
 .players-table {
-  // Separate, so the sticky header keeps its own borders -- collapsed borders
-  // belong to the table and a detached cell leaves them behind -- and so the
-  // corner cells can round, which collapsed borders do not allow at all.
+  // Separate, so the sticky header keeps its own borders when it detaches.
   border-collapse: separate;
   border-spacing: 0;
   width: 100%;
   min-width: 660px;
 
-  // Pinned below the shell block AND the role filter, so both the positions
-  // and the column labels stay put while scrolling a long board.
+  // Pinned below the shell block AND the role filter.
   thead th {
     position: sticky;
-    top: calc(var(--sticky-top-height, 0px) + #{$role-filter-height});
+    top: calc(var(--sticky-top-height, 0px) + #{$role-filter-height} + #{$filter-gap});
     z-index: 5;
     text-align: left;
     font-size: 0.65rem;
@@ -125,16 +107,6 @@ $cell-pad-x: 0.7rem;
     background: var(--color-surface);
     border-top: 1px solid var(--color-border);
     border-bottom: 1px solid var(--color-border);
-  }
-
-  // Rounded with the container, at 8px rather than 9 because they sit inside
-  // its 1px side borders.
-  thead th:first-child {
-    border-top-left-radius: 8px;
-  }
-
-  thead th:last-child {
-    border-top-right-radius: 8px;
   }
 
   tbody td {
@@ -186,8 +158,6 @@ $cell-pad-x: 0.7rem;
   font-size: 0.92rem;
 }
 
-// Role reads as a label rather than a value, and sits beside the player it
-// describes rather than between region and team.
 .role {
   display: inline-block;
   font-size: 0.66rem;
@@ -225,9 +195,6 @@ $cell-pad-x: 0.7rem;
 
 // --- Detail panel ----------------------------------------------------------
 
-// The toggle carries the handle, so it has to read as the handle did -- a
-// button that looks like a form control would turn the whole column into
-// chrome.
 .handle-toggle {
   appearance: none;
   background: none;
@@ -251,14 +218,11 @@ $cell-pad-x: 0.7rem;
   }
 }
 
-// The whole row is the target, so the whole row shows it.
 tr.row-toggle {
   cursor: pointer;
 }
 
-// Same language as the roster-churn flag on the teams board: a small dot that
-// explains itself on hover, rather than a column that would be empty for
-// almost every row.
+// A hover-explained dot, not a column that would be empty for almost every row.
 .dot {
   width: 7px;
   height: 7px;
@@ -295,8 +259,7 @@ tr.is-open td {
   animation: slide-down 160ms ease;
 }
 
-// Height is not animatable from auto, and the panel's height depends on how
-// many stats resolved, so the reveal is done with transform + opacity.
+// Height isn't animatable from auto, so the reveal is transform + opacity.
 @keyframes slide-down {
   from {
     opacity: 0;
@@ -326,9 +289,6 @@ tr.is-open td {
   margin-bottom: 0.9rem;
 }
 
-// The panel's headline figure. Proportional figures deliberately: tabular-nums
-// gives every digit the width of a zero, which reads loose at this size, and
-// nothing lines up under it.
 .record {
   margin: 0;
   display: flex;
@@ -342,15 +302,13 @@ tr.is-open td {
   }
 }
 
-.record__rate,
-.record__games {
+.record__unit,
+.record__rate {
   color: var(--color-text-muted);
   font-size: 0.86rem;
 }
 
-// Leaves the board, so it is a link and looks like one you take deliberately
-// -- not another row toggle. Pushed to the far end of the head row so it never
-// competes with the record for first read.
+// A link, not a row toggle -- it leaves the board.
 .team-link {
   margin-left: auto;
   align-self: center;
@@ -377,8 +335,6 @@ tr.is-open td {
   max-width: 62ch;
 }
 
-// Three questions, three groups -- a reader looking for "does he farm" goes
-// straight to Economy instead of scanning nine undifferentiated rows.
 .groups {
   display: grid;
   gap: 1.15rem 2rem;
@@ -414,8 +370,7 @@ tr.is-open td {
   dd {
     margin: 0;
     display: grid;
-    // value | place | meter -- the meter last so every bar starts on the same
-    // left edge and lengths can be compared down the column.
+    // value | place | meter, meter last so markers share a left edge.
     grid-template-columns: auto auto 1fr;
     align-items: center;
     gap: 0.45rem;
@@ -436,11 +391,7 @@ tr.is-open td {
   min-width: 2.2rem;
 }
 
-// A marker on a scale, not a bar. A bar's length says "how much", growing from
-// a zero -- but a place among peers has no zero to grow from, and 2nd of 27 is
-// not "90% of" anything. The dot states where they stand and claims nothing
-// beyond it. Worst at the left, best at the right, matching the direction the
-// team board's confidence range already reads.
+// A marker on a scale, not a magnitude bar. Worst left, best right.
 .stat__scale {
   position: relative;
   height: 12px;
@@ -464,16 +415,13 @@ tr.is-open td {
   height: 9px;
   border-radius: 50%;
   transform: translate(-50%, -50%);
-  // De-emphasis by default; colour is spent only on what stands out, so nine
-  // equally loud markers do not compete for the eye. The ring keeps the dot
-  // legible where it sits on the track.
+  // De-emphasised by default; colour is spent only on standouts. Ring keeps it legible.
   background: #737a8c;
   box-shadow: 0 0 0 2px var(--color-surface-hover);
 }
 
-// Emphasis: the accent marks the top quarter of the peer group, i.e. what this
-// player is genuinely best at. Never the only signal -- the place is always
-// printed beside it.
+// Accent marks the top quarter of the peer group; never the only signal (the
+// place is printed too).
 .stat--standout {
   .stat__dot {
     background: var(--color-gold);
@@ -493,5 +441,4 @@ tr.is-open td {
   color: var(--color-text-muted);
   font-size: 0.8rem;
   line-height: 1.45;
-  max-width: 70ch;
 }

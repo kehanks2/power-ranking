@@ -5,14 +5,9 @@ import { resolvePosition, ourNameToLiquipediaName, HISTORICAL_LIQUIPEDIA_NAME_AL
 import { upsertPlayer, upsertTournament, upsertSeries, upsertGame, upsertGameLineup, ensureTeamLeagueMembership } from './upsert.js';
 import { upsertPlayerGamePerformance } from './computePlayerRatings.js';
 
-/**
- * Liquipedia's `series` field cleanly identifies each Riot-official regional
- * league (confirmed directly against the API, not guessed -- see the tier-1
- * match sample pulled 2026-08-04). "Esports World Cup" and "KeSPA Cup" are
- * real tournaments but explicitly NOT Riot-official, and are excluded simply
- * by not appearing in this map or INTERNATIONAL_SERIES below -- nothing else
- * needed to keep them out.
- */
+// Liquipedia's `series` field identifies each Riot-official regional league.
+// Non-official events (EWC, KeSPA Cup) are excluded just by not appearing here
+// or in INTERNATIONAL_SERIES.
 export const REGIONAL_SERIES_TO_LEAGUE_SLUG: Record<string, string> = {
   'LoL Champions Korea': 'LCK',
   'LoL Pro League': 'LPL',
@@ -22,26 +17,12 @@ export const REGIONAL_SERIES_TO_LEAGUE_SLUG: Record<string, string> = {
   'LoL Championship Pacific': 'LCP',
 };
 
-/**
- * Confirmed individually against the API (not guessed), each via a real
- * match from that event: MSI (parent Mid-Season_Invitational/2026), Worlds
- * (parent World_Championship/2025), First Stand (parent
- * First_Stand_Tournament/2026).
- */
+// Each confirmed against the API via a real match from that event.
 export const INTERNATIONAL_SERIES = new Set(['Mid-Season Invitational', 'World Championships', 'First Stand Tournament']);
 
-/**
- * Through 2025 the Americas ran as one series, "LoL Championship of The
- * Americas", split into two conferences that are separate leagues to us: LTA
- * North is LCS and LTA South is CBLOL. Series alone cannot tell them apart --
- * both carry the same value -- so the conference is read off `parent`
- * ("LTA/2025/Split_2/North"). Same shape of ambiguity as the MSI qualifier
- * brackets above.
- *
- * This is why leagueAlias.ts existed and why nothing called it: the season it
- * remaps was never ingested, because the backfill queried for a series named
- * "LCS" that did not exist that year.
- */
+// Through 2025 the Americas ran as one series split into North (LCS) and South
+// (CBLOL) conferences. Series alone can't tell them apart, so the conference is
+// read off `parent` ("LTA/2025/Split_2/North").
 export const AMERICAS_SERIES = 'LoL Championship of The Americas';
 const AMERICAS_CONFERENCE_TO_LEAGUE_SLUG: Record<string, string> = { North: 'LCS', South: 'CBLOL' };
 
@@ -52,16 +33,10 @@ export interface MatchClassification {
 }
 
 /**
- * Classifies a match's series+parent into how (or whether) it should be
- * ingested. Returns null for anything not Riot-official (EWC, KeSPA Cup,
- * academy leagues, etc.) -- exclusion is the DEFAULT, not an explicit
- * denylist, so a new/unrecognized series never sneaks in silently.
- *
- * The one real wrinkle: regional MSI-qualifier brackets (e.g. parent
- * "LCK/2026/Road_to_MSI") share the exact same `series` value
- * ("Mid-Season Invitational") as the real international MSI bracket itself
- * (parent "Mid-Season_Invitational/2026") -- confirmed against the API this
- * is genuinely ambiguous by series alone, so parent is checked too.
+ * Classifies a match's series+parent for ingestion, or null to exclude.
+ * Exclusion is the default, so an unrecognized series never sneaks in. Regional
+ * MSI-qualifier brackets share the "Mid-Season Invitational" series with the
+ * real MSI, so `parent` is checked too (see the Road_to_ guard below).
  */
 export function classifyMatch(series: string, parent: string, leagueIdBySlug: Map<string, number>): MatchClassification | null {
   const leagueSlug = REGIONAL_SERIES_TO_LEAGUE_SLUG[series];
@@ -71,12 +46,8 @@ export function classifyMatch(series: string, parent: string, leagueIdBySlug: Ma
     return { tournamentType: 'regional_split', canonicalLeagueId, isInternational: false };
   }
   if (series === AMERICAS_SERIES) {
-    // Cross-Conference and Championship brackets put North against South.
-    // Those are LCS vs CBLOL to us, so treating them as either league's
-    // regional play would mis-assign team membership, and letting them through
-    // as cross-league games would feed the league meta with matches that were
-    // never international. Excluded until they have a home -- exclusion is the
-    // default here, as everywhere else in this function.
+    // Cross-Conference and Championship brackets (North vs South = LCS vs CBLOL)
+    // belong to neither regional league, so they're excluded until they have a home.
     const conference = /\/(North|South)$/.exec(parent)?.[1];
     if (!conference) return null;
     const canonicalLeagueId = leagueIdBySlug.get(AMERICAS_CONFERENCE_TO_LEAGUE_SLUG[conference]);
@@ -84,7 +55,7 @@ export function classifyMatch(series: string, parent: string, leagueIdBySlug: Ma
     return { tournamentType: 'regional_split', canonicalLeagueId, isInternational: false };
   }
   if (INTERNATIONAL_SERIES.has(series)) {
-    if (parent.includes('Road_to_')) return null; // a regional qualifier bracket, not the real international event
+    if (parent.includes('Road_to_')) return null; // regional qualifier bracket, not the international event
     return { tournamentType: 'international', canonicalLeagueId: null, isInternational: true };
   }
   return null;
@@ -97,18 +68,11 @@ function parseLengthToSeconds(length: string): number | null {
 }
 
 /**
- * A Bo3/Bo5 that ends early still returns a FULL-LENGTH match2games array --
- * the unplayed slots come back as `scores: [0,0]`, `winner: ""`, `length: ""`.
- * Confirmed directly against the API (e.g. a 2-0 LCK sweep still ships a
- * third game entry). Critically, those placeholders DO carry a `players`
- * list (the roster, sometimes 6-7 deep), so "has players" is NOT a usable
- * played/unplayed test -- only a decisive score is.
- *
- * This guard is load-bearing: without it, `score === 1 ? team1 : team2`
- * silently credits every unplayed slot to team2. That produced ~2,287
- * phantom games (~31% of the dataset), all won by team2, which dragged
- * game-3 team1 winrate to 29% and game-5 to 19% (real games sit at ~52% at
- * every game number) and badly corrupted both ratings and calibration.
+ * A Bo3/Bo5 that ends early still returns a full-length match2games array;
+ * unplayed slots come back `scores: [0,0]`, `winner: ""`, `length: ""`. Those
+ * placeholders still carry a `players` list, so only a decisive score marks a
+ * game played. Load-bearing: without it every unplayed slot is credited to
+ * team2, which was ~31% of the dataset as phantom games.
  */
 export function isPlayedGame(game: { winner?: string; opponents: { score: number }[] }): boolean {
   if (game.opponents.length !== 2) return false;
@@ -121,13 +85,9 @@ export function isPlayedGame(game: { winner?: string; opponents: { score: number
 }
 
 /**
- * Gold by role for one side of a game, for computing the lane differential.
- *
- * A role is omitted when it does not resolve to exactly one player. Both the
- * missing case (a side short a position) and the ambiguous case (two players
- * tagged the same role, which real data does occasionally carry) end up as a
- * null differential rather than a guess -- there is no correct opponent to
- * subtract when we cannot say which player it is.
+ * Gold by role for one side, for the lane differential. A role is omitted when
+ * it doesn't resolve to exactly one player -- missing or ambiguous both yield a
+ * null differential rather than a guess.
  */
 export function goldByRole(players: LiquipediaGamePlayer[]): Map<string, number> {
   const gold = new Map<string, number>();
@@ -159,27 +119,20 @@ export interface MatchIngestResult {
 }
 
 /**
- * Ingests Liquipedia match/series data for the regional leagues into the
- * games/series/tournaments/game_lineups/player_game_performance schema --
- * idempotent on the same keys (leaguepedia_unique_line
- * for games, leaguepedia_match_id for series, overview_page for tournaments),
- * so re-running is always safe. `conditions` is the caller's full Liquipedia
- * filter (date range + `[[series::X]]`) -- see manualLiquipediaMatchBackfill.ts
- * for how the LPL Split 3 gap specifically is filled with this.
+ * Ingests Liquipedia match/series data into the
+ * games/series/tournaments/game_lineups/player_game_performance schema.
+ * Idempotent on the unique keys, so re-running is safe. `conditions` is the
+ * caller's full Liquipedia filter (date range + `[[series::X]]`).
  */
 export async function ingestLiquipediaMatches(pool: Pool, conditions: string): Promise<MatchIngestResult> {
   const matches = await fetchMatches(conditions);
 
   const ourTeams = await pool.query<{ id: number; name: string }>('SELECT id, name FROM teams');
-  // Case-insensitive: confirmed against real data Liquipedia's match records
-  // don't always match our stored casing exactly (e.g. "PaiN Gaming" vs our
-  // "paiN Gaming").
+  // Case-insensitive: Liquipedia's casing differs from ours ("PaiN" vs "paiN").
   const teamIdByLiquipediaName = new Map<string, number>();
   const teamIdByOurName = new Map(ourTeams.rows.map((t) => [t.name, t.id]));
   for (const team of ourTeams.rows) teamIdByLiquipediaName.set(ourNameToLiquipediaName(team.name).toLowerCase(), team.id);
-  // Also register historical/pre-sponsor names -- see liquipediaMappings.ts's
-  // doc comment on HISTORICAL_LIQUIPEDIA_NAME_ALIASES for why this is needed
-  // on top of the primary (current-name) alias above.
+  // Also register historical/pre-sponsor names -- see HISTORICAL_LIQUIPEDIA_NAME_ALIASES.
   for (const [historicalName, ourName] of Object.entries(HISTORICAL_LIQUIPEDIA_NAME_ALIASES)) {
     const teamId = teamIdByOurName.get(ourName);
     if (teamId) teamIdByLiquipediaName.set(historicalName.toLowerCase(), teamId);
@@ -204,15 +157,14 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
     const classification = classifyMatch(match.series, match.parent, leagueIdBySlug);
     if (!classification || match.match2opponents.length !== 2 || match.match2games.length === 0) {
       result.seriesSkipped += 1;
-      continue; // not Riot-official (EWC/KeSPA Cup/academy leagues/etc.), a regional MSI-qualifier bracket, or malformed
+      continue; // not Riot-official, a regional MSI-qualifier bracket, or malformed
     }
 
     const [opp1, opp2] = match.match2opponents;
     const team1Id = teamIdByLiquipediaName.get(opp1.name.toLowerCase());
     const team2Id = teamIdByLiquipediaName.get(opp2.name.toLowerCase());
     if (!team1Id || !team2Id) {
-      // A team outside our 6-league scope (e.g. a wildcard region at an
-      // international) simply doesn't resolve, so its games are silently
+      // A team outside our 6-league scope doesn't resolve, so its games are
       // excluded rather than mis-attributed.
       if (!team1Id) teamsUnresolvedSet.add(opp1.name);
       if (!team2Id) teamsUnresolvedSet.add(opp2.name);
@@ -244,10 +196,9 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
 
     const team1Score = opp1.score ?? 0;
     const team2Score = opp2.score ?? 0;
-    // Null unless the series was actually played and actually decided.
-    // Liquipedia reports a scheduled match as -1 to -1, and the `>=` this
-    // replaces handed every one of those to team1 -- along with every drawn
-    // Bo2. See db/migrations/0010.
+    // Null unless played and decided. Liquipedia reports a scheduled match as
+    // -1 to -1; the old `>=` gave every one of those (and every drawn Bo2) to
+    // team1. See db/migrations/0010.
     const seriesDecided = team1Score >= 0 && team2Score >= 0 && team1Score !== team2Score;
     let winnerTeamId: number | null = null;
     if (seriesDecided) winnerTeamId = team1Score > team2Score ? team1Id : team2Id;
@@ -280,7 +231,7 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
         team1Id,
         team2Id,
         winnerTeamId: gameWinnerTeamId,
-        datetimeUtc: match.date.replace(' ', 'T') + 'Z', // per-game timestamps aren't available -- series date shared across games
+        datetimeUtc: match.date.replace(' ', 'T') + 'Z', // no per-game timestamps; series date shared across games
         patch: null,
         team1Gold: gameOpp1.stats?.gold ?? null,
         team2Gold: gameOpp2.stats?.gold ?? null,
@@ -288,8 +239,8 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
       });
       result.gamesProcessed += 1;
 
-      // Everyone this run wrote for the game, so rows for anyone the response
-      // no longer lists can be cleared afterwards -- see pruneStalePerformance.
+      // Everyone written this run; rows for anyone no longer listed are cleared
+      // afterwards -- see pruneStalePerformance.
       const playersInGame = new Set<number>();
 
       for (const [opponentIndex, gameOpponent] of [gameOpp1, gameOpp2].entries()) {
@@ -327,11 +278,9 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
           });
         }
 
-        // Two players on one side collapsing to a single id means a handle
-        // collision got past resolvePlayerId -- one real person's stat line
-        // silently overwrote another's, because performance rows are keyed by
-        // player. Rare (4 games in the 2024-2026 backfill) but invisible
-        // without counting it, so it is reported rather than swallowed.
+        // Two players on one side collapsing to one id is a handle collision
+        // past resolvePlayerId -- one stat line overwrote another. Rare, but
+        // reported rather than swallowed.
         if (idsThisSide.size < rolesWritten) result.gamesWithCollidedPlayers += 1;
       }
 
@@ -345,20 +294,19 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
 
 /**
  * Drops performance rows for players the current response no longer lists.
- *
- * game_lineups is keyed on (game_id, team_id, role) -- a slot -- so re-ingesting
- * a game whose recorded lineup has since been corrected simply replaces the
- * occupant. player_game_performance is keyed on (game_id, player_id) -- a
- * person -- so the replaced player's row has no slot to be evicted from and
- * survives every subsequent run. That left 180 phantom stat lines from earlier
- * backfills, all of which fed player ratings as real games.
+ * game_lineups is keyed on a slot (game, team, role), so a corrected lineup
+ * replaces the occupant; player_game_performance is keyed on the person (game,
+ * player), so a replaced player's row otherwise survives -- 180 phantom stat
+ * lines fed ratings as real games before this.
  */
 async function pruneStalePerformance(pool: Pool, gameId: number, playerIds: Set<number>): Promise<void> {
   if (playerIds.size === 0) return;
   await pool.query(`DELETE FROM player_game_performance WHERE game_id = $1 AND player_id <> ALL($2::int[])`, [gameId, [...playerIds]]);
 }
 
-/** Matches by clean handle (displayName) against existing players; creates new ones keyed by Liquipedia's disambiguated identity, not the handle -- avoids merging two different real people who happen to share a common handle (confirmed this exact class of bug against real data's "Saber"). */
+// Matches existing players by handle; creates new ones keyed by Liquipedia's
+// disambiguated identity, not the handle, so two different people sharing a
+// handle (real data's "Saber") aren't merged.
 async function resolvePlayerId(pool: Pool, player: LiquipediaGamePlayer, cache: Map<string, number>): Promise<number> {
   const cached = cache.get(player.player);
   if (cached) return cached;

@@ -16,22 +16,17 @@ import { loadReplayData } from './replayData.js';
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 
 /**
- * Loads all data needed for a full replay from Postgres (via loadReplayData),
- * runs the pure rating-engine replay, and persists the resulting history.
- * Safe to re-run from scratch at any time -- see plan's "full replay is
- * always the supported recovery path."
- *
- * Must run AFTER computePlayerRatings (player_ratings_history feeds the
- * roster-decay prior) -- see manualRecompute.ts for the pipeline order.
- */
-/**
  * Minimum games at international events before a team is rated on that board.
- * Below this the rating is noise: at a 5-game floor KT Rolster placed 2nd on 7
- * games with an RD of 206. Teams under the floor are not rated low -- they are
- * absent, because nothing has been demonstrated.
+ * Below this the rating is noise (KT Rolster placed 2nd on 7 games, RD 206);
+ * such teams are absent, not rated low.
  */
 export const MIN_INTERNATIONAL_GAMES = 10;
 
+/**
+ * Full replay from Postgres, persisting the resulting history. Safe to re-run
+ * from scratch. Must run AFTER computePlayerRatings (player_ratings_history
+ * feeds the roster-decay prior) -- see manualRecompute.ts for pipeline order.
+ */
 export async function computeRatings(pool: Pool): Promise<{ teamRows: number; leagueRows: number; internationalRows: number }> {
   const { teamIds, leagueIds, games, decayEvents, internationalWindowStart } = await loadReplayData(pool);
 
@@ -54,15 +49,11 @@ export async function computeRatings(pool: Pool): Promise<{ teamRows: number; le
 
   const result = runReplay(replayInput);
 
-  // Second, independent replay over every game played AT an international
-  // event, with the league prior switched off.
-  //
-  // Deliberately not restricted to cross-region matchups. Two LPL sides
-  // meeting at Worlds is international play, and it is real evidence about
-  // where both stand in that field -- excluding it would drop Weibo Gaming,
-  // a 2024 Worlds semifinalist, from the board because 7 of their 16 games
-  // there were against other LPL teams. Everyone in this pool played inside
-  // the same set of events, so the comparison holds without the league prior.
+  // Second, independent replay over every game played AT an international event,
+  // league prior off. Includes same-region matchups (two LPL sides at Worlds is
+  // still evidence; excluding them would drop Weibo Gaming, a Worlds semifinalist
+  // whose games there were mostly intra-LPL) -- the shared event pool holds it
+  // together without the league prior.
   const internationalGames = games.filter(
     (g) => g.internationalEvent && (internationalWindowStart === null || g.datetimeUtc >= internationalWindowStart),
   );
@@ -81,15 +72,10 @@ export async function computeRatings(pool: Pool): Promise<{ teamRows: number; le
     (s) => (internationalGameCount.get(s.teamId) ?? 0) >= MIN_INTERNATIONAL_GAMES,
   );
 
-  // A real bug lived here: pool.query('BEGIN')/'COMMIT' issue each statement
-  // through whatever connection the pool happens to hand back, which is NOT
-  // guaranteed to be the same connection across calls -- so this was never
-  // actually one atomic transaction. Under any concurrent pool usage (e.g.
-  // running the test suite), the DELETEs could commit on one connection while
-  // INSERTs landed on another (or failed silently), leaving the ratings
-  // tables wiped with no replacement rows -- confirmed in practice: every
-  // team fell back to cold-start display values after a test run. Fixed by
-  // pinning the whole transaction to one dedicated client via pool.connect().
+  // Pin the transaction to one client. pool.query('BEGIN') can hand each
+  // statement a different connection, so DELETEs and INSERTs land on separate
+  // ones and the tables get wiped with no replacements -- seen under concurrent
+  // pool use (the test suite).
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

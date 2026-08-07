@@ -47,7 +47,35 @@ export class TeamDetailComponent {
     });
   }
 
-  protected total(rows: TeamRecord[]): { wins: number; losses: number } {
+  /**
+   * Which series rows are expanded, keyed by section-prefixed event name --
+   * "intl:" and "reg:" because a split and an event can share a name. Held as a
+   * Set in a signal rather than a flag on the row: the rows arrive from the API
+   * and copying them to carry UI state would mean re-copying on every load.
+   */
+  private readonly openRows = signal<ReadonlySet<string>>(new Set());
+
+  protected isOpen(key: string): boolean {
+    return this.openRows().has(key);
+  }
+
+  protected toggle(key: string): void {
+    this.openRows.update((open) => {
+      const next = new Set(open);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }
+
+  /**
+   * A DOM-safe id for a row's detail so `aria-controls` can name it. Event
+   * names carry spaces, colons, and accents, none of which belong in an id.
+   */
+  protected detailId(key: string): string {
+    return `series-detail-${key.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
+  }
+
+  private total(rows: TeamRecord[]): { wins: number; losses: number } {
     return rows.reduce(
       (acc, row) => ({ wins: acc.wins + row.wins, losses: acc.losses + row.losses }),
       { wins: 0, losses: 0 },
@@ -61,26 +89,22 @@ export class TeamDetailComponent {
     );
   }
 
-  /** 0 rather than NaN for a team with no games, so an empty row still renders. */
-  protected winRate(rows: TeamRecord[]): number {
-    const { wins, losses } = this.total(rows);
+  /**
+   * The headline rate, and the only one shown outside an expanded row. Series
+   * are what decide placement: a team that wins four series 3-2 is 4-0 here,
+   * which is what the bracket says about them, while its game rate is 12-8.
+   *
+   * 0 rather than NaN for a team with no games, so an empty row still renders.
+   */
+  protected seriesWinRate(rows: TeamRecord[]): number {
+    const { wins, losses } = this.seriesTotal(rows);
     return wins + losses === 0 ? 0 : wins / (wins + losses);
   }
 
-  /**
-   * "Bo3 · Bo5" -- what the series record is a record OF. A 12-6 in Bo1s and a
-   * 12-6 in Bo5s are different seasons, and this is the column that says which
-   * one you are reading; most events run a shorter regular season and a longer
-   * playoff, so more than one is normal rather than a data problem.
-   */
-  protected formatLabel(formats: number[]): string {
-    if (formats.length === 0) return '—';
-    return formats.map((n) => `Bo${n}`).join(' · ');
-  }
-
-  /** The set across a whole section, for the totals row. */
-  protected allFormats(rows: TeamRecord[]): number[] {
-    return [...new Set(rows.flatMap((row) => row.formats))].sort((a, b) => a - b);
+  /** Games won as a share of games played -- detail, shown inside an open row. */
+  protected winRate(rows: TeamRecord[]): number {
+    const { wins, losses } = this.total(rows);
+    return wins + losses === 0 ? 0 : wins / (wins + losses);
   }
 
   /**

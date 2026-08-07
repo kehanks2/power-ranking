@@ -29,15 +29,13 @@ export function isTeamStanding(row: LiquipediaPlacement): boolean {
 }
 
 /**
- * Fills tournament_placements for every international tournament we hold.
+ * Fills tournament_placements for EVERY tournament we hold, regional splits
+ * included. Games record who beat whom, not who won: a team can go 6-4 and
+ * finish 3rd or 9th depending on bracket path, so the finish has to be read.
  *
- * Games record who beat whom; they do not record who won. A team can go 6-4
- * and finish 3rd or 9th depending on bracket path, so the finish has to be
- * read rather than inferred.
- *
- * One request per tournament. That is deliberately not a broad wiki-wide pull:
- * standings only matter for the handful of international events the board
- * shows, and querying all of them would return every tournament on the wiki.
+ * Names are batched into OR-ed requests (see fetchPlacements) rather than one
+ * per tournament, which is what made the regional half affordable -- 57
+ * tournaments is 6 requests of the 60/hour, not 57.
  *
  * Team names are matched through the same alias table the roster import uses,
  * because Liquipedia's naming and ours differ in small ways -- it writes
@@ -45,7 +43,7 @@ export function isTeamStanding(row: LiquipediaPlacement): boolean {
  */
 export async function ingestPlacements(pool: Pool): Promise<PlacementImportResult> {
   const tournaments = await pool.query<{ id: number; name: string }>(
-    `SELECT id, name FROM tournaments WHERE tournament_type = 'international' ORDER BY date_start DESC`,
+    `SELECT id, name FROM tournaments ORDER BY date_start DESC`,
   );
   const teams = await pool.query<{ id: number; name: string }>('SELECT id, name FROM teams');
 
@@ -67,33 +65,38 @@ export async function ingestPlacements(pool: Pool): Promise<PlacementImportResul
   const unmatched = new Set<string>();
   let inserted = 0;
 
+  // Every request first, then the write. A batched response carries rows for
+  // several tournaments at once, so they have to be keyed back to ours by name.
+  const tournamentIdByName = new Map(tournaments.rows.map((t) => [t.name.toLowerCase(), t.id]));
+  const rows = await fetchPlacements(tournaments.rows.map((t) => t.name));
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('DELETE FROM tournament_placements');
 
-    for (const tournament of tournaments.rows) {
-      const rows = await fetchPlacements(tournament.name);
-      for (const row of rows) {
-        if (!isTeamStanding(row)) continue;
+    for (const row of rows) {
+      if (!isTeamStanding(row)) continue;
 
-        const teamId = teamIdByName.get((row.opponentname ?? '').toLowerCase());
-        if (!teamId) {
-          unmatched.add(row.opponentname);
-          continue;
-        }
+      const tournamentId = tournamentIdByName.get((row.tournament ?? '').toLowerCase());
+      if (!tournamentId) continue;
 
-        await client.query(
-          `INSERT INTO tournament_placements (tournament_id, team_id, placement, placement_sort, prize_money)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (tournament_id, team_id) DO UPDATE
-             SET placement = EXCLUDED.placement,
-                 placement_sort = EXCLUDED.placement_sort,
-                 prize_money = EXCLUDED.prize_money`,
-          [tournament.id, teamId, row.placement, placementSortValue(row.placement), row.prizemoney ?? null],
-        );
-        inserted += 1;
+      const teamId = teamIdByName.get((row.opponentname ?? '').toLowerCase());
+      if (!teamId) {
+        unmatched.add(row.opponentname);
+        continue;
       }
+
+      await client.query(
+        `INSERT INTO tournament_placements (tournament_id, team_id, placement, placement_sort, prize_money)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (tournament_id, team_id) DO UPDATE
+           SET placement = EXCLUDED.placement,
+               placement_sort = EXCLUDED.placement_sort,
+               prize_money = EXCLUDED.prize_money`,
+        [tournamentId, teamId, row.placement, placementSortValue(row.placement), row.prizemoney ?? null],
+      );
+      inserted += 1;
     }
 
     await client.query('COMMIT');

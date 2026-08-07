@@ -136,9 +136,8 @@ describe('squadMemberFromPlayerRow (v3/player fallback)', () => {
   });
 
   it('excludes staff even when their secondary roles name real positions', () => {
-    // Leviatán's active list really does contain Kouke: type "staff", primary
-    // role "coach", but with "jungle" and "top" in the roles map. Filtering on
-    // the role strings alone would field a coach as a starter.
+    // Kouke is real: type "staff", role "coach", but "jungle"/"top" in the roles
+    // map -- filtering on role strings alone would field a coach as a starter.
     const kouke = playerRow({
       id: 'Kouke',
       type: 'staff',

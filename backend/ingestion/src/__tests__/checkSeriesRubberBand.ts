@@ -1,17 +1,9 @@
 /**
- * Tests the "loser picks" mechanism described by domain knowledge: in games 2+
- * of a series, the team that LOST the previous game chooses side (and, from
- * 2026, side OR pick order). If that choice is worth anything, the trailing
- * team should win game N more often than a side-blind model expects.
- *
- * Deliberately framed as "did the previous game's loser win?" rather than
- * "did blue side win?" because:
- *   - side assignment in games 2+ is ENDOGENOUS (it is a consequence of the
- *     previous result), so a raw side coefficient is confounded by selection;
- *   - the 2026 decoupling of side from pick order changes what "blue side"
- *     even means mid-dataset, whereas "the loser got to choose" is stable
- *     across the rule change.
- * Game 1 of each series (coin toss) is the exogenous control group.
+ * Tests the "loser picks" mechanism: in games 2+ the previous game's loser
+ * chooses side (from 2026, side or pick order), so if the choice is worth
+ * anything the trailing team wins game N more than a side-blind model expects.
+ * Framed as "did the previous loser win?" rather than "did blue win?" because
+ * side in games 2+ is endogenous, and 2026 decoupled side from pick order.
  */
 import { createPool } from '../db.js';
 

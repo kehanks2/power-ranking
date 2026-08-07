@@ -51,13 +51,11 @@ export function detectRosterChanges(games: LineupGame[], persistenceGames: numbe
       }
 
       if (playerInRole === activePlayerId) {
-        // active player continues; any in-progress candidate streak resets.
         candidatePlayerId = null;
         candidateStreak = 0;
         return;
       }
 
-      // A different player is occupying this role.
       if (playerInRole === candidatePlayerId) {
         candidateStreak += 1;
       } else {

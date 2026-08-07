@@ -1,20 +1,9 @@
 /**
- * Controlled version of checkSeriesRubberBand.ts.
- *
- * Raw finding there: the previous game's loser wins only ~44% of the next
- * game. But that is confounded -- the previous loser is usually just the
- * weaker team, so strength, not the side/pick choice, could explain all of it.
- *
- * This asks the properly controlled question: AFTER accounting for the rating
- * gap the model already knows about, does the previous game's result still
- * carry information? Structurally the model cannot see it either way -- every
- * game in a series shares the series date, so it lands in one rating period
- * and receives one identical prediction for all of games 1..5.
- *
- * If prev-game winners systematically beat their predicted probability and
- * prev-game losers fall short of it, there is real within-series state
- * (momentum / draft adaptation / tilt) that is exploitable and currently
- * invisible to the engine.
+ * Controlled version of checkSeriesRubberBand.ts: after accounting for the
+ * rating gap the model already knows, does the previous game's result still
+ * carry information? Every game in a series shares one prediction, so if
+ * prev-game winners beat it and losers fall short, there is real within-series
+ * state (momentum / draft adaptation / tilt) the engine is blind to.
  */
 import { createPool } from '../db.js';
 import { loadReplayData } from '../replayData.js';

@@ -69,8 +69,20 @@ export interface TeamRecord {
   seriesLosses: number;
   /** Series lengths played here, ascending: [3, 5] is a Bo3 stage and a Bo5 playoff. */
   formats: number[];
+  /** The decided series themselves, oldest first, for the expanded row. */
+  series: TeamSeries[];
   /** Finish where standings exist; text, since shared finishes are ranges. */
   placement: string | null;
+}
+
+/** One series, oriented to this team: `ownScore`-`opponentScore`. */
+export interface TeamSeries {
+  date: string;
+  opponent: string;
+  ownScore: number;
+  opponentScore: number;
+  format: number | null;
+  won: boolean;
 }
 
 export interface TeamDetail extends TeamSummary {
@@ -144,6 +156,10 @@ export interface PlayerStats {
   wins: number;
   losses: number;
   winRate: number;
+  /** The same games grouped into series -- the unit that decides placement. */
+  seriesWins: number;
+  seriesLosses: number;
+  seriesWinRate: number;
   kills: PlayerStat;
   deaths: PlayerStat;
   assists: PlayerStat;

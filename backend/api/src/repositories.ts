@@ -19,26 +19,14 @@ import type {
   PlayerRatingScope,
   RatingWindow,
   RosterEntryDto,
+  TeamSeriesDto,
 } from '@power-ranking/shared';
 import { LEAGUE_SPLIT_START_CTE, playerWindowPredicate } from '@power-ranking/shared';
 
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
-// META_WEIGHT is imported, not restated: combination happens at read time
-// rather than being baked into the stored mu_ctx/mu_meta, so the API has to
-// apply exactly the weight the replay used or displayed ratings disagree with
-// what was computed.
-// A team with no game in its league's latest split is treated as no longer
-// actively competing (e.g. relegated, or just not in the current split's
-// lineup) -- team_league_memberships only ever grows an open (end_date IS
-// NULL) row per team, never automatically closes one just because a team
-// stopped appearing in new data, so without this a team that competed a
-// while ago would show up in the "current" team/player lists forever.
-// Deliberately keyed to each league's OWN latest split (via tournaments'
-// date_start), not a flat day-count off the dataset's global max game date:
-// a team can have a recent-looking game date yet still have missed their
-// league's current split (confirmed in practice: Los Ratones' last game was
-// ~175 days before the dataset's global max, under an earlier flat 200-day
-// threshold, but that game predated their own league's latest split entirely).
+// A team with no game in its league's latest split is no longer competing.
+// team_league_memberships never closes a row, so without this a long-gone team
+// stays "current" forever. Keyed per-league, since leagues run on different calendars.
 const LEAGUE_LATEST_SPLIT_CTE = `
   league_latest_split AS (
     SELECT canonical_league_id, MAX(date_start) AS latest_split_start
@@ -96,8 +84,7 @@ export async function getLeagues(pool: Pool): Promise<LeagueSummaryDto[]> {
 
   const withRatings = result.rows.map((row) => {
     const meta = toRatingState(row.mu_meta, row.phi_meta) ?? initialLeagueMeta(PHI_INIT_MAX);
-    // Weighted, so the Leagues board reports the credit these teams actually
-    // carry rather than the raw internal parameter.
+    // Weighted, so the board reports the credit teams actually carry.
     const display = metaToDisplayOffset(meta, META_WEIGHT, PHI_INIT_MAX);
     return { slug: row.slug, name: row.name, logoUrl: row.logo_url, rating: display.rating, rd: display.rd };
   });
@@ -106,16 +93,7 @@ export async function getLeagues(pool: Pool): Promise<LeagueSummaryDto[]> {
   return withRatings.map((row, index) => ({ ...row, rank: index + 1 }));
 }
 
-/**
- * Shared CTEs for the team boards: which events count as "the recent
- * internationals", who attended them, each team's most recent international,
- * and whether they changed roster recently.
- *
- * Six events, matching the window the international rating itself is built
- * from (INTERNATIONAL_EVENT_WINDOW). Showing four while rating on six meant
- * the board's own evidence column disagreed with the number beside it, and
- * with three events a year six is exactly two years.
- */
+// Shared CTEs for the team boards. Six events, matching INTERNATIONAL_EVENT_WINDOW.
 const TEAM_CONTEXT_CTE = `
   recent_events AS (
     SELECT id, name, date_start,
@@ -125,8 +103,7 @@ const TEAM_CONTEXT_CTE = `
     FROM tournaments WHERE tournament_type = 'international'
     ORDER BY date_start DESC LIMIT 6
   ),
-  -- One row per team per event they played, carrying the finish where we have
-  -- it. Ordered newest-first so the board can render fixed columns.
+  -- One row per team per event played, with the finish, newest-first.
   attendance AS (
     SELECT team_id, json_agg(json_build_object('event', code, 'placement', placement)
                              ORDER BY date_start DESC) AS results
@@ -157,9 +134,7 @@ const TEAM_CONTEXT_CTE = `
     SELECT DISTINCT team_id FROM team_ratings_history
     WHERE reason = 'roster_decay' AND as_of_date > NOW() - INTERVAL '60 days'
   ),
-  -- Games at international events, matching exactly what the international
-  -- board rates on. Includes intra-region matchups played there: two LPL sides
-  -- meeting at Worlds is international play.
+  -- Games at international events (incl. intra-region matchups played there).
   intl_game_count AS (
     SELECT team_id, COUNT(*) AS games FROM (
       SELECT g.team1_id AS team_id FROM games g
@@ -215,26 +190,16 @@ function toTeamSummaries(rows: TeamRow[]): TeamSummaryDto[] {
     };
   });
 
-  // Ranked on the floor, not the rating: a high but thinly-evidenced number
-  // should not sit above one we actually know. See conservativeRank.
+  // Ranked on the floor, not the rating, so a thinly-evidenced high number
+  // doesn't top one we actually know. See conservativeRank.
   withRatings.sort((a, b) => b.floor - a.floor);
   return withRatings.map((row, index) => ({ ...row, rank: index + 1 }));
 }
 
 /**
- * One board per pool of evidence.
- *
- * A league slug ranks that league's teams on their CONTEXTUAL rating alone --
- * games played inside the region. The league meta is deliberately not added:
- * every team on the board shares it, so it would cancel, and the per-team
- * participation factor was actively reordering teams within their own region
- * (BNK FEARX outranked Dplus Kia in LCK partly for having attended a recent
- * international). These numbers are not comparable between regions.
- *
- * 'international' ranks on the international-only rating -- cross-region games
- * with the league prior switched off. It is the only scope that can compare
- * regions, and only teams with at least MIN_INTERNATIONAL_GAMES appear; the
- * rest are absent rather than ranked low, because nothing has been shown.
+ * A league slug ranks on contextual rating alone (the shared meta cancels) and
+ * isn't comparable between regions. 'international' ranks on cross-region games
+ * with the league prior off; teams under MIN_INTERNATIONAL_GAMES are absent.
  */
 export async function getTeams(pool: Pool, scope: string): Promise<TeamSummaryDto[]> {
   const international = scope === 'international';
@@ -293,10 +258,7 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     FROM roster_memberships rm
     JOIN players p ON p.id = rm.player_id
     WHERE rm.team_id = $1 AND rm.end_date IS NULL
-    -- In-game order, not alphabetical. TOP/JNG/MID/BOT/SUP is how a roster is
-    -- read and written everywhere in the sport; sorting the text puts BOT
-    -- first and SUP before TOP, which reads as scrambled to anyone who plays.
-    -- Starters lead within a role, so a substitute never heads the list.
+    -- In-game order (TOP/JNG/MID/BOT/SUP), not alphabetical; starters lead within a role.
     ORDER BY array_position(ARRAY['TOP','JNG','MID','BOT','SUP']::text[], rm.role), rm.is_starter DESC, p.handle
     `,
     [teamId],
@@ -309,12 +271,8 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     isStarter: row.is_starter,
   }));
 
-  // One row per tournament the team played, in games AND in series, with the
-  // series lengths that were played. A series record on its own is not
-  // comparable between leagues -- a 12-6 in Bo1s is a different season from a
-  // 12-6 in Bo5s -- so the formats column is what makes it readable rather
-  // than a reason to withhold it. Placements exist for internationals only;
-  // we hold no regional standings.
+  // One row per tournament, games AND series, with formats (a 12-6 in Bo1s is a
+  // different season from a 12-6 in Bo5s). Placements are internationals only.
   const recordResult = await pool.query<{
     event: string;
     start_date: string;
@@ -324,6 +282,7 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     series_wins: number;
     series_losses: number;
     formats: number[] | null;
+    series: TeamSeriesDto[];
     placement: string | null;
   }>(
     `
@@ -331,12 +290,14 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
       SELECT s.id,
              s.tournament_id,
              s.winner_team_id,
-             -- Derived from the scoreline, NOT from series.best_of, which
-             -- Liquipedia fills with the declared format on some rows and the
-             -- number of games played on others -- so a Bo5 won 3-1 arrives
-             -- as "Bo4" and a Bo3 won 2-0 as "Bo2". A decided series always
-             -- ran to (2 * winner's score - 1) games' worth of format; a draw
-             -- is the one even format there is.
+             -- series carries no date of its own, so order by its first game.
+             (SELECT MIN(g.datetime_utc) FROM games g WHERE g.series_id = s.id) AS started_at,
+             -- Oriented to this team, so the expanded row reads "3-1" for a win.
+             CASE WHEN s.team1_id = $1 THEN s.team1_score ELSE s.team2_score END AS own_score,
+             CASE WHEN s.team1_id = $1 THEN s.team2_score ELSE s.team1_score END AS opponent_score,
+             opp.name AS opponent,
+             -- From the scoreline, not the unreliable series.best_of: a decided
+             -- series ran to (2 * winner's score - 1); a draw is the even format.
              CASE
                WHEN s.team1_score IS NULL OR s.team2_score IS NULL THEN NULL
                WHEN GREATEST(s.team1_score, s.team2_score) <= 0 THEN NULL
@@ -344,6 +305,7 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
                ELSE 2 * GREATEST(s.team1_score, s.team2_score) - 1
              END AS format
       FROM series s
+      JOIN teams opp ON opp.id = CASE WHEN s.team1_id = $1 THEN s.team2_id ELSE s.team1_id END
       WHERE $1 IN (s.team1_id, s.team2_id)
     ),
     game_record AS (
@@ -356,19 +318,33 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
       GROUP BY s.tournament_id
     ),
     series_record AS (
-      -- Only decided series count. An unplayed fixture has a null winner (see
-      -- migration 0010) and would otherwise land in the loss column.
+      -- Only decided series count; an unplayed fixture has a null winner (migration 0010).
       SELECT tournament_id,
              COUNT(*) FILTER (WHERE winner_team_id = $1)::int AS wins,
              COUNT(*) FILTER (WHERE winner_team_id IS NOT NULL AND winner_team_id <> $1)::int AS losses,
-             ARRAY_AGG(DISTINCT format) FILTER (WHERE format IS NOT NULL) AS formats
+             ARRAY_AGG(DISTINCT format) FILTER (WHERE format IS NOT NULL) AS formats,
+             -- The individual series, for the expanded row.
+             COALESCE(
+               JSONB_AGG(
+                 JSONB_BUILD_OBJECT(
+                   -- ::date, so this arrives as "2026-04-03", not a timestamp.
+                   'date', started_at::date,
+                   'opponent', opponent,
+                   'ownScore', own_score,
+                   'opponentScore', opponent_score,
+                   'format', format,
+                   'won', winner_team_id = $1
+                 )
+                 ORDER BY started_at DESC
+               ) FILTER (WHERE winner_team_id IS NOT NULL),
+               '[]'::jsonb
+             ) AS series
       FROM team_series
       GROUP BY tournament_id
     )
     SELECT tn.name AS event,
-           -- ::text, so node-pg hands back the ISO string rather than parsing
-           -- it into a Date that stringifies as "Wed Apr 01" -- and without
-           -- the timezone shift a Date round-trip can introduce.
+           -- ::text, so node-pg returns the ISO string, not a Date (avoids a
+           -- "Wed Apr 01" restringify and a timezone shift).
            tn.date_start::text AS start_date,
            tn.tournament_type,
            gr.wins,
@@ -376,6 +352,7 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
            sr.wins AS series_wins,
            sr.losses AS series_losses,
            sr.formats,
+           sr.series,
            tp.placement
     FROM game_record gr
     JOIN series_record sr ON sr.tournament_id = gr.tournament_id
@@ -394,6 +371,7 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     seriesWins: row.series_wins,
     seriesLosses: row.series_losses,
     formats: (row.formats ?? []).map(Number).sort((a, b) => a - b),
+    series: row.series ?? [],
     placement: row.placement,
     type: row.tournament_type,
   }));
@@ -407,17 +385,10 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
 }
 
 /**
- * `scope: 'regional'` (default) ranks players on their within-league
- * percentile, so it only makes sense filtered to a single league -- that is
- * what the per-region tabs use.
- *
- * `scope: 'international'` powers the Global tab: players rated purely on
- * their international games, against a role peer group drawn from everyone
- * else who has played internationally. Because that pool genuinely played
- * each other, these numbers ARE cross-league comparable. Players with no
- * international record are absent rather than assigned a guessed rating, so
- * this list is much shorter than the regional one, and `leagueSlug` here is
- * just the player's home region for display -- it plays no part in the rating.
+ * 'regional' (default) ranks on within-league percentile, so it only makes sense
+ * filtered to one league. 'international' (the Global tab) rates on international
+ * games against a role peer group, so it IS cross-league comparable; players with
+ * no international record are absent.
  */
 export async function getPlayers(
   pool: Pool,
@@ -425,9 +396,8 @@ export async function getPlayers(
   scope: PlayerRatingScope = 'regional',
   window: RatingWindow = 'all',
 ): Promise<PlayerSummaryDto[]> {
-  // The international pass only ever writes 'all' -- international events are
-  // sparse enough that a split window would leave nothing to rate -- so asking
-  // for a bounded one there would return an empty board rather than an error.
+  // The international pass only ever writes 'all' (events are too sparse for a
+  // bounded window), so a bounded request there would return an empty board.
   const ratingWindow: RatingWindow = scope === 'international' ? 'all' : window;
   const result = await pool.query<{
     id: number;
@@ -452,11 +422,8 @@ export async function getPlayers(
     LEFT JOIN leagues l ON l.id = tlm.league_id
     LEFT JOIN team_last_game tlg ON tlg.team_id = t.id
     LEFT JOIN league_latest_split lls ON lls.canonical_league_id = l.id
-    -- The group has to match the board. A regional board asks "how good are
-    -- they in THIS league", so it reads the (league, role) group for the league
-    -- the player is rostered in -- otherwise someone who transferred is ranked
-    -- on games from the league they left (6 of 324 rostered players). The
-    -- international pool has no league dimension, so there it is role only.
+    -- The group must match the board: regional reads the (league, role) group for
+    -- the rostered league (or a transfer is ranked on games they left). Intl is role-only.
     LEFT JOIN LATERAL (
       SELECT rating, games_played FROM player_ratings_history prh_inner
       WHERE prh_inner.player_id = p.id
@@ -468,9 +435,8 @@ export async function getPlayers(
     ) prh ON true
     WHERE ($1::text IS NULL OR l.slug = $1)
       AND (t.id IS NULL OR tlg.last_game_at >= lls.latest_split_start)
-      -- The Global tab makes a claim only where there is evidence: no
-      -- international games, no row. The regional list keeps unrated players
-      -- (new signings) at the neutral 50 so a roster is never missing anyone.
+      -- Global tab: no international games, no row. Regional keeps unrated
+      -- signings at the neutral 50 so a roster is never missing anyone.
       AND ($2 <> 'international' OR prh.rating IS NOT NULL)
     `,
     [leagueSlug ?? null, scope, ratingWindow],
@@ -490,12 +456,7 @@ export async function getPlayers(
       scope,
       window: ratingWindow,
       gamesPlayed: row.games_played ?? 0,
-      // Only surfaced where it explains something. Liquipedia lists plenty of
-      // established pros on a second squad for reasons that are not academy
-      // arrangements -- Gen.G's collegiate programme puts Ruler on Ohio State
-      // with 273 games to his name -- and "Ruler also plays for Ohio State"
-      // would be nonsense. A player with no games on this board is the case
-      // the second squad actually accounts for.
+      // Only on a zero-game row -- the case a second squad actually explains.
       alsoPlaysFor: (row.games_played ?? 0) === 0 ? row.secondary_team : null,
     }));
 
@@ -503,12 +464,7 @@ export async function getPlayers(
   return withRatings.map((row, index) => ({ ...row, rank: index + 1 }));
 }
 
-/**
- * Must match computePlayerRatings.ts. The international rating is computed over
- * international games from the last 36 months only; showing a stat line over
- * any other set of games would put numbers next to a rating that disagrees
- * with them.
- */
+/** Must match computePlayerRatings.ts, or the stat line disagrees with the rating. */
 const INTERNATIONAL_WINDOW_MONTHS = 36;
 
 interface PlayerStatsRow {
@@ -518,21 +474,15 @@ interface PlayerStatsRow {
   [metric: string]: number | string | null;
 }
 
-/**
- * Every metric the panel shows, with the direction that counts as better.
- * Deaths is the only one where the better raw number is the lower one, so it
- * sorts ascending while everything else sorts descending -- 1st always means
- * best, whichever way the underlying number runs.
- */
+// Every panel metric with its better direction. Deaths sorts ascending (lower is
+// better); everything else descending, so 1st always means best.
 const STAT_METRICS = [
   { key: 'kills', expr: 'AVG(s.kills)', better: 'higher' },
   { key: 'deaths', expr: 'AVG(s.deaths)', better: 'lower' },
   { key: 'assists', expr: 'AVG(s.assists)', better: 'higher' },
   { key: 'kda', expr: '(SUM(s.kills) + SUM(s.assists))::numeric / GREATEST(SUM(s.deaths), 1)', better: 'higher' },
-  // Aggregated as total CS over total time, not the mean of per-game rates:
-  // a 20-minute stomp and a 40-minute grind are not equal evidence. Games
-  // missing either side are excluded from both halves rather than counted as
-  // zero.
+  // Total CS over total time, not the mean of per-game rates (a 20-min stomp and
+  // a 40-min grind aren't equal evidence); games missing either side are excluded.
   {
     key: 'csPerMin',
     expr: `SUM(s.creep_score) FILTER (WHERE s.creep_score IS NOT NULL AND s.gamelength_seconds IS NOT NULL) * 60.0
@@ -546,19 +496,10 @@ const STAT_METRICS = [
 ] as const;
 
 /**
- * A player's stat line for one scope, each figure placed against same-role
- * peers in that same scope.
- *
- * Scoped to exactly the games the rating was computed from, so the panel's
- * game count is the board's Games column rather than a second, larger number:
- * on a regional board that is the player's games in THAT league (Berserker has
- * 130 in LCS and 88 in LCK, and the two are different stat lines, not one), and
- * on the international board it is their international games in the window.
- *
- * Peers are taken from the board itself rather than rebuilt from a query, so
- * "3rd of 12" always agrees with the rows a reader can count on screen. Only
- * peers who actually have games in the group are counted -- a player who just
- * transferred in has no stat line to place.
+ * A player's stat line for one scope, each figure placed against same-role peers.
+ * Scoped to exactly the games the rating came from (Berserker's LCS and LCK games
+ * are two stat lines), and peers come from the board itself, so the places agree
+ * with the rows on screen.
  */
 export async function getPlayerById(
   pool: Pool,
@@ -568,10 +509,8 @@ export async function getPlayerById(
 ): Promise<PlayerDetailDto | null> {
   // Internationally there is only ever an 'all' window to draw from.
   const ratingWindow: RatingWindow = scope === 'international' ? 'all' : window;
-  // Regional ratings are within-league percentiles, so the board has to be the
-  // player's own league -- ranking them against a pool of every league at once
-  // is the cross-league comparison the whole design refuses to make.
-  // International is already one pool, so it needs no narrowing.
+  // Regional ratings are within-league percentiles, so the board is the player's
+  // own league. International is already one pool, so it needs no narrowing.
   let leagueSlug: string | undefined;
   let leagueId: number | undefined;
   if (scope === 'regional') {
@@ -592,13 +531,9 @@ export async function getPlayerById(
 
   const peerIds = summaries.filter((p) => p.role === summary.role).map((p) => p.id);
 
-  // Regional restricts to games played for a team in this league, matching
-  // fetchPlayerGameRows' grouping; international restricts to the event type
-  // and window computeInternationalPlayerRatings uses. Either way the set of
-  // games is the one behind the rating.
-  // The league parameter only exists on the regional path, so the role
-  // placeholder shifts with it -- passing an unreferenced parameter leaves
-  // Postgres unable to infer its type (42P18).
+  // Each branch restricts to its rating's games. The league param only exists on
+  // the regional path, so the role placeholder shifts with it (an unreferenced
+  // param leaves Postgres unable to infer its type, 42P18).
   const isInternational = scope === 'international';
   const roleParam = isInternational ? '$3' : '$4';
   const scopeJoin = isInternational
@@ -610,18 +545,15 @@ export async function getPlayerById(
          AND tlm.league_id = $3
        LEFT JOIN league_split_start lss ON lss.canonical_league_id = tlm.league_id`;
 
-  // The same predicate the ratings were computed under, from the same package,
-  // so a windowed panel describes the windowed number above it rather than a
-  // career stat line sitting under a split rating.
+  // Same predicate the ratings used, so a split rating isn't shown over a career stat line.
   const windowCte = isInternational ? '' : `${LEAGUE_SPLIT_START_CTE},`;
   const windowFilter = isInternational
     ? ''
     : ` AND ${playerWindowPredicate(ratingWindow, 'g.datetime_utc', 'lss.latest_split_start')}`;
 
   const aggregates = STAT_METRICS.map((m) => `${m.expr} AS "${m.key}"`).join(',\n      ');
-  // rank(), not percent_rank(): the panel reports a place, so ties share a
-  // place (1, 1, 3) the way a leaderboard does. NULLS LAST keeps a player with
-  // no value for a stat from taking 1st in it.
+  // rank(), not percent_rank(): the panel reports a place, so ties share one
+  // (1, 1, 3). NULLS LAST keeps a player with no value from taking 1st.
   const places = STAT_METRICS.map(
     (m) => `rank() OVER (ORDER BY "${m.key}" ${m.better === 'lower' ? 'ASC' : 'DESC'} NULLS LAST)::int AS "${m.key}_place"`,
   ).join(',\n      ');
@@ -632,12 +564,30 @@ export async function getPlayerById(
       SELECT pgp.player_id, pgp.role, pgp.kills, pgp.deaths, pgp.assists,
              pgp.creep_score, pgp.gold_diff, pgp.kill_participation,
              pgp.damage_share, pgp.gold_share,
-             g.gamelength_seconds,
+             g.gamelength_seconds, g.series_id,
              (g.winner_team_id = pgp.team_id) AS won
       FROM player_game_performance pgp
       JOIN games g ON g.id = pgp.game_id
       ${scopeJoin}
       WHERE pgp.player_id = ANY($2::int[]) AND pgp.role = ${roleParam}${windowFilter}
+    ),
+    -- Re-derived from the games in scope (a mid-split signing gets the series
+    -- they played), decided by the scoreline since best_of is unreliable.
+    per_series AS (
+      SELECT player_id, series_id,
+             COUNT(*) FILTER (WHERE won) AS won_games,
+             COUNT(*) FILTER (WHERE NOT won) AS lost_games
+      FROM scoped
+      WHERE series_id IS NOT NULL
+      GROUP BY player_id, series_id
+    ),
+    -- A level series (in progress or only partly held) counts in neither column.
+    series_agg AS (
+      SELECT player_id,
+             COUNT(*) FILTER (WHERE won_games > lost_games)::int AS series_wins,
+             COUNT(*) FILTER (WHERE won_games < lost_games)::int AS series_losses
+      FROM per_series
+      GROUP BY player_id
     ),
     agg AS (
       SELECT s.player_id, s.role,
@@ -652,19 +602,21 @@ export async function getPlayerById(
              ${places}
       FROM agg
     )
-    SELECT * FROM ranked WHERE player_id = $1
+    SELECT r.*,
+           COALESCE(sa.series_wins, 0) AS series_wins,
+           COALESCE(sa.series_losses, 0) AS series_losses
+    FROM ranked r
+    LEFT JOIN series_agg sa ON sa.player_id = r.player_id
+    WHERE r.player_id = $1
     `,
     isInternational ? [playerId, peerIds, summary.role] : [playerId, peerIds, leagueId, summary.role],
   );
 
-  // A player with no games in this group still has a board row (rated 50,
-  // "not yet established"), so the panel reports an empty stat line rather
-  // than 404ing and looking broken.
+  // A player with no games in this group still has a board row (rated 50), so the
+  // panel reports an empty stat line rather than 404ing.
   const row = result.rows[0];
   const num = (v: number | string | null | undefined): number | null => (v === null || v === undefined ? null : Number(v));
-  // A missing value has no standing to report. rank() still assigns NULLS LAST
-  // rows a place, so the place is dropped alongside the value rather than
-  // reported as a genuine last.
+  // A missing value drops its place too, so a NULLS LAST rank isn't reported as a genuine last.
   const stat = (key: string) => {
     const value = num(row?.[key]);
     return { value, place: value === null ? null : num(row?.[`${key}_place`]) };
@@ -672,19 +624,23 @@ export async function getPlayerById(
 
   const games = row?.games ?? 0;
   const wins = row?.wins ?? 0;
+  const seriesWins = Number(row?.series_wins ?? 0);
+  const seriesLosses = Number(row?.series_losses ?? 0);
+  const series = seriesWins + seriesLosses;
 
   return {
     ...summary,
-    // Every same-role row on the board, not just the rankable ones, so the
-    // denominator is what a reader can count on screen. A peer who has not
-    // played in this group yet (a fresh signing) simply takes no place, which
-    // is why the highest place can be short of this number.
+    // Every same-role row on the board, so the denominator is countable on
+    // screen; an unplayed signing takes no place, so the top place can be short of it.
     peerCount: peerIds.length,
     stats: {
       games,
       wins,
       losses: games - wins,
       winRate: games > 0 ? wins / games : 0,
+      seriesWins,
+      seriesLosses,
+      seriesWinRate: series > 0 ? seriesWins / series : 0,
       kills: stat('kills'),
       deaths: stat('deaths'),
       assists: stat('assists'),

@@ -1,12 +1,8 @@
 /**
- * Manual one-off runner (read-only): sweep internationalWeightMultiplier.
- *
- * Regional games can only move a team within its own league; international
- * games are the only cross-region evidence, and they are a minority of any
- * schedule. This asks how much extra weight they should carry in the
- * contextual update, scored three ways: overall predictive accuracy, per-league
- * calibration on cross-league games, and whether teams end up ordered
- * consistently with their head-to-head results.
+ * Manual read-only sweep of internationalWeightMultiplier: how much extra
+ * weight international games (the only cross-region evidence, and a minority of
+ * the schedule) should carry in the contextual update. Scored on predictive
+ * accuracy and the resulting order of a watched set of teams.
  */
 import { createPool } from '../db.js';
 import { loadReplayData } from '../replayData.js';

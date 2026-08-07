@@ -117,8 +117,7 @@ describe('weightedMean', () => {
 
 describe('transferAnchor', () => {
   it('keeps about a third of the distance from neutral', () => {
-    // 0.3 is fit from our own data, not chosen: a percentile in one league
-    // regresses on the same player's percentile in another with slope 0.315.
+    // Carryover 0.3, fit from data (cross-league percentile slope 0.315).
     expect(transferAnchor(80)).toBeCloseTo(59, 0);
     expect(transferAnchor(20)).toBeCloseTo(41, 0);
   });
@@ -129,8 +128,7 @@ describe('transferAnchor', () => {
   });
 
   it('never moves the anchor past the prior itself', () => {
-    // A carryover above 1 would claim a transfer makes a player MORE extreme
-    // than they were, which no reading of the data supports.
+    // A carryover above 1 would make a transfer more extreme than the prior.
     expect(transferAnchor(90)).toBeLessThan(90);
     expect(transferAnchor(90)).toBeGreaterThan(50);
   });
@@ -138,8 +136,7 @@ describe('transferAnchor', () => {
 
 describe('shrinkToward', () => {
   it('pulls toward the anchor rather than neutral', () => {
-    // Same evidence, different starting belief: at K games the score sits
-    // halfway between the anchor and its raw value.
+    // At K games the score sits halfway between anchor and raw value.
     expect(shrinkToward(90, DEFAULT_SHRINKAGE_GAMES, 60)).toBeCloseTo(75, 10);
   });
 
@@ -148,8 +145,7 @@ describe('shrinkToward', () => {
   });
 
   it('ignores the anchor once the sample is large', () => {
-    // Evidence has to win eventually, or a transfer prior would follow a
-    // player around forever.
+    // Evidence must win eventually, or the prior follows a player forever.
     expect(shrinkToward(90, 500, 50)).toBeCloseTo(shrinkToward(90, 500, 65), 0);
   });
 
@@ -224,8 +220,7 @@ describe('blendComponentPercentiles', () => {
   });
 
   it('lets a winning playmaker outrank a losing stat-padder', () => {
-    // The case that motivated raising the win weight: a play that trades your
-    // own KDA for the objective still shows up as a death on the box score.
+    // A play that trades KDA for the objective still reads as a death on the box score.
     const playmaker = blendComponentPercentiles({
       kda: 20, goldShare: 40, damageShare: 40, killParticipation: 90, winRate: 95,
     });

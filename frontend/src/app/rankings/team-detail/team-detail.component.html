@@ -24,7 +24,7 @@
 
   <div class="records">
     <section>
-      <h3>International</h3>
+      <h3>International Series</h3>
       @if (t.international.length === 0) {
         <p class="status">No international appearances in our data.</p>
       } @else {
@@ -32,32 +32,71 @@
           <thead>
             <tr>
               <th scope="col">Event</th>
-              <th scope="col" class="fmt">Format</th>
               <th scope="col" class="num">Series</th>
-              <th scope="col" class="num">Games</th>
               <th scope="col" class="num">Win rate</th>
               <th scope="col" class="num">Finish</th>
             </tr>
           </thead>
           <tbody>
             @for (row of t.international; track row.event) {
-              <tr>
-                <td>{{ row.event }}</td>
-                <td class="fmt">{{ formatLabel(row.formats) }}</td>
+              <!-- The whole row toggles. The event name is still a real button
+                   so the control stays reachable and announced without a mouse;
+                   stopPropagation keeps the two from cancelling each other. -->
+              <tr class="row-toggle" [class.is-open]="isOpen('intl:' + row.event)" (click)="toggle('intl:' + row.event)">
+                <td class="event">
+                  <button
+                    type="button"
+                    class="disclosure"
+                    [attr.aria-expanded]="isOpen('intl:' + row.event)"
+                    [attr.aria-controls]="detailId('intl:' + row.event)"
+                    (click)="$event.stopPropagation(); toggle('intl:' + row.event)"
+                  >
+                    <span class="caret" aria-hidden="true"></span>{{ row.event }}
+                  </button>
+                </td>
                 <td class="num"><span class="wl">{{ row.seriesWins }}–{{ row.seriesLosses }}</span></td>
-                <td class="num"><span class="wl">{{ row.wins }}–{{ row.losses }}</span></td>
-                <td class="num rate">{{ winRate([row]) | percent: '1.0-0' }}</td>
+                <td class="num rate">{{ seriesWinRate([row]) | percent: '1.0-0' }}</td>
                 <td class="num finish">{{ finish(row.placement) }}</td>
+              </tr>
+              <tr class="detail-row" [id]="detailId('intl:' + row.event)" [hidden]="!isOpen('intl:' + row.event)">
+                <td colspan="4">
+                  <dl class="detail">
+                    <div><dt>Games</dt><dd><span class="wl">{{ row.wins }}–{{ row.losses }}</span></dd></div>
+                    <div><dt>Game win rate</dt><dd>{{ winRate([row]) | percent: '1.0-0' }}</dd></div>
+                  </dl>
+                  @if (row.series.length > 0) {
+                    <table class="series-table">
+                      <thead>
+                        <tr>
+                          <th scope="col" class="date">Date</th>
+                          <th scope="col" class="res">Result</th>
+                          <th scope="col">Opponent</th>
+                          <th scope="col" class="num">Score</th>
+                          <th scope="col" class="num">Format</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (s of row.series; track $index) {
+                          <tr [class.is-won]="s.won">
+                            <td class="date">{{ s.date }}</td>
+                            <td class="res">{{ s.won ? 'W' : 'L' }}</td>
+                            <td class="opp">{{ s.opponent }}</td>
+                            <td class="num"><span class="wl">{{ s.ownScore }}–{{ s.opponentScore }}</span></td>
+                            <td class="num fmt">{{ s.format ? 'Bo' + s.format : '—' }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  }
+                </td>
               </tr>
             }
           </tbody>
           <tfoot>
             <tr>
               <td>Total</td>
-              <td class="fmt">{{ formatLabel(allFormats(t.international)) }}</td>
               <td class="num"><span class="wl">{{ seriesTotal(t.international).wins }}–{{ seriesTotal(t.international).losses }}</span></td>
-              <td class="num"><span class="wl">{{ total(t.international).wins }}–{{ total(t.international).losses }}</span></td>
-              <td class="num rate">{{ winRate(t.international) | percent: '1.0-0' }}</td>
+              <td class="num rate">{{ seriesWinRate(t.international) | percent: '1.0-0' }}</td>
               <!-- No total finish: placements do not add up. -->
               <td class="num"></td>
             </tr>
@@ -67,7 +106,7 @@
     </section>
 
     <section>
-      <h3>By split</h3>
+      <h3>Regional Series</h3>
       @if (t.regional.length === 0) {
         <p class="status">No regional games in our data.</p>
       } @else {
@@ -75,30 +114,70 @@
           <thead>
             <tr>
               <th scope="col">Split</th>
-              <th scope="col" class="fmt">Format</th>
               <th scope="col" class="num">Series</th>
-              <th scope="col" class="num">Games</th>
               <th scope="col" class="num">Win rate</th>
+              <th scope="col" class="num">Finish</th>
             </tr>
           </thead>
           <tbody>
             @for (row of t.regional; track row.event) {
-              <tr>
-                <td>{{ row.event }}</td>
-                <td class="fmt">{{ formatLabel(row.formats) }}</td>
+              <tr class="row-toggle" [class.is-open]="isOpen('reg:' + row.event)" (click)="toggle('reg:' + row.event)">
+                <td class="event">
+                  <button
+                    type="button"
+                    class="disclosure"
+                    [attr.aria-expanded]="isOpen('reg:' + row.event)"
+                    [attr.aria-controls]="detailId('reg:' + row.event)"
+                    (click)="$event.stopPropagation(); toggle('reg:' + row.event)"
+                  >
+                    <span class="caret" aria-hidden="true"></span>{{ row.event }}
+                  </button>
+                </td>
                 <td class="num"><span class="wl">{{ row.seriesWins }}–{{ row.seriesLosses }}</span></td>
-                <td class="num"><span class="wl">{{ row.wins }}–{{ row.losses }}</span></td>
-                <td class="num rate">{{ winRate([row]) | percent: '1.0-0' }}</td>
+                <td class="num rate">{{ seriesWinRate([row]) | percent: '1.0-0' }}</td>
+                <td class="num finish">{{ finish(row.placement) }}</td>
+              </tr>
+              <tr class="detail-row" [id]="detailId('reg:' + row.event)" [hidden]="!isOpen('reg:' + row.event)">
+                <td colspan="4">
+                  <dl class="detail">
+                    <div><dt>Games</dt><dd><span class="wl">{{ row.wins }}–{{ row.losses }}</span></dd></div>
+                    <div><dt>Game win rate</dt><dd>{{ winRate([row]) | percent: '1.0-0' }}</dd></div>
+                  </dl>
+                  @if (row.series.length > 0) {
+                    <table class="series-table">
+                      <thead>
+                        <tr>
+                          <th scope="col" class="date">Date</th>
+                          <th scope="col" class="res">Result</th>
+                          <th scope="col">Opponent</th>
+                          <th scope="col" class="num">Score</th>
+                          <th scope="col" class="num">Format</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (s of row.series; track $index) {
+                          <tr [class.is-won]="s.won">
+                            <td class="date">{{ s.date }}</td>
+                            <td class="res">{{ s.won ? 'W' : 'L' }}</td>
+                            <td class="opp">{{ s.opponent }}</td>
+                            <td class="num"><span class="wl">{{ s.ownScore }}–{{ s.opponentScore }}</span></td>
+                            <td class="num fmt">{{ s.format ? 'Bo' + s.format : '—' }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  }
+                </td>
               </tr>
             }
           </tbody>
           <tfoot>
             <tr>
               <td>Total</td>
-              <td class="fmt">{{ formatLabel(allFormats(t.regional)) }}</td>
               <td class="num"><span class="wl">{{ seriesTotal(t.regional).wins }}–{{ seriesTotal(t.regional).losses }}</span></td>
-              <td class="num"><span class="wl">{{ total(t.regional).wins }}–{{ total(t.regional).losses }}</span></td>
-              <td class="num rate">{{ winRate(t.regional) | percent: '1.0-0' }}</td>
+              <td class="num rate">{{ seriesWinRate(t.regional) | percent: '1.0-0' }}</td>
+              <!-- No total finish: placements do not add up. -->
+              <td class="num"></td>
             </tr>
           </tfoot>
         </table>
@@ -107,9 +186,9 @@
   </div>
 
   <p class="records-note">
-    Win rate is games. The series record is only readable next to its format,
-    which is why the two sit together — a 12–6 in Bo1s is a different season
-    from a 12–6 in Bo5s.
+    Win rate is by series, because series are what decide placement. Open a row
+    for the format it was set in and the game record inside it — a 12–6 in Bo1s
+    is a different season from a 12–6 in Bo5s.
   </p>
 
   <h3>Current Roster</h3>

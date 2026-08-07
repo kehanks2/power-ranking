@@ -93,12 +93,14 @@
 
 // Two records side by side: international first, since that is the record
 // people ask about, and the splits below it as the fuller history.
-// Wide enough for six columns before the two tables sit side by side; below
-// that they stack rather than squeezing the event names to two lines each.
+// Wide enough for the event names before the two tables sit side by side; below
+// that they stack rather than squeezing those names to two lines each. Four
+// columns now that format and games moved into the expandable detail, so this
+// pairs up earlier than the 440px the six-column version needed.
 .records {
   display: grid;
   gap: 1.2rem 2rem;
-  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
   margin-top: 1.6rem;
 }
 
@@ -141,13 +143,158 @@
     white-space: nowrap;
   }
 
-  // The unit the series record is counted in. Set as a label, not a value: it
-  // qualifies the columns beside it rather than being a figure of its own.
-  td.fmt {
+  // The button inside carries the text and the padding, so the whole cell is a
+  // target rather than just the words.
+  td.event {
+    padding: 0;
+  }
+}
+
+.row-toggle {
+  cursor: pointer;
+
+  &:hover,
+  &.is-open {
+    background: var(--color-surface);
+  }
+}
+
+// The series name doubles as the control that opens the row. A button, not a
+// click handler on the <tr>: it is focusable, it announces its expanded state,
+// and it works from the keyboard without re-implementing any of that.
+.disclosure {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.5rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-surface);
+  }
+
+  // Inset, because an outline on a table cell is clipped by the cell beside it.
+  &:focus-visible {
+    outline: 2px solid var(--color-gold);
+    outline-offset: -2px;
+  }
+}
+
+.caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  color: var(--color-text-muted);
+  transition: transform 120ms ease;
+
+  [aria-expanded='true'] & {
+    transform: rotate(90deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret {
+    transition: none;
+  }
+}
+
+// `[hidden]` alone loses to any display rule, and a table row needs one, so the
+// guard has to be explicit or every detail row renders open.
+.detail-row[hidden] {
+  display: none;
+}
+
+.detail-row td {
+  padding: 0.15rem 0.5rem 0.6rem 1.4rem;
+  background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+}
+
+// Every series in the event, one per row, oldest first. Format sits beside the
+// score because "3-1" is a different result in a Bo5 than in a Bo3.
+.series-table {
+  width: 100%;
+  margin-top: 0.6rem;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+
+  th {
+    text-align: left;
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
     color: var(--color-text-muted);
-    font-size: 0.76rem;
-    letter-spacing: 0.02em;
+    font-weight: 700;
+    padding: 0 0.5rem 0.25rem;
+  }
+
+  td {
+    padding: 0.22rem 0.5rem;
+    color: var(--color-text-muted);
+  }
+
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
+  }
+
+  .date {
+    width: 11ch;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .res {
+    width: 3ch;
+    font-weight: 700;
+  }
+
+  .fmt {
+    width: 5ch;
+    font-size: 0.72rem;
+  }
+
+  // Won rows take the ink. The W/L column carries the same information as
+  // text, so nothing depends on colour alone.
+  tr.is-won td {
+    color: var(--color-text);
+  }
+
+  tr.is-won .res {
+    color: var(--color-gold);
+  }
+}
+
+// Label above value, so the pair reads as one line of detail rather than
+// competing with the columns above. Right-aligned to land over the series
+// table's own numeric columns instead of floating loose on the left.
+.detail {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  text-align: right;
+  gap: 0.3rem 1.6rem;
+  margin: 0;
+
+  dt {
+    color: var(--color-text-muted);
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  dd {
+    margin: 0;
+    font-size: 0.85rem;
   }
 }
 
@@ -161,9 +308,11 @@
   color: var(--color-text-muted);
 }
 
+// No max-width: the note sits under a full-width pair of tables, and capping it
+// at a reading measure left most of the row empty for no gain -- the line is
+// three lines long at most, so it is never a wall of text to track back across.
 .records-note {
   margin: 0.9rem 0 0;
   font-size: 0.8rem;
   color: var(--color-text-muted);
-  max-width: 70ch;
 }

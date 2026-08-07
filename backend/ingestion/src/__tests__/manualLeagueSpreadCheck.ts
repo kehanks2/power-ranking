@@ -1,15 +1,9 @@
 /**
- * Manual diagnostic (read-only): are the league-vs-league gaps we display the
- * gaps the results actually support?
- *
- * Fits a Bradley-Terry model directly to cross-league international games --
- * each game is one league beating another, and ratings are fitted by maximum
- * likelihood. Unlike inverting aggregate win rates, this accounts for WHO each
- * league played: LCK's record comes largely against LPL, CBLOL's against
- * everyone, and a naive inversion would misread both.
- *
- * The fitted spread is the yardstick the displayed league offsets should be
- * compared against.
+ * Manual diagnostic: are the displayed league-vs-league gaps the ones the
+ * results support? Fits Bradley-Terry to cross-league international games by
+ * maximum likelihood, which (unlike inverting aggregate win rates) accounts for
+ * who each league played. The fitted spread is the yardstick for the displayed
+ * league offsets.
  */
 import { createPool } from '../db.js';
 

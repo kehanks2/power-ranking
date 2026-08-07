@@ -97,10 +97,8 @@ describe('loadReplayData roster-change decay events (live Postgres, synthetic da
     for (let i = 0; i < 3; i++) {
       await insertGame(`__RD_Match_reshuffle_${i}`, `2026-07-2${i + 1}T18:00:00Z`, reshuffledLineup);
     }
-    // Then a REAL swap: a genuinely new player takes over TOP. Needs at least
-    // the persistence threshold's worth of games (5, backtest-validated in
-    // replayData.ts) to register as real turnover, not just enough to beat
-    // the old threshold of 2.
+    // Then a real swap: a new player takes over TOP. Needs the persistence
+    // threshold's worth of games (5) to register as turnover.
     for (let i = 0; i < 5; i++) {
       await insertGame(`__RD_Match_realswap_${i}`, `2026-08-0${i + 1}T18:00:00Z`, realSwapLineup);
     }
@@ -127,9 +125,8 @@ describe('loadReplayData roster-change decay events (live Postgres, synthetic da
     const reshuffleEvent = teamEvents.find((e) => e.effectiveDate >= '2026-07-20' && e.effectiveDate < '2026-08-01');
     expect(reshuffleEvent).toBeUndefined();
 
-    // But the later, genuine swap (a new player) should still be detected,
-    // with turnover reflecting only the one real change (1/5), not treated
-    // as if nothing happened.
+    // But the later genuine swap is detected, turnover reflecting the one real
+    // change (1/5).
     const realSwapEvent = teamEvents.find((e) => e.effectiveDate >= '2026-08-01');
     expect(realSwapEvent).toBeDefined();
     expect(realSwapEvent!.turnover).toBeCloseTo(1 / 5, 5);

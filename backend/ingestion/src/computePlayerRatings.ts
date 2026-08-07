@@ -20,10 +20,8 @@ import {
   type RatingWindow,
 } from '@power-ranking/shared';
 
-/** Bumped from 1 when the flat career average was replaced -- see playerRating.ts. */
 const PLAYER_RATING_METHOD_VERSION = 2;
 
-/** A player's recency-weighted profile within one (league, role) peer group. */
 interface PlayerGroupStats {
   playerId: number;
   role: string;
@@ -33,13 +31,11 @@ interface PlayerGroupStats {
   damageShare: number;
   killParticipation: number;
   winRate: number;
-  /** Raw game count, for display and for the stored games_played column. */
   gamesPlayed: number;
-  /** Recency-weighted game count -- what shrinkage actually keys off. */
+  /** Recency-weighted game count -- what shrinkage keys off. */
   effectiveGames: number;
 }
 
-/** One row of `player_game_performance` joined to its game, as the SQL below returns it. */
 export interface PlayerGameRow {
   player_id: number;
   role: string;
@@ -52,10 +48,7 @@ export interface PlayerGameRow {
   age_days: string;
 }
 
-/**
- * Folds per-game rows into one recency-weighted profile per
- * (player, role, league).
- */
+/** Folds per-game rows into one recency-weighted profile per (player, role, league). */
 export function buildPlayerGroupStats(
   rows: PlayerGameRow[],
   halfLifeDays = DEFAULT_HALF_LIFE_DAYS,
@@ -91,9 +84,7 @@ export function buildPlayerGroupStats(
       accumulators.set(key, acc);
     }
     acc.kda.push(Number(row.kda));
-    // The source leaves these null for some games; a missing share is not a
-    // zero share, so fall back to the role-neutral 0.2 (one fifth of the team)
-    // rather than letting a gap read as a terrible game.
+    // Missing share != zero share: fall back to role-neutral 0.2, not a bad game.
     acc.goldShare.push(row.gold_share !== null ? Number(row.gold_share) : 0.2);
     acc.damageShare.push(row.damage_share !== null ? Number(row.damage_share) : 0.2);
     acc.killParticipation.push(row.kill_participation !== null ? Number(row.kill_participation) : 0.5);
@@ -115,7 +106,6 @@ export function buildPlayerGroupStats(
   }));
 }
 
-/** One rating row: a player's standing inside one (league, role) group. */
 export interface PlayerGroupRating {
   playerId: number;
   leagueId: number;
@@ -128,19 +118,9 @@ export interface PlayerGroupRating {
 }
 
 /**
- * Percentiles every profile against its (league, role) peers, blends and
- * shrinks it, and returns a rating for EVERY group a player has games in.
- *
- * It used to return only each player's biggest group, which made two things
- * impossible to state honestly. A player who moved leagues kept a rating
- * describing the league they left, shown on the board of the league they
- * joined; and the games behind that rating could not be reconciled with the
- * games they had actually played, because the group was never recorded.
- *
- * Keeping every group costs nothing -- they are all computed anyway, since a
- * profile has to be percentiled against its own peers regardless -- and lets
- * each reader ask for the group it means. `isPrimary` preserves the old
- * "the player's rating" answer for readers with no league in mind.
+ * Percentiles every profile against its (league, role) peers, then blends and
+ * shrinks. Returns a rating for every group a player has games in, not just the
+ * biggest, so a player who moved leagues isn't shown their old league's rating.
  */
 export function selectGroupRatings(
   groupStats: PlayerGroupStats[],
@@ -192,8 +172,7 @@ export function selectGroupRatings(
     }
   }
 
-  // Marked in a second pass, because the winning group may live in a peer
-  // group processed after the player was first seen.
+  // Second pass: the winning group may be in a peer group processed later.
   const claimed = new Set<number>();
   for (const rating of ratings) {
     if (claimed.has(rating.playerId)) continue;
@@ -208,23 +187,10 @@ export function selectGroupRatings(
 }
 
 /**
- * Re-shrinks each group toward what the player's OTHER leagues say about them,
- * instead of toward a flat 50.
- *
- * Someone arriving from another league is not an unknown quantity, and the old
- * behaviour treated them as one: with no games yet in the new league, shrinkage
- * pulled them all the way to neutral and threw the record away. The carryover
- * is small (see DEFAULT_TRANSFER_CARRYOVER -- about a third) because that is
- * what the data supports, so this nudges a newcomer off 50 rather than
- * transplanting their old standing.
- *
- * Runs as a separate pass over the FIRST-pass values on purpose. Anchoring
- * each group on its sibling's already-anchored rating would be circular --
- * A leaning on B leaning on A -- so every anchor here is read from the
- * neutral-shrunk numbers computed above.
- *
- * Same role only. The carryover was fit on same-role pairs, and there is no
- * evidence here for what a role change carries.
+ * Re-shrinks each group toward what the player's other leagues say, not a flat
+ * 50, so a newcomer with no games yet is nudged off neutral. Over the first-pass
+ * values (anchoring on already-anchored siblings would be circular) and same-role
+ * only (the carryover was fit on same-role pairs).
  */
 function applyTransferAnchors(ratings: PlayerGroupRating[]): void {
   const byPlayer = new Map<number, PlayerGroupRating[]>();
@@ -238,8 +204,7 @@ function applyTransferAnchors(ratings: PlayerGroupRating[]): void {
     const firstPass = groups.map((g) => g.rating);
 
     groups.forEach((group, index) => {
-      // The best-evidenced OTHER group at this role -- their strongest claim
-      // to being known, wherever it was earned.
+      // The best-evidenced other group at this role.
       let prior: number | null = null;
       let bestEvidence = 0;
       groups.forEach((other, otherIndex) => {
@@ -252,8 +217,7 @@ function applyTransferAnchors(ratings: PlayerGroupRating[]): void {
       if (prior === null) return;
 
       // Undo the neutral shrink to recover the raw blended score, then re-shrink
-      // toward the transfer anchor. Cheaper and exact, versus threading the raw
-      // score through every group.
+      // toward the transfer anchor.
       const confidence = group.effectiveGames / (group.effectiveGames + DEFAULT_SHRINKAGE_GAMES);
       if (confidence === 0) return;
       const blended = NEUTRAL_SCORE + (firstPass[index] - NEUTRAL_SCORE) / confidence;
@@ -286,26 +250,11 @@ export async function fetchPlayerGameRows(pool: Pool, window: RatingWindow = 'al
 }
 
 /**
- * Season player rating: each player's recency-weighted per-game stats (KDA,
- * gold share, damage share, kill participation -- using the source's own
- * precomputed share columns -- plus win rate) percentiled against
- * peers in the same role + league (never globally -- see plan's
- * within-league-only decision), blended via `componentWeights(winWeight)`, then
- * shrunk toward the peer-neutral 50 by sample size.
- *
- * Emits one row per (player, league, role) group. A player who changed role or
- * league genuinely has more than one standing, and which one a caller wants
- * depends on the question: a league board wants the group for THAT league, so
- * it never rates someone on a league they left, while the roster-implied prior
- * wants their strongest evidence regardless of league (`is_primary`).
- *
- * Readers must therefore name the group they mean. A bare
- * `DISTINCT ON (player_id) ORDER BY as_of_date DESC` is a coin flip between
- * groups, since every row from one run shares a date.
- *
- * Note: league is the team's CURRENT league (`tlm.end_date IS NULL`), not the
- * league the game was played in. That's deliberate -- the question this rating
- * answers is "how good is this player relative to the peers they face now."
+ * Season player rating: recency-weighted stats + win rate, percentiled against
+ * same (league, role) peers, one row per group. League is the team's CURRENT
+ * league, not where the game was played. Readers must name the group they mean:
+ * a bare DISTINCT ON (player_id) ORDER BY as_of_date is a coin flip, since every
+ * row from one run shares a date.
  */
 export async function computePlayerRatings(
   pool: Pool,
@@ -317,14 +266,7 @@ export async function computePlayerRatings(
   return writeRatings(pool, ratings, 'regional', window);
 }
 
-/**
- * All three regional windows.
- *
- * The bounded ones are the same method over fewer games, deliberately -- not a
- * separate award formula. Shrinkage does the rest: a split is a few dozen
- * games, so those ratings sit closer to the neutral 50 than the all-time board
- * does, which is the honest answer to "how sure are we after six weeks".
- */
+/** All three regional windows -- the same method over fewer games, not a separate formula. */
 export async function computeAllPlayerRatingWindows(pool: Pool, winWeight = DEFAULT_WIN_WEIGHT): Promise<number> {
   let total = 0;
   for (const window of RATING_WINDOWS) {
@@ -335,57 +277,28 @@ export async function computeAllPlayerRatingWindows(pool: Pool, winWeight = DEFA
 
 // --- International ("Global" tab) ratings -------------------------------------
 
-/**
- * Only international games from the last 3 years count. Deliberately a HARD
- * cutoff on top of the recency half-life, not instead of it: the half-life
- * alone only makes old games count for less, so as time passes a 2024 result
- * would keep leaking in at ever-smaller weight forever. This guarantees the
- * tab is always "fairly recent play." The dataset currently starts at 2024
- * MSI (27 months old), so nothing is excluded today -- this keeps it true
- * later, and it drops each event automatically as it ages out.
- */
+// Hard cutoff on top of the half-life, which alone would leak old events in at
+// ever-smaller weight forever.
 const INTERNATIONAL_WINDOW_MONTHS = 36;
 
-/**
- * Longer than the regional 120d because international events are sparse --
- * only 2-3 per year. At 120d a player's Worlds record would be almost fully
- * decayed before the next event, leaving the tab driven by whichever event
- * happened last. 550d spans roughly the last 4-5 events, so a full
- * international body of work is visible at once. Confirmed against real data
- * that the ordering is barely sensitive to this (365 / 550 / 730 give nearly
- * the same board), so it is chosen for stability, not to hit a target.
- */
+// Longer than the regional 120d because international events are sparse; 550d
+// spans 4-5 events. Ordering is barely sensitive to it.
 const INTERNATIONAL_HALF_LIFE_DAYS = 550;
 
-/**
- * Below this many international games a player is not shown at all. Note this
- * is a DISPLAY floor, not the small-sample defence -- shrinkToNeutral already
- * pulls thin samples toward 50. It exists so the tab doesn't list someone as
- * "rated internationally" off a single group-stage appearance.
- */
+// Display floor, not the small-sample defence (shrinkToNeutral handles that):
+// stops the tab listing someone off one group-stage appearance.
 const MIN_INTERNATIONAL_GAMES = 5;
 
 /**
- * Rates players using ONLY their international games, with peer groups of
- * (role) across the entire international pool -- no league dimension at all.
- *
- * This is what makes the Global tab honest: these players actually played
- * each other, so the ordering needs no cross-league calibration factor. The
- * alternative we rejected -- taking the within-league percentile and shifting
- * it by a league-strength anchor -- produced a board where the top 15 was
- * entirely LCK and the best LPL player ranked 46th, because the gaps between
- * league anchors swamped the spread within any one league.
- *
- * A player with no international games simply does not appear, rather than
- * being assigned a guessed global rating. That is the intended behaviour: we
- * have no evidence about them at this level, so we make no claim.
+ * Rates players on international games only, role-only peer groups. These players
+ * actually played each other, so no cross-league calibration is needed. A player
+ * with no international games simply doesn't appear.
  */
 export async function computeInternationalPlayerRatings(
   pool: Pool,
   winWeight = DEFAULT_WIN_WEIGHT,
 ): Promise<number> {
-  // league_id is pinned to 0 so selectPrimaryRatings' (league, role) grouping
-  // collapses to role-only -- one global pool per role, which is the point.
+  // league_id pinned to 0 so the (league, role) grouping collapses to role-only.
   const result = await pool.query<PlayerGameRow>(`
     SELECT
       pgp.player_id,
@@ -412,10 +325,8 @@ export async function computeInternationalPlayerRatings(
 }
 
 /**
- * Replaces every row for one (scope, window). Deletes only that pair -- all
- * four passes share a table, so a blanket DELETE would have each run wipe the
- * others' output (the same footgun that made the two roster populators clobber
- * each other -- see git history for populateRosterMemberships).
+ * Replaces every row for one (scope, window), deleting only that pair -- all four
+ * passes share the table, so a blanket DELETE would have each run wipe the others.
  */
 async function writeRatings(
   pool: Pool,
@@ -423,8 +334,7 @@ async function writeRatings(
   scope: 'regional' | 'international',
   window: RatingWindow = 'all',
 ): Promise<number> {
-  // Same class of bug fixed in computeRatings.ts: pin the transaction to one
-  // dedicated client, not pool.query() (which can hop connections per call).
+  // Pin the transaction to one client, not pool.query() (which can hop connections).
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -444,9 +354,7 @@ async function writeRatings(
           rating.gamesPlayed,
           PLAYER_RATING_METHOD_VERSION,
           scope,
-          // International peer groups are role-only -- the league dimension is
-          // pinned to 0 upstream so the grouping collapses -- so there is no
-          // league to record, and NULL says that rather than inventing one.
+          // International groups are role-only, so there's no league to record.
           scope === 'international' ? null : rating.leagueId,
           rating.role,
           rating.isPrimary,
@@ -465,7 +373,6 @@ async function writeRatings(
   }
 }
 
-/** Populates player_game_performance from game_lineups + a per-game stats source (Liquipedia game rows, joined by caller). */
 export interface PlayerGamePerformanceInput {
   gameId: number;
   playerId: number;

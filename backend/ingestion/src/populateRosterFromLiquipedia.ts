@@ -17,38 +17,18 @@ export interface RosterImportResult {
   playersCreated: number;
   /** Matched teams squadplayer had nothing for, recovered via the v3/player fallback. */
   teamsFromPlayerFallback: string[];
-  /**
-   * Matched teams that ended up with NO roster from either source. Surfaced
-   * rather than left silent: a team quietly having zero players is exactly the
-   * failure that went unnoticed with Leviatán.
-   */
+  /** Matched teams that ended up with NO roster from either source. */
   teamsWithNoRoster: string[];
 }
 
-/**
- * A blank role is a starter; anything Liquipedia bothers to label is not.
- *
- * Surveyed against every active player row on the wiki, the only labels that
- * occur are "Substitute" (56) and "Loan" (2) -- "Inactive" exists but only on
- * `former` rows. Both labels mean the player is not in the starting five, so
- * the test is "is there a label", not a list of known ones. That way a label
- * we have not seen fails safe, instead of promoting someone to starter.
- *
- * Two players both resolving to is_starter=true for the same role IS the
- * "shared role" case (see module doc) -- not a bug. A missing/null role is
- * treated as blank, since a throw here would take out every normal starter.
- */
+// Blank role = starter; any label ("Substitute", "Loan") = not. Testing for a
+// label, not a known list, so an unseen one fails safe.
 export function isStarterFromRole(role: string | null | undefined): boolean {
   return (role ?? '').trim() === '';
 }
 
-/**
- * A player loaned OUT plays for someone else and does not belong on this
- * squad. `role: "Loan"` alone cannot say which way the loan runs, so the
- * direction is read from `extradata.loanedto`. Currently 2 rows wiki-wide,
- * neither in our six leagues -- this is a latent hole being closed, not an
- * observed defect.
- */
+// A player loaned OUT belongs to another squad; `role: "Loan"` can't say which
+// way the loan runs, so direction comes from `extradata.loanedto`.
 export function isLoanedAway(row: LiquipediaSquadPlayer): boolean {
   return row.extradata?.loanedto === true;
 }
@@ -62,17 +42,11 @@ export interface ResolvedSquadMember {
 }
 
 /**
- * Which OTHER squad each player is concurrently active on, keyed by handle.
- *
- * A player listed as active on two teams at once is nearly always an academy
- * or partner-team player: Team Vitality's second five are all simultaneously
- * on Rising Bees, their LFL squad, which is why they carry zero tier-1 games.
- * Built from the same wiki-wide sweep the rosters come from, so it costs no
- * extra requests.
- *
- * `trackedPagenames` are the teams we rate. A second team among those is a
- * real transfer mid-sweep rather than an academy arrangement, and saying
- * "also plays for <another tier-1 team>" would be wrong, so those are skipped.
+ * Which OTHER squad each player is concurrently active on, keyed by handle --
+ * nearly always an academy/partner team (Vitality's second five on Rising Bees).
+ * A second tracked team is a real transfer mid-sweep, not academy, so it's
+ * skipped. Can't distinguish a concurrent academy slot from a transfer whose old
+ * row the wiki hasn't closed, so the UI attributes this to Liquipedia.
  */
 export function buildSecondaryTeams(
   rows: LiquipediaSquadPlayer[],
@@ -88,11 +62,10 @@ export function buildSecondaryTeams(
   const secondary = new Map<string, string>();
   for (const [handle, pagenames] of pagenamesByHandle) {
     const untracked = [...pagenames].filter((p) => !trackedPagenames.has(p));
-    // Only meaningful when they are also on a team we DO track -- otherwise
-    // there is no tier-1 row for it to explain.
+    // Only meaningful when they're also on a team we track.
     const onTracked = [...pagenames].some((p) => trackedPagenames.has(p));
     if (!onTracked || untracked.length === 0) continue;
-    // Deterministic when someone is on several untracked squads at once.
+    // Deterministic across several untracked squads.
     const sorted = [...untracked].sort((a, b) => a.localeCompare(b));
     secondary.set(handle, sorted[0]);
   }
@@ -105,21 +78,11 @@ export function humanizePagename(pagename: string): string {
 }
 
 /**
- * Normalises a `v3/player` row into a roster slot, or undefined if it isn't
- * one.
- *
- * Two filters matter here, both confirmed against Leviatán's real data:
- *
- * 1. `type` must be "player". That team's active list also contains
- *    LautaLoval and Kouke, both `type: "staff"` with `extradata.role: "coach"`
- *    -- Kouke's `roles` map even lists "jungle" and "top" as secondary
- *    entries, so filtering on the role strings alone would field a coach.
- * 2. Position comes from `extradata.role`, not a top-level column -- `v3/player`
- *    has no `position` field at all.
- *
- * `v3/player` carries no join date and no substitute flag, so members resolved
- * this way are treated as starters with an unknown start date. That is the
- * cost of the fallback and why squadplayer stays the primary source.
+ * Normalises a `v3/player` row into a roster slot, or undefined. `type` must be
+ * "player" (staff carry role "coach" with lane strings in their `roles` map, so
+ * filtering on role alone would field a coach), and position comes from
+ * `extradata.role` since v3/player has no position column. No join date or
+ * substitute flag here, so these are treated as starters with unknown start date.
  */
 export function squadMemberFromPlayerRow(row: LiquipediaPlayer): ResolvedSquadMember | undefined {
   if ((row.type ?? '').trim().toLowerCase() !== 'player') return undefined;
@@ -142,39 +105,18 @@ export function squadMemberFromSquadRow(row: LiquipediaSquadPlayer): ResolvedSqu
 }
 
 /**
- * The SOLE writer of roster_memberships. It replaces the table wholesale with
- * Liquipedia's own current squad data -- authoritative, not inferred from
- * lineup persistence heuristics.
- *
- * There used to be a second writer (populateRosterMemberships, which derived
- * rosters from game lineups; deleted, see git history). Both began with an
- * unscoped `DELETE FROM roster_memberships`, so whichever ran last silently
- * won, and the LCS rosters regressed twice that way. If a second writer is
- * ever added, scope its delete.
- *
- * Confirmed against real data this fixes a whole class of bug the lineup
- * heuristic couldn't: Liquipedia models "two players sharing a position"
- * (e.g. Cloud9 running APA/Loki at MID and Zven/Tactical at BOT) as a
- * first-class active state, not something a starter/substitute binary can
- * represent -- both simply show is_starter=true here, no forced "pick one."
- *
- * roster_memberships is a pure DISPLAY table (see teamLineups.ts's comment --
- * rating computation reads game_lineups directly, never this table), so
- * replacing its population source doesn't touch the rating engine.
- *
- * Team/player identity: Liquipedia's own page-identity system doesn't overlap
- * with OE's teamid/playerid hashes our existing rows are keyed on, so teams
- * are matched by exact name against Liquipedia's active-team list (only for
- * teams we already track -- this never pulls in a team outside the 6-league
- * scope), and players by handle, creating a new player row (keyed
- * `liquipedia:player:<id>`, distinct from OE's `oe:player:<hash>` keys) for
- * anyone not already known from OE data.
+ * The SOLE writer of roster_memberships, replacing the table wholesale with
+ * Liquipedia's current squad data. If a second writer is ever added, scope its
+ * DELETE -- an unscoped one here regressed the LCS rosters twice. Two players
+ * can share a position (Cloud9's APA/Loki at MID); both show is_starter=true.
+ * This is a display-only table the rating engine never reads. Teams are matched
+ * by name (tracked teams only) and players by handle, creating a new
+ * `liquipedia:player:<id>` row for anyone not already known from OE.
  */
 export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterImportResult> {
   const ourTeams = await pool.query<{ id: number; name: string }>('SELECT id, name FROM teams');
-  // Two broad, paginated requests total (teams + all active squad players),
-  // not one request per team -- see liquipediaApi.ts's module doc for why
-  // that matters against their documented 60/hour limit.
+  // Two broad paginated requests (teams + all squad players), not one per team --
+  // see liquipediaApi.ts on the 60/hour limit.
   const liquipediaTeams = await fetchActiveTeams();
   const allSquadPlayers = await fetchAllActiveSquadPlayers();
   const pagenameByName = new Map(liquipediaTeams.map((t) => [t.name, t.pagename]));
@@ -197,9 +139,8 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
     new Set(matchedTeams.map(({ pagename }) => pagename)),
   );
 
-  // Squadplayer is incomplete -- see fetchActivePlayersForTeams. Any matched
-  // team it returns nothing for gets a second look via v3/player, which is
-  // keyed on the player's page instead and does have them.
+  // Squadplayer is incomplete: a matched team it returns nothing for gets a
+  // second look via v3/player (keyed on the player's page). See fetchActivePlayersForTeams.
   const pagenamesMissingSquad = matchedTeams
     .map(({ pagename }) => pagename)
     .filter((pagename) => (squadByPagename.get(pagename) ?? []).length === 0);

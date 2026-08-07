@@ -30,23 +30,16 @@ export class RankingsShellComponent {
   protected readonly filter = inject(LeagueFilterService);
   protected readonly scopes = BOARD_SCOPES;
 
-  /**
-   * Regional strength is shown alongside every board, not on a tab of its own.
-   * It is the only place the league rating appears now that it is no longer
-   * added to team ratings, and it is context for whichever board you are
-   * reading rather than a ranking in its own right.
-   */
+  // Regional strength shows alongside every board as context, not on its own
+  // tab -- the only place the league rating appears now.
   protected readonly leagues = signal<LeagueSummary[]>([]);
 
   private readonly stickyTop = viewChild.required<ElementRef<HTMLElement>>('stickyTop');
   private readonly document = inject(DOCUMENT);
   private readonly router = inject(Router);
 
-  /**
-   * Which view is showing, so the scope note can describe the right thing.
-   * Teams and players are rated by genuinely different methods, and one shared
-   * description was wrong on whichever view it was not written for.
-   */
+  // Which view is showing, so the scope note describes the right thing: teams
+  // and players are rated differently, and one shared description fit neither.
   private readonly url = toSignal(
     this.router.events.pipe(
       filter((event): event is NavigationEnd => event instanceof NavigationEnd),
@@ -57,36 +50,23 @@ export class RankingsShellComponent {
 
   protected readonly isPlayers = computed(() => this.url().includes('/players'));
 
-  /**
-   * One team's page is not a board. The scope tabs would switch a board that
-   * isn't showing, and the description and strength box both describe one --
-   * so on that route the block is just the header and the tabs.
-   */
+  // A team's page is not a board, so the scope tabs and strength box are hidden
+  // there -- the block is just the header.
   protected readonly isBoard = computed(() => !/\/teams\/\d/.test(this.url()));
 
   constructor() {
     this.api.getLeagues().subscribe((leagues) => this.leagues.set(leagues));
 
-    /**
-     * Publishes the sticky block's height so a board's table header can pin
-     * directly beneath it.
-     *
-     * Measured rather than hard-coded because the height genuinely varies: the
-     * scope note is three lines on the International board and two on a
-     * regional one, and it reflows with the viewport. A written-down `top` is
-     * what put the control bar 4px under the header in the first place.
-     */
+    // Publishes the sticky block's height so a board's table header pins beneath
+    // it. Measured, not hard-coded: the scope note is two or three lines
+    // depending on the board and reflows with the viewport.
     effect((onCleanup) => {
       const element = this.stickyTop().nativeElement;
       const root = this.document.documentElement;
-      // The BORDER box, not contentRect: the block carries bottom padding (the
-      // breathing room above the board), and contentRect excludes padding, so
-      // measuring that pinned everything 16px too high, straight through the
-      // gap it was meant to preserve.
-      //
-      // Ceil, not round: rounding 257.4 down to 257 leaves a sub-pixel gap the
-      // scrolling rows show through. Ceiling it errs the other way, and the
-      // 1px of background the block paints below itself covers what is left.
+      // Border box, not contentRect: the block's bottom padding (excluded from
+      // contentRect) is the gap above the board, and dropping it pinned 16px too
+      // high. Ceil, not round: a rounded-down fraction leaves a sub-pixel seam
+      // the scrolling rows show through.
       const observer = new ResizeObserver(([entry]) => {
         const height = entry.borderBoxSize?.[0]?.blockSize ?? element.getBoundingClientRect().height;
         root.style.setProperty('--sticky-top-height', `${Math.ceil(height)}px`);
@@ -103,12 +83,9 @@ export class RankingsShellComponent {
     return scope === 'international' ? 'International' : scope;
   }
 
-  /**
-   * Half-width of the shared scale, in rating points, rounded out past the
-   * widest range on the board. Symmetric about zero so the centre line -- "no
-   * region assumed stronger" -- stays where it can be read, and shared across
-   * all six so their ranges can be compared against each other.
-   */
+  // Half-width of the shared scale, rounded out past the board's widest range.
+  // Symmetric about zero and shared across all six leagues so the ranges are
+  // comparable.
   private readonly halfScale = computed(() => {
     const widest = Math.max(...this.leagues().map((l) => Math.abs(l.rating) + l.rd), 1);
     return Math.ceil(widest / 50) * 50;

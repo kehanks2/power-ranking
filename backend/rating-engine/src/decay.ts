@@ -14,11 +14,9 @@ export function confidenceFromGamesPlayed(gamesPlayed: number, minGamesThreshold
 }
 
 /**
- * Converts within-league percentile signals from the incoming starters into a
- * roster-implied mu (internal Glicko-2 scale), offset from the league mean.
- * `offsetScaleRatingPoints` is in *display* rating points (e.g. 150), converted
- * to internal units here. A player below the min-games threshold contributes a
- * near-zero-confidence offset, collapsing the result back toward the league mean.
+ * Turns incoming starters' within-league percentiles into a roster-implied mu,
+ * offset from the league mean. `offsetScaleRatingPoints` is in display points.
+ * A low-confidence (few-games) player collapses the result toward the mean.
  */
 export function computeRosterImpliedMu(
   leagueMeanMu: number,
@@ -44,47 +42,18 @@ export interface RosterDecayConfig {
   sigmaDefault: number;
 }
 
-/**
- * How much a fully-confident roster-implied prior is allowed to reduce the RD
- * widening. At 0 the prior is ignored for uncertainty (the original
- * behaviour); at 1 a well-known incoming five would widen RD not at all.
- *
- * Swept end to end against the real dataset. Brier bottoms here (0.2244, vs
- * 0.2246 at 0.6 and 0.2258 at 0), and median displayed RD falls to 82 from 92
- * at 0.6 and 109 at 0 -- the RD movement is the meaningful part, since the
- * scoring differences across 0.6-1.0 sit inside noise.
- *
- * Deliberately not 1, even though raw accuracy peaks there (64.35%): Brier is
- * WORSE at 1.0 than at 0.8, so the extra correct calls come with less honest
- * probabilities. And the claim 1.0 makes is wrong on its face -- five
- * individually well-understood players are still an unknown *combination*, and
- * team synergy is real. This keeps a fifth of the widening at full confidence
- * to stand for that.
- *
- * Applied only at roster-change events, and that is the right scope rather
- * than a limitation: RD is otherwise driven by games played, so a settled
- * roster has already earned its confidence the ordinary way. The case a
- * continuous version would catch -- a team we know little about whose PLAYERS
- * we know well -- is a roster change, or a cold start, which is one.
- */
+// How much a fully-confident roster-implied prior reduces the RD widening a
+// roster change causes. 0 ignores the prior for uncertainty; 1 would widen not at
+// all. 0.8, not 1 (Brier is worse at 1): five known players are still an unknown
+// combination, so a fifth of the widening stays. Applied only at roster changes.
 export const DEFAULT_PRIOR_CONFIDENCE_RELIEF = 0.8;
 
 /**
  * Regresses a team's rating toward rosterImpliedMu proportional to turnover
- * (fraction of the 5 starting roles that changed), widening RD and volatility
- * in step. turnover=0 is a no-op.
- *
- * `priorConfidence` (0-1) is the mean confidence of the incoming players'
- * ratings -- the same signal computeRosterImpliedMu already uses to shape
- * `mu`. Without it this function was internally inconsistent: it would assert
- * a specific new rating derived from player evidence, while simultaneously
- * widening RD as though the team were unknown. Confirmed against real data:
- * Vivo Keyd Stars swapped 4 of 5 starters and went from a converged RD of 131
- * to 306 out of a 350 maximum -- i.e. "we know almost nothing" -- even though
- * every incoming player had a rating we were confident enough to move mu with.
- *
- * A confident prior now damps the widening; an unknown one (rookies, no
- * rating) still produces the full original reset.
+ * (fraction of the 5 roles that changed), widening RD and volatility in step;
+ * turnover=0 is a no-op. `priorConfidence` (0-1) damps the widening, so a team
+ * that swapped known players isn't reset to "we know nothing"; an unknown prior
+ * (rookies) still gives the full reset.
  */
 export function applyRosterChangeDecay(
   current: RatingState,
@@ -108,9 +77,8 @@ export function applyRosterChangeDecay(
 }
 
 /**
- * Split-boundary soft decay: regress mu toward the league mean by kSeason.
- * Deliberately does not touch phi/sigma -- RD growth across the offseason gap
- * already happens for free via updateRating([]) during periods with no games.
+ * Split-boundary soft decay: regress mu toward the league mean by kSeason. Leaves
+ * phi/sigma alone -- offseason RD growth already happens via updateRating([]).
  */
 export function applySeasonalDecay(current: RatingState, leagueMeanMu: number, kSeason: number): RatingState {
   return {
@@ -120,10 +88,8 @@ export function applySeasonalDecay(current: RatingState, leagueMeanMu: number, k
 }
 
 /**
- * If a roster change and a split boundary land in the same period, apply only
- * the larger-magnitude mu regression, not both stacked (plan's explicit rule
- * to avoid double-penalizing a team that both swapped players and hit an
- * offseason gap at the same time).
+ * When a roster change and a split boundary coincide, apply only the
+ * larger-magnitude mu regression, not both stacked.
  */
 export function applyCoincidentDecay(
   current: RatingState,

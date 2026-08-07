@@ -1,27 +1,17 @@
 /**
- * Manual one-off runner (read-only): score whole model configurations on every
- * metric at once, so parameters can be chosen jointly instead of one at a time.
+ * Manual read-only runner: score whole model configurations jointly (parameters
+ * tuned one at a time is how SERIES_CORRELATION went stale). Six metrics:
  *
- * Every parameter here was previously tuned with the others held at older
- * values, which is how SERIES_CORRELATION ended up stale -- correct when set,
- * pointless once its root causes were fixed. This scores a config six ways:
- *
- *   accuracy   did we pick the winner (all 5,929 games)
+ *   accuracy   did we pick the winner
  *   brier      squared error of the probability (lower is better)
  *   logloss    penalises confident mistakes hardest
- *   hiGap      >80%-confidence band: predicted minus actual, i.e. overconfidence
+ *   hiGap      >80%-confidence band: predicted minus actual (overconfidence)
  *   lgGap      per-league calibration on cross-league games, weighted mean |gap|
- *   spread     displayed league spread / Bradley-Terry fitted spread (1.00 = honest)
+ *   spread     displayed / Bradley-Terry fitted league spread (1.00 = honest)
  *   medRD      median displayed team RD
  *
- * `metaCredit` is the redesign under test. The league meta is a PRIOR: it
- * should supply what a team's own cross-region record cannot, and get out of
- * the way once that record exists. One formula, k / (k + effectiveIntlGames),
- * where effectiveIntlGames is recency-weighted, replaces the separate
- * recency-only participation factor (full-credit days / zero-credit days /
- * floor) and removes the overlap with INTERNATIONAL_WEIGHT_MULTIPLIER: the
- * more international evidence a team has -- which is exactly what that
- * multiplier amplifies into the contextual rating -- the less prior it carries.
+ * `metaCredit` is under test: the league meta is a prior, k / (k +
+ * effectiveIntlGames), that fades as a team's own international record grows.
  */
 import { createPool } from '../db.js';
 import { loadReplayData } from '../replayData.js';
@@ -209,8 +199,7 @@ function score(config: SweepConfig) {
   };
 }
 
-// Joint grid. Every one of these was previously tuned with the others held at
-// older values, which is exactly how SERIES_CORRELATION went stale.
+// Joint grid over the three knobs.
 const CONFIGS: SweepConfig[] = [];
 for (const metaWeight of [0.5, 0.65, 0.8, 1.0]) {
   for (const seriesCorrelation of [0, 0.2, 0.4, 0.6]) {
@@ -231,9 +220,8 @@ for (const metaWeight of [0.5, 0.65, 0.8, 1.0]) {
 interface Scored extends SweepConfig { s: ReturnType<typeof score> }
 const scored: Scored[] = CONFIGS.map((c) => ({ ...c, s: score(c) }));
 
-// Brier is the primary criterion: a strictly proper scoring rule, so it cannot
-// be gamed by shading probabilities, unlike accuracy which only counts which
-// side of 50% we landed on.
+// Brier is the primary criterion: a strictly proper scoring rule, unlike
+// accuracy which only counts which side of 50% we landed on.
 scored.sort((a, b) => a.s.brier - b.s.brier);
 
 console.log('ALL CONFIGS BY BRIER (strictly proper scoring rule)');

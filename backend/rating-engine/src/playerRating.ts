@@ -1,11 +1,7 @@
 /**
- * Simple Phase-1 player rating: a role+league-normalized percentile composite
- * per game, rolled up via an exponentially-weighted moving average.
- *
- * Deliberately not a trained ML model or a full Bayesian (OpenSkill) engine --
- * see plan's "Player rating (Phase 1, simple version)" for why, and the known
- * limitation that percentiles are computed within-league only (a transfer's
- * percentile doesn't yet translate cross-league).
+ * Player rating: a role+league-normalized percentile composite per game, rolled
+ * up via an exponentially-weighted moving average. Percentiles are within-league
+ * only, so a transfer's percentile doesn't translate cross-league.
  */
 
 export interface PlayerGameStats {
@@ -25,11 +21,7 @@ export function percentile(value: number, peerValues: number[]): number {
   return (countBelow / peerValues.length) * 100;
 }
 
-/**
- * Averages percentiles across the four stats into a single 0-100 composite.
- * `peers` should be every player in the same role + league for this game/period
- * (i.e. not global -- see the plan's within-league-only decision).
- */
+/** Averages the four stat percentiles into a 0-100 composite. `peers` = same role + league. */
 export function computeCompositeScore(stats: PlayerGameStats, peers: PlayerGameStats[]): number {
   const kdaPercentile = percentile(stats.kda, peers.map((p) => p.kda));
   const goldPercentile = percentile(stats.goldShare, peers.map((p) => p.goldShare));
@@ -38,10 +30,7 @@ export function computeCompositeScore(stats: PlayerGameStats, peers: PlayerGameS
   return (kdaPercentile + goldPercentile + damagePercentile + kpPercentile) / 4;
 }
 
-/**
- * Exponentially-weighted rolling average -- "current form." The first game
- * has no prior to blend against, so it seeds the rating directly.
- */
+/** EWMA "current form"; the first game has no prior, so it seeds the rating. */
 export function updatePlayerRating(
   currentRating: number | null,
   newCompositeScore: number,
@@ -52,36 +41,15 @@ export function updatePlayerRating(
 }
 
 // --- Weighted season rating (method_version 2) -------------------------------
-//
-// v1 was a flat career average of four stats, percentiled within (league,
-// role). Confirmed against real data that this had four distinct failures:
-//   1. It emitted one row per (player, role, league), so anyone who changed
-//      role or league got 2-3 rows all stamped with the same as_of_date, and
-//      every consumer picks between them with `DISTINCT ON ... ORDER BY
-//      as_of_date DESC` -- i.e. arbitrarily. Malrang scored 20.8 / 58.0 / 42.4
-//      depending on which row won the tie; 61 players were affected.
-//   2. `games_played` was stored but never used, so a 1-game sample could
-//      score 88.6 alongside a 40-game veteran (24 players had <=3 games).
-//   3. A flat average over 2.5 years made current form invisible.
-//   4. Winning was not an input at all -- farm/damage/KDA only, which is a
-//      stat-padding metric and the likely reason the top 10 was four supports
-//      and no Faker or Chovy.
-// The functions below address 2, 3 and 4; the one-row-per-player selection is
-// done by the caller (see computePlayerRatings.ts) using `effectiveGames` to
-// pick a player's primary peer group.
+// v2 adds recency weighting, sample-size shrinkage, and a win term to v1's flat
+// career percentile average.
 
-/**
- * A game this many days old counts half as much as one played today. ~120d is
- * roughly one split, so the current split dominates while prior splits still
- * carry real signal instead of dropping off a cliff at a window boundary.
- */
+// Half-weight age. ~120d ≈ one split, so the current split dominates without a
+// cliff at a window boundary.
 export const DEFAULT_HALF_LIFE_DAYS = 120;
 
-/**
- * Games needed before a rating is trusted at full strength. At n_eff = K the
- * score sits halfway between the peer-neutral 50 and its raw value, so a
- * 1-game 88.6 lands near 53 rather than topping the table.
- */
+// Games before a rating is trusted fully. At n_eff = K the score sits halfway
+// between neutral 50 and its raw value, so a 1-game 88.6 lands near 53.
 export const DEFAULT_SHRINKAGE_GAMES = 10;
 
 /** Recency weight for a game played `ageDays` ago. 1.0 today, 0.5 at one half-life. */
@@ -104,28 +72,15 @@ export function weightedMean(values: number[], weights: number[]): number {
 /** The peer-neutral score: by construction every peer group centres here. */
 export const NEUTRAL_SCORE = 50;
 
-/**
- * How much of a player's standing in one league carries to another.
- *
- * Fit from our own data, not assumed: across 100 observations of players with
- * 15+ games in two different leagues at the same role, regressing one
- * percentile on the other gives a slope of 0.315 (r^2 = 0.099). So past-league
- * standing is real evidence but weak -- worth about a third of the distance
- * from neutral, and no more.
- *
- * Deliberately NOT adjusted by league strength. The obvious theory is that
- * moving to a stronger league should cost you percentile, but the correlation
- * between the league-rating gap and the percentile change is -0.19 -- weak,
- * and pointing the WRONG way. Applying a strength term would be adding noise
- * with a rigorous-looking justification. See MODEL.md.
- */
+// How much of a player's standing in one league carries to another. Fit, not
+// assumed: cross-league percentile slope 0.315 over 100 players, ~a third of the
+// distance from neutral. NOT adjusted by league strength (that correlation is
+// -0.19: weak and wrong-signed).
 export const DEFAULT_TRANSFER_CARRYOVER = 0.3;
 
 /**
- * Pulls a percentile score toward `anchor` in proportion to how little
- * evidence backs it. `effectiveGames` is the recency-weighted game count, so
- * an old sample shrinks harder than a fresh one of the same size -- which is
- * the intended interaction with `recencyWeight`, not a side effect.
+ * Pulls a score toward `anchor` in proportion to how little evidence backs it.
+ * `effectiveGames` is recency-weighted, so an old sample shrinks harder.
  */
 export function shrinkToward(
   score: number,
@@ -143,12 +98,8 @@ export function shrinkToNeutral(score: number, effectiveGames: number, k = DEFAU
 }
 
 /**
- * Where to anchor a player who has a record in another league.
- *
- * Returns the neutral score when there is nothing to carry, so a caller can
- * use this unconditionally. Note the result is an ANCHOR, not a rating: the
- * player's own games in this league still pull the final number away from it
- * exactly as before, and do so faster the more they play.
+ * Where to anchor a player with a record in another league; neutral when there's
+ * nothing to carry. An anchor, not a rating -- their own games still pull off it.
  */
 export function transferAnchor(
   priorScore: number | null | undefined,
@@ -160,23 +111,10 @@ export function transferAnchor(
 
 export type PlayerComponent = 'kda' | 'goldShare' | 'damageShare' | 'killParticipation' | 'winRate';
 
-/**
- * How much of the composite is "did your team actually win," with the four
- * box-score stats splitting the remainder equally.
- *
- * Set to 0.5 deliberately. A player can make a play that wrecks their own
- * stat line -- a dive that trades their life for the objective, a support
- * engaging into four people -- and the team wins because of it. The box score
- * records that as a death; the scoreboard records it as a win. Weighting
- * winRate at half the composite means the outcome can outvote the stat line
- * rather than merely nudging it, which is the whole point: the play worked.
- *
- * It stops at 0.5 rather than going higher because winRate is a TEAM
- * statistic. Every player on a strong roster shares it, so past ~0.5 the
- * rating stops discriminating between teammates and just re-ranks teams --
- * you'd be reading team strength off a player page. At 0.5 a player still has
- * to be individually credible to top their peer group.
- */
+// Weight on "did your team win," the four box-score stats splitting the rest.
+// 0.5 so the outcome can outvote a stat line (a support engaging into four reads
+// as a death but wins the game); no higher, or winRate (a team stat) just
+// re-ranks teams.
 export const DEFAULT_WIN_WEIGHT = 0.5;
 
 /** Component weights summing to 1, given how much weight winning should carry. */

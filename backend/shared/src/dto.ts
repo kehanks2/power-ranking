@@ -10,12 +10,9 @@ export interface LeagueSummaryDto {
 }
 
 /**
- * Which pool a team's rating was measured against.
- *
- * A league slug means "ranked against other teams in that league, on games
- * played inside it". Those numbers are NOT comparable between regions.
- * 'international' means "ranked on cross-region games only" -- the one scope
- * that can compare regions, because those teams played each other.
+ * Which pool a team's rating was measured against. A league slug is NOT
+ * comparable between regions; 'international' is the one scope that can compare
+ * them, because those teams played each other.
  */
 export type TeamRatingScope = 'international' | string;
 
@@ -35,11 +32,8 @@ export interface TeamSummaryDto {
   games: number;
   /** A roster change in the last 60 days, which is why the range is wide. */
   recentRosterChange: boolean;
-  /**
-   * The team's finish at each of the last four international events it played.
-   * `placement` is text because shared finishes are reported as ranges
-   * ("5-6"), and null when the event is in our data but its standings are not.
-   */
+  // Finish at each of the last four international events. `placement` is text
+  // (shared finishes are ranges, "5-6") and null when standings are missing.
   results: { event: string; placement: string | null }[];
   /** Most recent international, when none of the last four were attended; otherwise null. */
   lastInternational: string | null;
@@ -52,7 +46,20 @@ export interface RosterEntryDto {
   isStarter: boolean;
 }
 
-/** A team's game record at one tournament. */
+/** One series a team played, oriented to them: `ownScore`-`opponentScore`. */
+export interface TeamSeriesDto {
+  /** ISO date of the series' first game. */
+  date: string;
+  /** Who they faced, by display name. */
+  opponent: string;
+  ownScore: number;
+  opponentScore: number;
+  /** Derived from the scoreline like TeamRecordDto.formats; null if undecided. */
+  format: number | null;
+  won: boolean;
+}
+
+/** A team's record at one tournament. */
 export interface TeamRecordDto {
   /** The tournament as Liquipedia names it: "LEC 2026 Summer". */
   event: string;
@@ -62,31 +69,20 @@ export interface TeamRecordDto {
   losses: number;
   seriesWins: number;
   seriesLosses: number;
-  /**
-   * The series lengths played here, ascending: [3, 5] is a Bo3 stage and a Bo5
-   * playoff. Derived from the scoreline rather than read from `series.best_of`,
-   * which Liquipedia fills inconsistently -- sometimes the declared format,
-   * sometimes the number of games actually played, so a 3-1 arrives as "Bo4".
-   */
+  // Series lengths, ascending ([3, 5] = a Bo3 stage and a Bo5 playoff). Derived
+  // from the scoreline, not the unreliable `series.best_of`.
   formats: number[];
-  /**
-   * Finish, where standings exist. Text, because shared finishes are reported
-   * as ranges ("5-8"). Null for regional splits, which we hold no standings
-   * for, and for internationals whose standings are missing.
-   */
+  /** The decided series themselves, most recent first, for the expanded row. */
+  series: TeamSeriesDto[];
+  /** Finish where standings exist. Text, because shared finishes read "5-8". */
   placement: string | null;
 }
 
 export interface TeamDetailDto extends TeamSummaryDto {
   roster: RosterEntryDto[];
-  /**
-   * Game record split by split, newest first. Games rather than series: the
-   * leagues do not agree on series format (Bo1 in places, Bo3 in others), so a
-   * series record is not comparable across them, and games is what every other
-   * count on the board already means.
-   */
+  /** Record per split, newest first. */
   regional: TeamRecordDto[];
-  /** Game record at each international event, newest first. */
+  /** Record at each international event, newest first. */
   international: TeamRecordDto[];
 }
 
@@ -96,12 +92,9 @@ export interface TeamDetailDto extends TeamSummaryDto {
  */
 export type PlayerRatingScope = 'regional' | 'international';
 
-/**
- * Which stretch of play a regional rating covers -- see db/migrations/0011.
- * 'all' is the default and the only window the international board has.
- * Both bounded windows are per-league, keyed off that league's own current
- * split, because the leagues do not run on the same calendar.
- */
+// Which stretch a regional rating covers. 'all' is the default and the only
+// international window; the bounded ones are per-league (leagues run on different
+// calendars). See db/migrations/0011.
 export const RATING_WINDOWS = ['all', 'year', 'split'] as const;
 
 export type RatingWindow = (typeof RATING_WINDOWS)[number];
@@ -120,13 +113,8 @@ export const LEAGUE_SPLIT_START_CTE = `
   )
 `;
 
-/**
- * SQL keeping only games inside a window. Lives here, in the package both
- * sides import, because ingestion decides which games a rating was computed
- * from and the API has to draw the panel's stat line from exactly those games
- * -- two copies of this would drift, and the panel would quietly stop
- * describing the number above it.
- */
+// SQL keeping only games inside a window. Shared so ingestion (which computes the
+// rating) and the API (which draws the panel) can't drift apart.
 export function playerWindowPredicate(window: RatingWindow, gameTime: string, splitStart: string): string {
   switch (window) {
     case 'split':
@@ -144,7 +132,7 @@ export interface PlayerSummaryDto {
   /** Their current team, for linking through to it. Null when unrostered. */
   teamId: number | null;
   teamSlug: string | null;
-  /** Display name ("Gen.G"), not the slug ("gen-g") the boards used to show. */
+  /** Display name ("Gen.G"), not the slug. */
   teamName: string | null;
   /** The player's current region/league (e.g. 'LCK'); null if unresolved. */
   leagueSlug: string | null;
@@ -155,32 +143,18 @@ export interface PlayerSummaryDto {
   scope: PlayerRatingScope;
   /** Which stretch of play it was measured over. Always 'all' internationally. */
   window: RatingWindow;
-  /**
-   * Games behind `rating`, in whichever scope it was computed. Worth showing:
-   * ratings are shrunk toward 50 by sample size, so a low rating on few games
-   * means "not yet established", not "bad".
-   */
+  // Games behind `rating`: ratings shrink toward 50 by sample size, so a low one
+  // on few games means "not established", not "bad".
   gamesPlayed: number;
-  /**
-   * Another squad this player is concurrently active on, if any -- almost
-   * always an academy or partner team (Vitality's second five are all on
-   * Rising Bees). This is what a zero-game row on a tier-1 board usually
-   * means, so it is shown rather than left looking like missing data.
-   */
+  // Another squad Liquipedia lists this player on (usually academy/partner, what
+  // a zero-game tier-1 row means); attributed to Liquipedia since it can't be
+  // told from an unclosed transfer.
   alsoPlaysFor: string | null;
 }
 
-/**
- * One stat, with the context needed to read it.
- *
- * `value` alone says very little -- 8.1 CS/min is strong for a support and
- * poor for a mid -- so every stat also carries where it places the player among
- * the same-role players on the same board.
- *
- * `place` is 1-based and always oriented so 1st is best, including for stats
- * where the better raw number is the lower one (deaths). Ties share a place.
- * Null when the stat is unavailable for this player.
- */
+// One stat plus its place among same-role players (value alone says little: 8.1
+// CS/min is strong for a support, poor for a mid). `place` is 1-based, 1st always
+// best (including deaths, where lower is better); ties share a place.
 export interface PlayerStatDto {
   value: number | null;
   place: number | null;
@@ -191,6 +165,11 @@ export interface PlayerStatsDto {
   wins: number;
   losses: number;
   winRate: number;
+  // The same games grouped into series -- the unit that decides placement, and
+  // routinely disagrees with the game count.
+  seriesWins: number;
+  seriesLosses: number;
+  seriesWinRate: number;
   kills: PlayerStatDto;
   deaths: PlayerStatDto;
   assists: PlayerStatDto;
@@ -206,12 +185,7 @@ export interface PlayerStatsDto {
 }
 
 export interface PlayerDetailDto extends PlayerSummaryDto {
-  /**
-   * Measured over exactly the games the player's rating for this scope was
-   * computed from -- international games in the window for the International
-   * board, games in that one league for a regional one. Anything else would
-   * put a stat line next to a rating that disagrees with it.
-   */
+  /** Over exactly the games this scope's rating was computed from. */
   stats: PlayerStatsDto;
   /** The denominator behind every `place`: same-role players on this board. */
   peerCount: number;

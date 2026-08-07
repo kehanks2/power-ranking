@@ -192,6 +192,49 @@ describe('read API (live Postgres)', () => {
     expect(stats.kda.place).toBeLessThan(res.body.peerCount / 2);
   });
 
+  it('GET /teams/:id lists the individual series behind each record', async () => {
+    const teams = await request(app).get('/teams').query({ scope: 'international' });
+    const res = await request(app).get(`/teams/${teams.body[0].id}`);
+    const row = res.body.international.find((r: { series: unknown[] }) => r.series.length > 0);
+    expect(row).toBeDefined();
+
+    // The listed series must reconcile with the aggregate above them, or the
+    // expanded row is describing a different event than its own header.
+    const won = row.series.filter((s: { won: boolean }) => s.won).length;
+    expect(won).toBe(row.seriesWins);
+    expect(row.series.length).toBe(row.seriesWins + row.seriesLosses);
+
+    for (const s of row.series) {
+      expect(s.won).toBe(s.ownScore > s.opponentScore);
+      expect(s.opponent).toBeTruthy();
+      expect(s.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      if (s.format !== null) expect(row.formats).toContain(s.format);
+    }
+
+    // Most recent first, matching the events above them.
+    const dates = row.series.map((s: { date: string }) => s.date);
+    expect(dates).toEqual([...dates].sort().reverse());
+  });
+
+  it('GET /players/:id reports a series record drawn from the same games', async () => {
+    const board = await request(app).get('/players').query({ scope: 'international' });
+    const top = board.body[0];
+
+    const res = await request(app).get(`/players/${top.id}`).query({ scope: 'international' });
+    const { stats } = res.body;
+    const series = stats.seriesWins + stats.seriesLosses;
+
+    // Every series holds at least one game, so it cannot outnumber the games
+    // it was derived from -- and a player with games has played series.
+    expect(series).toBeGreaterThan(0);
+    expect(series).toBeLessThanOrEqual(stats.games);
+    expect(stats.seriesWinRate).toBeCloseTo(stats.seriesWins / series, 6);
+
+    // The two records disagree by design; what must hold is that they agree on
+    // who won more often than not.
+    expect(stats.seriesWinRate > 0.5).toBe(stats.winRate > 0.5);
+  });
+
   it('GET /players/:id counts the same games the board Games column does', async () => {
     // These disagreed until ratings recorded their (league, role) group: the
     // column came from the one group the rating chose, the panel aggregated

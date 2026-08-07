@@ -1,19 +1,9 @@
 /**
- * Manual one-off runner: re-pull every Riot-official series we ingest, in one
- * pass, to populate columns added after the original backfill.
- *
- * Written for migration 0007 (creep_score, gold_diff), which left 54,796
- * existing performance rows null -- the data was always in the API response,
- * we just were not storing it. Match ingestion is idempotent on
- * leaguepedia_unique_line / leaguepedia_match_id, so this rewrites the same
- * rows in place rather than duplicating them, and picks up any matches played
- * since the last run as a side effect.
- *
- * Sequential by design. Each series is 1-2 pages against v3/match, so the
- * whole sweep is ~15-20 requests of the 60/hour budget. The limiter throws
- * rather than retrying on 429 (see liquipediaApi.ts); because each upsert
- * commits on its own, a run that dies partway is safe to simply re-run once
- * the window reopens -- completed series cost nothing the second time.
+ * Manual runner: re-pull every Riot-official series in one pass to populate
+ * columns added after the original backfill (written for migration 0007's
+ * creep_score/gold_diff, which left 54,796 rows null). Ingestion is idempotent,
+ * so this rewrites in place and picks up newer matches as a side effect. A run
+ * that dies partway is safe to re-run once the rate-limit window reopens.
  *
  * Run with: tsx <this file> [YYYY-MM-DD start, default 2024-01-01]
  */

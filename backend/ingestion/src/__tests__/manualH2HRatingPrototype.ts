@@ -1,14 +1,8 @@
 /**
- * Manual PROTOTYPE (read-only, writes nothing): what would a head-to-head team
- * rating look like?
- *
- * Built ONLY from international games, with the league meta switched off
- * entirely (metaWeight 0). No regional assumption of any kind enters it: these
- * teams played each other directly, so the ordering is pure evidence. The
- * mirror of the player Global tab, at team level.
- *
- * Compared side by side with the production rating, which uses every game plus
- * the league prior.
+ * Manual read-only prototype: what would a head-to-head team rating look like?
+ * Built only from international games with the league meta off (metaWeight 0),
+ * so the ordering is pure head-to-head evidence -- the team-level mirror of the
+ * player Global tab.
  */
 import { createPool } from '../db.js';
 import { loadReplayData } from '../replayData.js';

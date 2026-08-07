@@ -75,7 +75,16 @@ export class TeamsListComponent {
       { wins: 0, losses: 0, seriesWins: 0, seriesLosses: 0 },
     );
     const games = sum.wins + sum.losses;
-    return { ...sum, games, winRate: games === 0 ? 0 : sum.wins / games };
+    const series = sum.seriesWins + sum.seriesLosses;
+    // Both rates, because they answer different questions and routinely
+    // disagree: a team that keeps winning 3-2 is far better by series than by
+    // games, and series are what decide placement.
+    return {
+      ...sum,
+      games,
+      winRate: games === 0 ? 0 : sum.wins / games,
+      seriesWinRate: series === 0 ? 0 : sum.seriesWins / series,
+    };
   });
 
   protected readonly sorted = computed(() => {

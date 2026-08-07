@@ -40,9 +40,8 @@ const META_WEIGHT = 0.8;
 const pool = createPool(DATABASE_URL);
 const { teamIds, leagueIds, games, decayEvents } = await loadReplayData(pool);
 
-// Cross-league games only ever happen at international events in this dataset
-// (regional splits are single-league), so team1LeagueId !== team2LeagueId is
-// the international filter -- no game-id join needed.
+// Cross-league games only happen at internationals here, so
+// team1LeagueId !== team2LeagueId is the international filter.
 const leagueRows = await pool.query<{ id: string; slug: string }>('SELECT id::text, slug FROM leagues');
 const slugByLeagueId = new Map(leagueRows.rows.map((r) => [r.id, r.slug]));
 

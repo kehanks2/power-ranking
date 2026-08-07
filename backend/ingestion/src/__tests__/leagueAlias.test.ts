@@ -35,13 +35,10 @@ describe('resolveLeagueAlias', () => {
 });
 
 describe('resolveLeagueAlias with real Date objects (regression)', () => {
-  // `pg` returns DATE columns as JS Date objects, not strings, no matter what
-  // a TS type annotation on the query claims. A real production bug lived
-  // here: comparing a string asOfDate against an un-normalized Date via `>=`
-  // silently coerces to NaN and is always false, so every single lookup
-  // returned null in production despite this file's string-literal-only
-  // tests above passing the whole time -- the bug only showed up on the real
-  // DB round trip, never in a unit test using clean string literals.
+  // `pg` returns DATE columns as Date objects regardless of the query's TS
+  // type. Comparing a string asOfDate against one via `>=` coerces to NaN
+  // (always false), so every lookup returned null in production -- invisible to
+  // the string-literal tests above, only real on a DB round trip.
   const dateAliases: LeagueAlias[] = [
     { rawLeagueName: 'LCS', canonicalLeagueId: LCS_ID, validFrom: new Date('2016-01-01T06:00:00.000Z'), validTo: null },
     {

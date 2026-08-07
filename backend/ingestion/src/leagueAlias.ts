@@ -1,35 +1,15 @@
 /**
- * Currently uncalled, and that is a SYMPTOM rather than a reason to delete it.
+ * Resolves a raw Leaguepedia league name at a point in time to a canonical
+ * league id -- the LTAN->LCS / LTAS->CBLOL historical remap, since through 2025
+ * the Americas ran as LTA North and LTA South. Mirrors the league_aliases table.
  *
- * This resolves a raw league name at a point in time to a canonical league.
- * The league_aliases table it reads holds a real quirk: through 2025 the
- * Americas ran as LTA North and LTA South, so records from that year appear
- * under "LTA N"/"LTAN" and "LTA S"/"LTAS" and must map onto LCS and CBLOL for
- * a team's history to stay continuous across the rename.
- *
- * The reason nothing calls it is that the 2025 Americas season was never
- * ingested at all. Confirmed against the data: LCS and CBLOL hold zero
- * regional games for 2025, while every other league has a full year --
- * LEC 308, LPL 817, LCK 535. The Liquipedia backfill is driven by series
- * name, and "LCS"/"CBLOL" simply did not exist that year, so the query
- * matched nothing and failed silently.
- *
- * Consequences worth knowing before this is either used or removed:
- *   - LCS teams rate on 366 games against LEC's 882, and carry a 14-month
- *     hole between mid-2024 and early 2026.
- *   - That gap is very likely part of why LCS measures as the most
- *     under-rated region (winning 43.0% of cross-league games against a
- *     prediction near 37%) -- see MODEL.md.
- *
- * The fix is to backfill the 2025 LTA North and LTA South splits, at which
- * point this module becomes load-bearing again: it is what maps those records
- * back onto LCS and CBLOL. Backfilling will move every rating, so the tuned
- * parameters should be re-swept afterwards.
- */
-/**
- * Resolves a raw league/region name as it appears in Leaguepedia to a
- * canonical league id, valid over a date range -- the mechanism behind the
- * LTAN->LCS / LTAS->CBLOL historical remap. Mirrors the league_aliases table.
+ * Uncalled, and that is a SYMPTOM, not a reason to delete it: the 2025 Americas
+ * season was never ingested (LCS and CBLOL hold zero 2025 games against LEC's
+ * 308 and LPL's 817), because the backfill matches on series name and
+ * "LCS"/"CBLOL" did not exist that year. So LCS rates on 366 games with a
+ * 14-month hole, likely part of why it measures as the most under-rated region
+ * (see MODEL.md). Backfilling those splits makes this load-bearing again, and
+ * will move every rating -- re-sweep the tuned parameters afterwards.
  */
 
 export interface LeagueAlias {
@@ -42,14 +22,10 @@ export interface LeagueAlias {
 }
 
 /**
- * Normalizes a date-like value (string OR a real Date object, which is what
- * `pg` actually returns for DATE columns, not the string its type declares)
- * into a comparable YYYY-MM-DD string. Confirmed as a real, previously-silent
- * bug: comparing a string against an un-normalized Date object via `>=`
- * coerces the Date to a number (ms since epoch) and the string to NaN, so
- * the comparison is always false -- resolveLeagueAlias was returning null
- * for every single call in production despite passing unit tests that only
- * ever exercised it with clean string literals, never real DB round-trips.
+ * To a comparable YYYY-MM-DD string. `pg` returns real Dates for DATE columns,
+ * not the strings its types declare, and comparing a string to a Date with `>=`
+ * coerces both to numbers and is always false -- this returned null for every
+ * production call while unit tests passed on string literals.
  */
 function toDateString(value: string | Date): string {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -57,10 +33,8 @@ function toDateString(value: string | Date): string {
 }
 
 /**
- * Returns the canonical league id for a raw name as of a given date, or null
- * if unresolved. Callers must never guess when this returns null -- log and
- * quarantine the row instead (see plan: "never silently guessed into the
- * 6-league scope").
+ * Canonical league id for a raw name as of a date, or null. Callers must never
+ * guess on null -- log and quarantine the row instead.
  */
 export function resolveLeagueAlias(
   rawLeagueName: string,

@@ -1,13 +1,8 @@
 /**
- * Pure orchestrator that replays a full game history through the rating
- * engine, period by period. Deliberately has no DB/network dependency (see
- * plan: rating-engine stays "pure, heavily unit-tested") -- a thin caller
- * elsewhere loads games/teams/leagues from Postgres, builds this input, and
- * persists the returned history rows.
- *
- * "Full replay from period 1 is always the supported recovery path" (plan) --
- * this function IS that replay: it is a pure function of
- * (games + decay events + config), safe to re-run from scratch at any time.
+ * Replays a full game history through the rating engine, period by period. No
+ * DB or network: a pure function of (games + decay events + config), so a full
+ * replay from period 1 is always a safe recovery path. A thin caller loads from
+ * Postgres and persists the returned history rows.
  */
 
 import { updateRating, DEFAULT_TAU, SIGMA_REFERENCE_DAYS, type RatingState, type GameResult } from './glicko2.js';
@@ -26,24 +21,11 @@ export interface ReplayGame {
   team1Gold: number | null;
   team2Gold: number | null;
   gamelengthSeconds: number | null;
-  /**
-   * Which series (Bo1/Bo3/Bo5) this game belongs to. Optional for backwards
-   * compatibility with synthetic single-game test fixtures; when absent the
-   * game is treated as its own series (no correlation correction).
-   */
+  /** Which series this game belongs to; absent (test fixtures) = its own series. */
   seriesId?: string;
-  /**
-   * Whether this game was played at an international event.
-   *
-   * Distinct from `team1LeagueId !== team2LeagueId`, which asks whether the
-   * two teams are from different regions. Two LPL sides meeting at Worlds are
-   * playing international but not cross-region: that game is real evidence
-   * about both teams' standing in the international field, while carrying
-   * nothing about how LPL compares to anyone. The rating engine uses the
-   * cross-region test for league-meta updates, because that is the question
-   * the meta answers; the international BOARD uses this flag, because the
-   * question there is simply "how have you done at internationals".
-   */
+  // Played at an international event -- distinct from cross-region (two LPL sides
+  // at Worlds). League-meta uses the cross-region test; the international board
+  // uses this flag.
   internationalEvent?: boolean;
 }
 
@@ -54,11 +36,7 @@ export interface RosterDecayEvent {
   effectiveDate: string; // ISO date
   turnover: number;
   rosterImpliedMu: number;
-  /**
-   * Mean confidence (0-1) of the incoming players' ratings -- the same signal
-   * that shaped rosterImpliedMu. Optional for older/synthetic fixtures; absent
-   * means "no prior knowledge", i.e. the full RD reset.
-   */
+  /** Mean confidence (0-1) of the incoming players' ratings; absent = full RD reset. */
   rosterImpliedConfidence?: number;
 }
 
@@ -80,76 +58,28 @@ export interface ReplayConfig {
   movWeightCap: number;
   /** See contextualMeta.ts's DEFAULT_META_WEIGHT for why this exists and defaults to 1.0. */
   metaWeight?: number;
-  /**
-   * Intra-series correlation (rho), 0..1 -- see seriesEvidenceWeight.
-   * Defaults to 0, which reproduces the original (uncorrected) behavior.
-   */
+  /** Intra-series correlation (rho), 0..1 -- see seriesEvidenceWeight. Default 0. */
   seriesCorrelation?: number;
-  /**
-   * Glicko-2's tau: constrains how fast volatility (and therefore how hard a
-   * rating chases short-term swings) can change. Glickman suggests 0.3-1.2,
-   * smaller for domains with less genuine week-to-week skill change. This was
-   * previously pinned at DEFAULT_TAU (0.5) because runReplay never forwarded
-   * it to updateRating -- exposed here so it can actually be tuned.
-   */
+  /** Glicko-2's tau: how fast volatility can change (Glickman suggests 0.3-1.2). */
   tau?: number;
-  /**
-   * Rating-period length in days (default 7). Glicko-2 applies one update per
-   * period, so every game inside a period is evaluated against the ratings as
-   * they stood at the period's START -- with weekly periods a team's Saturday
-   * result is graded using Monday's rating, ignoring what it did midweek.
-   * Shorter periods mean fresher ratings but fewer games each, so this is an
-   * empirical trade-off rather than an obvious win.
-   */
+  // Rating-period length in days. Every game in a period is graded against the
+  // ratings at its start.
   ratingPeriodDays?: number;
-  /** See DEFAULT_PRIOR_CONFIDENCE_RELIEF -- how much a confident roster prior damps the RD widening. */
+  /** See DEFAULT_PRIOR_CONFIDENCE_RELIEF -- how much a confident roster prior damps RD widening. */
   priorConfidenceRelief?: number;
-  /**
-   * Extra evidence weight on international games in the CONTEXTUAL update
-   * (1 = no change).
-   *
-   * Regional games can only move a team within its own league; international
-   * games are the only ones carrying cross-region information, yet they are a
-   * minority of any team's schedule and are damped further by
-   * seriesCorrelation. Confirmed against real data: Bilibili Gaming went 3-2
-   * against T1 and 5-4 against Hanwha Life in 2026 international play, won
-   * First Stand outright, and still ranked 103 points below T1, because ~200
-   * LPL regional games outvoted ~100 international ones.
-   */
+  /** Extra weight on international games in the contextual update (1 = none). */
   internationalWeightMultiplier?: number;
-  /**
-   * Half-life in days for down-weighting older games as evidence. Omitted or
-   * Infinity means no recency weighting, which is the production behaviour.
-   *
-   * Glicko already lets ratings move over time, but every game counts as
-   * equally strong evidence no matter how old. That is defensible over a
-   * dense domestic schedule and much less so over a sparse one: a rating built
-   * from international games alone spans years, across which a team's roster
-   * and identity turn over completely.
-   */
+  /** Half-life for down-weighting older games. Omitted/Infinity = none (production). */
   recencyHalfLifeDays?: number;
   /** Date recency is measured from. Defaults to the latest game in the input. */
   recencyReferenceDate?: string;
 }
 
 /**
- * Glicko-2 assumes each result is an INDEPENDENT observation. Games inside a
- * Bo3/Bo5 badly violate that: same two teams, same day, same patch, same
- * draft context, carried-over reads. Counting a 3-0 as three independent wins
- * overstates the evidence, which shrinks phi too fast and makes the model
- * overconfident -- measured directly: predictions in the 90-95% band only won
- * ~79% of the time, and our data averages ~2.8 games per series.
- *
- * Standard clustered-sampling correction (the "design effect"): for a cluster
- * of n correlated observations with intra-cluster correlation rho, the
- * effective sample size is n / (1 + (n-1)*rho), so each observation should
- * carry weight 1 / (1 + (n-1)*rho).
- *
- * rho = 0   -> weight 1     (fully independent; original behavior)
- * rho = 1   -> weight 1/n   (a whole series counts as one observation)
- * Parameterized rather than hardcoded to 1/n or 1/sqrt(n) because rho is a
- * real, tunable quantity with a statistical meaning -- backtested rather than
- * assumed (see manualSeriesCorrelationSweep.ts).
+ * Games inside a Bo3/Bo5 aren't independent, but Glicko-2 assumes they are, so a
+ * 3-0 counted as three wins shrinks phi too fast (overconfidence). Design-effect
+ * correction: each of n correlated observations carries weight 1 / (1 + (n-1)*rho).
+ * rho 0 -> weight 1; rho 1 -> a whole series counts once. rho is tuned/backtested.
  */
 export function seriesEvidenceWeight(gamesInSeries: number, seriesCorrelation: number): number {
   if (seriesCorrelation <= 0 || gamesInSeries <= 1) return 1;
@@ -207,9 +137,8 @@ function movWeightForGame(game: ReplayGame, config: ReplayConfig): number {
 }
 
 export function runReplay(input: ReplayInput): ReplayResult {
-  // Series sizes are counted across the WHOLE input, not per period, so the
-  // correction reflects the real Bo3/Bo5 length even in the (currently
-  // impossible, but not guaranteed) case of a series straddling two periods.
+  // Series sizes counted across the whole input, so the correction holds even if
+  // a series straddles two periods.
   const gamesPerSeries = new Map<string, number>();
   for (const game of input.games) {
     if (game.seriesId === undefined) continue;
@@ -274,27 +203,13 @@ export function runReplay(input: ReplayInput): ReplayResult {
   const sortedPeriods = [...allPeriods].sort();
   const rosterConfig: RosterDecayConfig = { phiInitMax: input.config.phiInitMax, sigmaDefault: input.config.sigmaDefault };
 
-  // Drift is a random walk: its variance grows with elapsed TIME, not with the
-  // number of buckets that time is sliced into. `sortedPeriods` only contains
-  // periods that actually hold a game or a decay event, so measuring elapsed
-  // time from the PREVIOUS occupied period is what makes the two equivalent.
-  //
-  // Using a constant `periodDays / SIGMA_REFERENCE_DAYS` here was wrong: empty
-  // periods are never iterated, so a gap with no games anywhere contributed no
-  // drift at all. Confirmed against real data -- 342 of 934 calendar days in
-  // the dataset have no games, including the two ~10-week post-Worlds
-  // offseasons. Teams therefore came into each new season carrying their old
-  // certainty, which is precisely backwards: that gap is when rosters churn
-  // most. applySeasonalDecay's doc comment even documents relying on this
-  // ("RD growth across the offseason gap already happens for free via
-  // updateRating([]) during periods with no games") -- it never did.
+  // Drift is a random walk: variance grows with elapsed TIME, not period count.
+  // sortedPeriods holds only occupied periods, so elapsed time is measured from
+  // the previous occupied one -- otherwise empty offseasons contribute no drift
+  // and teams carry old certainty through exactly the gap where rosters churn.
   let previousPeriod: string | null = null;
   for (const period of sortedPeriods) {
-    // Zero for the first period: no time has elapsed before the very first
-    // observation, and teams already start at phiInitMax (maximum
-    // uncertainty), so there is nothing for drift to add. Seeding this with
-    // `periodDays` instead would make the total drift depend on the period
-    // length again -- the exact coupling this is meant to remove.
+    // Zero for the first period: teams already start at phiInitMax.
     const elapsedDays =
       previousPeriod === null ? 0 : (Date.parse(period) - Date.parse(previousPeriod)) / MS_PER_DAY;
     const elapsedPeriods = elapsedDays / SIGMA_REFERENCE_DAYS;
@@ -345,21 +260,14 @@ export function runReplay(input: ReplayInput): ReplayResult {
       });
     }
 
-    // 2. Split this period's games into intra-league and international, but note
-    // BOTH kinds feed a team's own contextual rating (ownContextualGamesByTeam) --
-    // international games additionally feed league meta. A team that personally
-    // wins an international tournament must be rewarded on its own rating, not
-    // just via a league-wide meta bump shared equally with teams that didn't even
-    // play (confirmed against real data: HLE winning MSI 2026 outright barely
-    // moved their own rating under the old design, since only LCK's shared meta
-    // moved -- every LCK team got the same credit HLE earned personally).
+    // 2. Both intra-league and international games feed a team's own contextual
+    // rating; international games additionally feed league meta, so winning a
+    // tournament moves the team's own rating, not just the league-wide meta.
     const periodGames = gamesByPeriod.get(period) ?? [];
     const ownContextualGamesByTeam = new Map<string, GameResult[]>();
     const internationalGamesByLeague = new Map<string, InternationalGameResult[]>();
 
     for (const game of periodGames) {
-      // Both factors scale the same per-game evidence term and are applied
-      // identically to both sides (see movWeight.ts's symmetry note).
       const isInternational = game.team1LeagueId !== game.team2LeagueId;
       const weight =
         movWeightForGame(game, input.config) *
@@ -384,16 +292,13 @@ export function runReplay(input: ReplayInput): ReplayResult {
         const metaWeight = input.config.metaWeight ?? DEFAULT_META_WEIGHT;
         const team1MetaWeight = effectiveMetaWeight(team1Meta, metaWeight, input.config.phiInitMax);
         const team2MetaWeight = effectiveMetaWeight(team2Meta, metaWeight, input.config.phiInitMax);
-        // sigma is unused by g()/E() (only mu/phi feed expectancy) -- carried
-        // along only to satisfy RatingState's shape for reuse as a GameResult opponent.
+        // sigma unused by g()/E(); 0 only satisfies RatingState's shape.
         const team1Combined = { mu: team1Contextual.mu + team1MetaWeight * team1Meta.mu, phi: Math.hypot(team1Contextual.phi, team1MetaWeight * team1Meta.phi), sigma: 0 };
         const team2Combined = { mu: team2Contextual.mu + team2MetaWeight * team2Meta.mu, phi: Math.hypot(team2Contextual.phi, team2MetaWeight * team2Meta.phi), sigma: 0 };
 
-        // Own contextual rating moves too, using the opponent's full combined
-        // strength as the comparison point (their bare contextual number alone
-        // isn't calibrated cross-region).
-        // Expectancy is combined-vs-combined so both sides grade the same game
-        // identically; only the contextual half absorbs the resulting delta.
+        // Own contextual rating moves against the opponent's full combined
+        // strength (expectancy is combined-vs-combined); only the contextual half
+        // absorbs the delta.
         if (!ownContextualGamesByTeam.has(game.team1Id)) ownContextualGamesByTeam.set(game.team1Id, []);
         ownContextualGamesByTeam.get(game.team1Id)!.push({
           opponent: team2Combined,

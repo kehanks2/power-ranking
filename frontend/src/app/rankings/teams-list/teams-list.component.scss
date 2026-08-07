@@ -15,36 +15,22 @@
   }
 }
 
-// Every cell in both tables uses this horizontal padding, so the gaps between
-// columns are the same gap everywhere. Anything that needs more room asks its
-// own content for it (see .interval) rather than widening its cell, which
-// would show up as one column sitting further from its neighbour than the rest.
+// Shared cell padding, so column gaps are uniform. Content that needs more room
+// asks for it itself (see .interval) rather than widening its cell.
 $cell-pad-x: 0.7rem;
 
-// One width for every placement pill and for the event label above it, so the
-// column reads as a grid and a finish lines up with the event it belongs to.
-// Sized for the widest finish the data holds -- "17-18" -- since a pill that
-// grows to fit its text is exactly the inconsistency this removes.
+// One width for every placement pill and its event label, so the column reads as
+// a grid. Sized for the widest finish, "17-18".
 $slot-width: 56px;
 
-// No overflow at desktop widths, deliberately. `overflow-x: auto` computes
-// overflow-y to auto as well, which makes this a scroll container -- and a
-// sticky thead inside one pins to the container, which never scrolls
-// vertically, so it does nothing. The table fits above this breakpoint, so the
-// scroller is only introduced where it is actually needed and the sticky
-// header is given up there.
-//
-// No top border: that edge belongs to the sticky header instead, because the
-// container scrolls and the header does not. Drawn here it went under the
-// block above on the first scroll and the table lost its lid.
+// `overflow: clip`, not `auto`/`hidden`: those make this a scroll container, and
+// a sticky thead inside one pins to a container that never scrolls vertically.
+// The scroller is only added below the breakpoint, giving up the sticky header
+// there. No top border -- that edge belongs to the sticky header.
 .table-scroll {
   border: 1px solid var(--color-border);
   border-top: 0;
-  border-radius: 9px;
   background: var(--color-surface);
-  // `clip`, not `hidden`: hidden would make this a scroll container and kill
-  // the sticky header. This is only here so the rounded corners actually cut
-  // the cells; a square header background otherwise paints over them.
   overflow: clip;
 }
 
@@ -55,30 +41,21 @@ $slot-width: 56px;
 }
 
 .teams-table {
-  // Separate, not collapse: collapsed borders belong to the table and a sticky
-  // cell leaves them behind when it detaches, which is why the header's rules
-  // used to be inset shadows. With spacing at zero the rows look identical and
-  // the header can carry a real border -- and a border-radius, which collapsed
-  // borders do not support at all.
+  // Separate, not collapse: a sticky cell leaves collapsed borders behind when
+  // it detaches. With zero spacing the rows look identical.
   border-collapse: separate;
   border-spacing: 0;
   width: 100%;
   min-width: 900px;
 
-  // Pinned under the shell's sticky block, whose height is measured and
-  // published as --sticky-top-height (the scope note is taller on the
-  // International board than a regional one). Without this the confidence-range
-  // scale scrolls away and the bars lose the axis that gives them meaning.
+  // Pinned under the shell's sticky block, whose measured height is published as
+  // --sticky-top-height (taller on the International board than a regional one).
   thead th {
     position: sticky;
-    // Flush with the block above, not 1px under it. The overlap that used to
-    // live here hid the top border, and the block now paints its own pixel of
-    // background below itself to close the seam instead.
     top: var(--sticky-top-height, 0px);
     z-index: 5;
-    // Exactly the offset the axis row below uses. Left to its natural ~28.8px
-    // the two sticky rows leave a transparent sliver between them, and the
-    // table rows scrolling underneath show through it.
+    // Exactly the axis row's offset; its natural ~28.8px leaves a sliver the
+    // scrolling rows show through.
     height: 2rem;
     text-align: left;
     font-size: 0.65rem;
@@ -92,37 +69,22 @@ $slot-width: 56px;
     vertical-align: bottom;
   }
 
-  // The table's top edge, carried by the one part of it that stays on screen.
-  // The corner cells round with the container so the frame still closes at
-  // rest, at 8px rather than 9 because they sit inside its 1px side borders.
   thead tr:first-child th {
     border-top: 1px solid var(--color-border);
   }
-
-  thead tr:first-child th:first-child {
-    border-top-left-radius: 8px;
-  }
-
-  thead tr:first-child th:last-child {
-    border-top-right-radius: 8px;
-  }
-
 
   thead th.active {
     color: var(--color-gold);
   }
 
-  // Numeric headers follow their columns. `thead th` sets text-align left and
-  // outranks the plain `.num` class, so ± and Floor sat left of the digits
-  // they label.
+  // `thead th` sets text-align left and outranks `.num`, so numeric headers need
+  // this to right-align over their digits.
   thead th.num,
   thead th.num button {
     text-align: right;
     width: 100%;
   }
 
-  // The sort control is a real button so it is keyboard reachable; it inherits
-  // the header's type rather than looking like a form control.
   thead th.sortable button {
     appearance: none;
     background: none;
@@ -139,11 +101,8 @@ $slot-width: 56px;
     color: var(--color-text);
   }
 
-  // The axis is a second header row, so it pins below the first -- 2rem being
-  // the written-down height of the label row above. The extra pixel is an
-  // overlap: at fractional device-pixel ratios the two rounded to positions a
-  // pixel apart and the rows scrolling underneath showed through the gap. It
-  // eats into the label row's bottom padding, which has nothing in it.
+  // Second header row, pinned below the first (2rem = label row height). The -1px
+  // overlaps a fractional-DPR gap the scrolling rows would otherwise show through.
   thead tr.axis-row th {
     padding: 0 $cell-pad-x 0.5rem;
     top: calc(var(--sticky-top-height, 0px) + 2rem - 1px);
@@ -180,9 +139,6 @@ $slot-width: 56px;
   font-variant-numeric: tabular-nums;
 }
 
-// A real button, so the panel stays reachable and announced without a mouse --
-// but it has to read as the team name did, since a form control here would
-// turn the column into chrome.
 .team-cell {
   appearance: none;
   background: none;
@@ -212,8 +168,7 @@ $slot-width: 56px;
   font-size: 0.93rem;
 }
 
-// Placeholder crest: teams.logo_url is empty for every team, so initials stand
-// in and the slot is reserved for real logos later.
+// Placeholder crest: logo_url is empty for every team, so initials stand in.
 .crest {
   width: 26px;
   height: 26px;
@@ -246,8 +201,7 @@ $slot-width: 56px;
   font-size: 0.92rem;
 }
 
-// The flag trails the number, but a same-width spacer always follows it, so
-// digits stay column-aligned whether or not a row carries one.
+// A same-width spacer always follows the flag, so digits stay column-aligned.
 .pm-cell {
   display: flex;
   align-items: center;
@@ -302,26 +256,18 @@ $slot-width: 56px;
   letter-spacing: 0;
 }
 
-// The range needs room for eight tick labels without them crowding. The space
-// comes from Region, which held a ~44px badge in a column twice that wide, and
-// from Team, which had more than any name needs.
+// Wide enough for eight tick labels without crowding.
 td.interval {
   width: 278px;
   min-width: 258px;
 }
 
-// The last tick is centred on the track's right edge, so half of "1900" hangs
-// past it. That overhang is reserved by insetting the CONTENT, not by padding
-// the cell: padding here is what made the gap between the range and the
-// placements read as twice every other gap on the board.
+// The rightmost tick label overhangs the track's edge; reserved by insetting the
+// content, not padding the cell (which doubled the gap to the placements).
 .interval__inner {
   margin-right: 1.3rem;
 }
 
-// Region holds a fixed-width badge, so it needs no more than the badge plus
-// the shared padding; Games is a three-digit count. Both were sized by the
-// header text rather than the content, which is where the range's breathing
-// room came from.
 .teams-table th.region-h,
 .teams-table td.region-cell {
   width: 68px;
@@ -377,16 +323,12 @@ td.interval {
   align-items: center;
 }
 
-// A pill: medal badge, then the finish. The badge carries the colour so the
-// text can stay uniform across every state.
 .slot {
   display: flex;
   align-items: center;
   gap: 4px;
   height: 24px;
-  // Fixed, not sized to its text. Letting the pill grow for a five-character
-  // finish like "17-18" made every row a slightly different set of widths, so
-  // the event labels above could only line up with one of them.
+  // Fixed width, so every row's pills line up with the event labels above them.
   width: $slot-width;
   padding: 0 6px 0 4px;
   border-radius: 999px;
@@ -403,15 +345,11 @@ td.interval {
   white-space: nowrap;
 }
 
-// The event each box belongs to, sitting on the axis row so a finish can be
-// read without counting columns back from the newest event.
 .placements--key {
   padding-bottom: 0.1rem;
 }
 
-// Same width as the pill it labels, and the same 3px gap, so the two rows are
-// one track. At 34px the labels drifted a little further left with every
-// column until FS25 sat over MSI25's pill.
+// Same width and gap as the pills below, so labels stay aligned to their events.
 .slot-key {
   width: $slot-width;
   text-align: center;
@@ -421,21 +359,9 @@ td.interval {
   font-weight: 700;
 }
 
-// Podium finishes are filled in medal colours; everything else is outlined.
-// Filling only the top three keeps the column scannable -- a wall of identical
-// filled boxes says nothing about which results mattered.
-//
-// All three re-stepped against the validator rather than by eye. The first
-// gold and bronze measured dE 14.2 apart, below the 15 floor where full-colour
-// readers struggle to separate a pair -- they genuinely were too close. Gold
-// is brighter and bronze deeper, putting them 28.0 apart, and silver has lost
-// most of its blue while still clearing gold by 19.5 (17.8 under protanopia).
-// The medal colour lives in the BADGE, not the box. Filling the whole box
-// forced an inconsistency: a fill dark enough to read as bronze could not take
-// ink (pure black reached only 4.48:1 on it) so it needed white text while
-// gold and silver took dark -- three boxes, two opposite text treatments. With
-// the colour on a small disc, every pill keeps the same light text and the
-// contrast problem disappears.
+// Podium finishes get medal colours, everything else is outlined. Colours are
+// contrast-checked pairwise (incl. protanopia); the colour lives in the badge,
+// not the fill, so the text treatment stays uniform.
 .slot__medal {
   width: 11px;
   height: 11px;
@@ -444,10 +370,8 @@ td.interval {
   border: 1.5px solid #545b6c;
 }
 
-// A win is the one result worth seeing from across the page, so first place
-// takes the pill's outline as well as its badge. Held well under the badge's
-// own chroma: at full strength six of these down a column would read as the
-// point of the table, and the point is the ranking.
+// First place takes the pill outline as well as the badge, held under the badge's
+// chroma so a column of them doesn't outshout the ranking.
 .slot--gold {
   border-color: rgb(242 207 92 / 45%);
 
@@ -472,10 +396,7 @@ td.interval {
   }
 }
 
-// Tan rather than the saturated orange this started as -- at full chroma it
-// read as "orange", not "bronze". Pulling the saturation down and warming it
-// toward tan keeps the metal reading while still clearing every pair (the
-// tightest is silver against gold at 17.2) at 5.8:1 on the surface.
+// Desaturated toward tan so it reads as bronze, not orange.
 .slot--bronze {
   .slot__medal {
     background: #c8875a;
@@ -487,8 +408,7 @@ td.interval {
   }
 }
 
-// Attended, finished off the podium: a hollow badge. Being there is worth more
-// than an absence, so it must not read as one.
+// Attended, off the podium: a hollow badge.
 .slot--went {
   border-color: #4b5264;
 
@@ -497,8 +417,8 @@ td.interval {
   }
 }
 
-// Did not attend: dimmer still, and a dashed pill, so absence is carried by
-// shape as well as by colour.
+// Did not attend: dimmer, and dashed so absence is carried by shape too, not
+// colour alone.
 .slot--missed {
   border-style: dashed;
   border-color: #333a4a;
@@ -513,11 +433,6 @@ td.interval {
 }
 
 // --- Detail panel ----------------------------------------------------------
-//
-// Same idiom as the players board: the row opens in place with the short
-// answer, and the full page is one click further for the long one.
-
-// The whole row is the target, so the whole row shows it.
 tr.row-toggle {
   cursor: pointer;
 }
@@ -545,8 +460,7 @@ tr.is-open td {
   animation: slide-down 160ms ease;
 }
 
-// Height is not animatable from auto and the panel's height depends on the
-// roster, so the reveal is transform + opacity.
+// Height isn't animatable from auto, so the reveal is transform + opacity.
 @keyframes slide-down {
   from {
     opacity: 0;
@@ -573,8 +487,6 @@ tr.is-open td {
   margin-bottom: 0.85rem;
 }
 
-// Proportional figures deliberately: tabular-nums gives every digit the width
-// of a zero, which reads loose at this size, and nothing lines up under it.
 .record {
   margin: 0;
   display: flex;
@@ -594,8 +506,7 @@ tr.is-open td {
   font-size: 0.84rem;
 }
 
-// Leaves the board, so it is a link and looks like one you take deliberately
-// rather than another row toggle.
+// A link, not a row toggle -- it leaves the board.
 .team-link {
   margin-left: auto;
   align-self: center;
@@ -614,8 +525,7 @@ tr.is-open td {
   }
 }
 
-// In-game order, as the API returns it. Five names is the whole answer to
-// "who is this", so it stays one row rather than becoming a table.
+// In-game order, as the API returns it.
 .mini-roster {
   list-style: none;
   margin: 0;
@@ -649,7 +559,6 @@ tr.is-open td {
   color: var(--color-text-muted);
   font-size: 0.8rem;
   line-height: 1.45;
-  max-width: 70ch;
 }
 
 .legend {
@@ -684,8 +593,6 @@ tr.is-open td {
   color: var(--color-gold);
 }
 
-// Screen readers get the table caption; sighted users get the same information
-// from the scope note above, so showing both would be redundant.
 .visually-hidden {
   position: absolute;
   width: 1px;

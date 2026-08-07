@@ -63,18 +63,9 @@ describe('computeRatings (live Postgres, synthetic data)', () => {
   });
 
   afterAll(async () => {
-    // Scoped to just this test's synthetic teams -- a real bug lived here
-    // before: this used to blindly `DELETE FROM team_ratings_history` /
-    // `league_ratings_history` (no WHERE clause) as "cleanup," which was
-    // harmless when the DB was empty during early development but silently
-    // destroyed all real computed ratings every time the suite ran once real
-    // data existed (confirmed in practice: every team fell back to
-    // cold-start after a test run). The test's own `it()` block already
-    // called computeRatings once, which already produced correct rows for
-    // every real team in that same atomic pass -- deleting only this test's
-    // rows here leaves that untouched, no need to recompute again. Must run
-    // before deleting the teams themselves (FK: team_ratings_history.team_id
-    // references teams.id).
+    // Scoped to this test's synthetic teams: an unscoped DELETE here once wiped
+    // every real computed rating on each suite run. Must run before deleting the
+    // teams (FK team_ratings_history.team_id -> teams.id).
     await pool.query(`DELETE FROM team_ratings_history WHERE team_id IN ($1, $2)`, [teamAId, teamBId]);
     await pool.query(`DELETE FROM games WHERE leaguepedia_unique_line = '__CR_Game_1'`);
     await pool.query(`DELETE FROM series WHERE leaguepedia_match_id = '__CR_Match_1'`);

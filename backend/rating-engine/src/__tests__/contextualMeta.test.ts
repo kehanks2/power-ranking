@@ -101,11 +101,9 @@ describe('effectiveMetaWeight (confidence-based shrinkage)', () => {
   });
 
   it('a more uncertain meta gets shrunk harder than a more confident one, even with equal base weight', () => {
-    // Confirmed against real data this matters: CBLOL carried ~2x the meta RD
-    // of every other league (less international evidence) while still
-    // swinging its teams' displayed ratings harder than any other league --
-    // a flat metaWeight has no way to make a less-certain estimate count for
-    // less, only this confidence term does.
+    // CBLOL carried ~2x the meta RD of other leagues yet swung its teams'
+    // ratings hardest; only this confidence term can make a less-certain
+    // estimate count for less.
     const uncertainMeta = { mu: -1.5, phi: PHI_INIT_MAX * 0.7, sigma: 0.06 };
     const confidentMeta = { mu: -1.5, phi: PHI_INIT_MAX * 0.2, sigma: 0.06 };
     const uncertainWeight = effectiveMetaWeight(uncertainMeta, 0.8, PHI_INIT_MAX);
@@ -126,9 +124,7 @@ describe('effectiveMetaWeight (confidence-based shrinkage)', () => {
     const displayUncertain = toDisplayRating(contextual, uncertainMeta, 0.8, PHI_INIT_MAX);
     const displayConfident = toDisplayRating(contextual, confidentMeta, 0.8, PHI_INIT_MAX);
 
-    // Same underlying negative meta mu, but the uncertain one should drag the
-    // team's rating down far less than the confident one, purely because we
-    // trust it less.
+    // Same meta mu, but the uncertain one drags the rating down less.
     expect(displayUncertain.rating).toBeGreaterThan(displayConfident.rating);
   });
 });

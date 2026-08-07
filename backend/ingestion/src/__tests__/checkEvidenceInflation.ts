@@ -1,12 +1,8 @@
 /**
- * Diagnostic for the calibration problem found in checkModelQuality.ts:
- * the model is badly overconfident (says 90%, wins 75%). Two suspects, both
- * of which inflate how much EVIDENCE each rating period appears to carry,
- * which shrinks phi too fast:
- *   1. MOV weight saturating at its cap on ~every game (making it a flat
- *      evidence multiplier rather than a discriminating signal).
- *   2. Games within a Bo3/Bo5 counted as independent observations when they
- *      are the same matchup on the same day (Glicko-2 assumes independence).
+ * Diagnostic for the overconfidence found in checkModelQuality.ts (says 90%,
+ * wins 75%). Two suspects that inflate evidence per rating period and shrink phi
+ * too fast: MOV weight saturating at its cap on ~every game, and Bo3/Bo5 games
+ * counted as independent observations when they're one matchup on one day.
  */
 import { createPool } from '../db.js';
 

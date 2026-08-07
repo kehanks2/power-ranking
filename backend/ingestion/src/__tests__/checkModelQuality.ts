@@ -20,17 +20,13 @@ import {
 } from '@power-ranking/rating-engine';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
-// Optional override so a knob can be swept through the SAME evaluation this
-// file already does, rather than a second copy of it drifting out of step --
-// which is exactly how the constants above went wrong.
+// Override so a knob sweeps through this same evaluation, not a drifting copy.
 const RELIEF_OVERRIDE = process.argv.includes('--relief')
   ? Number(process.argv[process.argv.indexOf('--relief') + 1])
   : undefined;
-// --window-months N feeds the replay only the last N months of games, which is
-// what a bounded regional board would do. --eval-since holds the EVALUATED
-// games fixed, so a windowed model and an unbounded one are scored on exactly
-// the same fixtures -- otherwise a shorter window scores itself on a different,
-// easier set and the comparison means nothing.
+// --window-months N replays only the last N months. --eval-since holds the
+// evaluated games fixed, so a windowed and an unbounded model score on the same
+// fixtures rather than the window grading itself on an easier set.
 const WINDOW_MONTHS = process.argv.includes('--window-months')
   ? Number(process.argv[process.argv.indexOf('--window-months') + 1])
   : undefined;
@@ -39,10 +35,8 @@ const EVAL_SINCE = process.argv.includes('--eval-since')
   : undefined;
 const GLICKO2_SCALE = 173.7178;
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
-// Imported, not restated. These were hand-copied and drifted: this file ran
-// metaWeight 0.8 and seriesCorrelation 0.8 against a shipped 0.5 and 0.6,
-// under a comment claiming lockstep -- so every figure it printed described a
-// model nobody ships.
+// Constants imported, not restated: hand-copied values once drifted from the
+// shipped config, so every printed figure described a model nobody ships.
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 function weekBucket(dateIso: string): string {
