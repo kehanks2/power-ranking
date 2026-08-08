@@ -33,7 +33,7 @@
             <button type="button" (click)="setSort('floor')">Floor{{ sortKey() === 'floor' ? ' ↓' : '' }}</button>
           </th>
           <th scope="col" class="interval-h">Confidence range</th>
-          <th scope="col" class="placements-h">Last 6 int&rsquo;l</th>
+          <th scope="col" class="placements-h">Last 6 {{ isInternational() ? 'int’l' : 'splits' }}</th>
           <!-- Just "Games": the board's own description already says which
                games it counts, and the longer label was setting this column's
                width, taking room from the range beside it. -->
@@ -54,7 +54,7 @@
                back from the most recent event. -->
           <th scope="col" class="placements-h">
             <div class="placements placements--key">
-              @for (event of events; track event) {
+              @for (event of events(); track event) {
                 <span class="slot-key">{{ event }}</span>
               }
             </div>
@@ -114,7 +114,7 @@
             </td>
             <td class="placements-cell">
               <div class="placements">
-                @for (event of events; track event) {
+                @for (event of events(); track event) {
                   <span
                     class="slot"
                     [class.slot--went]="!!resultFor(team, event) && !medal(team, event)"
@@ -205,8 +205,8 @@
       <dd>Rating minus ±. What we’re confident they’re <em>at least</em> at — and what the board is ranked by.</dd>
     </div>
     <div class="term">
-      <dt>Last 6 int’l</dt>
-      <dd>Where they placed at each of the last six international events.</dd>
+      <dt>Last 6 {{ isInternational() ? 'int’l' : 'splits' }}</dt>
+      <dd>Where they placed at each of the last six {{ isInternational() ? 'international events' : 'regional splits' }}.</dd>
     </div>
   </dl>
 }

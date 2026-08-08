@@ -145,11 +145,6 @@ const TEAM_CONTEXT_CTE = `
         JOIN series s ON s.id = g.series_id JOIN tournaments tn ON tn.id = s.tournament_id
         WHERE tn.tournament_type = 'international'
     ) y GROUP BY team_id
-  ),
-  all_game_count AS (
-    SELECT team_id, COUNT(*) AS games FROM (
-      SELECT team1_id AS team_id FROM games UNION ALL SELECT team2_id FROM games
-    ) z GROUP BY team_id
   )
 `;
 
@@ -206,11 +201,48 @@ export async function getTeams(pool: Pool, scope: string): Promise<TeamSummaryDt
   const result = await pool.query<TeamRow>(
     `
     WITH ${LEAGUE_LATEST_SPLIT_CTE},
-    ${TEAM_CONTEXT_CTE}
+    ${TEAM_CONTEXT_CTE},
+    -- The league's last six splits, coded like the international events (short
+    -- name + 2-digit year: "Spr26", "S126"). Empty on the international board.
+    regional_events AS (
+      SELECT id, date_start,
+        (CASE WHEN dpart ~* 'Split *[0-9]' THEN 'S' || regexp_replace(dpart, '[^0-9]', '', 'g')
+              ELSE left(dpart, 3) END) || substring(date_start::text, 3, 2) AS code
+      FROM (
+        SELECT tn.id, tn.date_start,
+               trim(regexp_replace(tn.name, l.slug || '|20[0-9][0-9]', '', 'g')) AS dpart
+        FROM tournaments tn
+        JOIN leagues l ON l.id = tn.canonical_league_id
+        WHERE tn.tournament_type = 'regional_split' AND l.slug = $2
+        ORDER BY tn.date_start DESC LIMIT 6
+      ) e
+    ),
+    regional_attendance AS (
+      SELECT team_id, json_agg(json_build_object('event', code, 'placement', placement) ORDER BY date_start DESC) AS results
+      FROM (
+        SELECT DISTINCT t.id AS team_id, re.code, re.date_start, tp.placement
+        FROM regional_events re
+        JOIN series s ON s.tournament_id = re.id
+        JOIN games g ON g.series_id = s.id
+        JOIN teams t ON t.id IN (g.team1_id, g.team2_id)
+        LEFT JOIN tournament_placements tp ON tp.tournament_id = re.id AND tp.team_id = t.id
+      ) x GROUP BY team_id
+    ),
+    -- Games in those same six splits, so the count matches the placement column.
+    regional_game_count AS (
+      SELECT team_id, COUNT(*) AS games FROM (
+        SELECT g.team1_id AS team_id FROM regional_events re
+          JOIN series s ON s.tournament_id = re.id JOIN games g ON g.series_id = s.id
+        UNION ALL
+        SELECT g.team2_id FROM regional_events re
+          JOIN series s ON s.tournament_id = re.id JOIN games g ON g.series_id = s.id
+      ) rg GROUP BY team_id
+    )
     SELECT t.id, t.slug, t.name, t.logo_url, t.brand_color, l.slug AS league_slug,
            tr.mu_ctx AS mu, tr.phi_ctx AS phi,
-           ${international ? 'igc.games' : 'agc.games'} AS games,
-           att.results, li.code AS last_code,
+           ${international ? 'igc.games' : 'rgc.games'} AS games,
+           ${international ? 'att.results' : 'ratt.results'} AS results,
+           ${international ? 'li.code' : 'NULL'} AS last_code,
            (rc.team_id IS NOT NULL) AS churn
     FROM teams t
     JOIN team_league_memberships tlm ON tlm.team_id = t.id AND tlm.end_date IS NULL
@@ -218,10 +250,11 @@ export async function getTeams(pool: Pool, scope: string): Promise<TeamSummaryDt
     JOIN team_last_game tlg ON tlg.team_id = t.id
     JOIN league_latest_split lls ON lls.canonical_league_id = l.id
     LEFT JOIN attendance att ON att.team_id = t.id
+    LEFT JOIN regional_attendance ratt ON ratt.team_id = t.id
     LEFT JOIN last_intl li ON li.team_id = t.id
     LEFT JOIN recent_churn rc ON rc.team_id = t.id
     LEFT JOIN intl_game_count igc ON igc.team_id = t.id
-    LEFT JOIN all_game_count agc ON agc.team_id = t.id
+    LEFT JOIN regional_game_count rgc ON rgc.team_id = t.id
     JOIN LATERAL (
       SELECT mu_ctx, phi_ctx FROM team_ratings_history
       WHERE team_id = t.id AND scope = $1 ORDER BY as_of_date DESC LIMIT 1
@@ -379,7 +412,8 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
   return {
     ...team,
     roster,
-    regional: records.filter((r) => r.type !== 'international').map(({ type: _type, ...rest }) => rest),
+    // Records run newest-first, so the last six splits are the first six regional rows.
+    regional: records.filter((r) => r.type !== 'international').slice(0, 6).map(({ type: _type, ...rest }) => rest),
     international: records.filter((r) => r.type === 'international').map(({ type: _type, ...rest }) => rest),
   };
 }

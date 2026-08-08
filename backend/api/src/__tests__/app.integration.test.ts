@@ -289,11 +289,11 @@ describe('read API (live Postgres)', () => {
       expect(dates).toEqual([...dates].sort().reverse());
     }
 
-    // The breakdown must reconcile with the board's own count for this scope,
-    // or the page is telling two different stories about the same team.
+    // The regional breakdown must reconcile with the regional board's count:
+    // both are the same rolling window of the team's last six splits. The
+    // international games are a separate story the regional board does not tell.
     const regionalGames = res.body.regional.reduce((n: number, r: { wins: number; losses: number }) => n + r.wins + r.losses, 0);
-    const intlGames = res.body.international.reduce((n: number, r: { wins: number; losses: number }) => n + r.wins + r.losses, 0);
-    expect(regionalGames + intlGames).toBe(board.body[0].games);
+    expect(regionalGames).toBe(board.body[0].games);
 
     // Placements are populated where standings exist -- regional too, since the
     // placement import -- so each is a text finish or null, never anything else.

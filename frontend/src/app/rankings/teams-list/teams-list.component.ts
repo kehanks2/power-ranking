@@ -40,9 +40,23 @@ export class TeamsListComponent {
   protected readonly teams = signal<TeamSummary[]>([]);
   protected readonly loading = signal(true);
   protected readonly sortKey = signal<SortKey>('floor');
-  protected readonly events = RECENT_EVENTS;
 
   protected readonly isInternational = computed(() => this.filterService.selectedScope() === 'international');
+
+  /**
+   * Column order for the placement grid. International is the fixed window;
+   * regional is the league's last six splits, read from the data (codes like
+   * Spr26/Cup26/S126). The fullest team defines the order -- results arrive
+   * newest-first, so reverse for oldest-left.
+   */
+  protected readonly events = computed<readonly string[]>(() => {
+    if (this.isInternational()) return RECENT_EVENTS;
+    const fullest = this.teams().reduce<TeamSummary['results']>(
+      (best, t) => (t.results.length > best.length ? t.results : best),
+      [],
+    );
+    return fullest.map((r) => r.event).reverse();
+  });
 
   /** The row whose panel is open. One at a time -- a board of open panels scrolls badly. */
   protected readonly openTeamId = signal<number | null>(null);
