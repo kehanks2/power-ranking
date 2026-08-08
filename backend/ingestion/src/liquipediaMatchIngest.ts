@@ -55,10 +55,37 @@ export function classifyMatch(series: string, parent: string, leagueIdBySlug: Ma
     return { tournamentType: 'regional_split', canonicalLeagueId, isInternational: false };
   }
   if (INTERNATIONAL_SERIES.has(series)) {
-    if (parent.includes('Road_to_')) return null; // regional qualifier bracket, not the international event
+    // A "Road to X" bracket is regional qualifying play (e.g. LCK's Road to MSI
+    // is their spring playoff), so route it to the league named in the parent
+    // rather than the international event. Untracked leagues still drop out.
+    const roadTo = /^([A-Za-z]+)\/\d+\/Road_to_/.exec(parent);
+    if (roadTo) {
+      const canonicalLeagueId = leagueIdBySlug.get(roadTo[1]);
+      return canonicalLeagueId ? { tournamentType: 'regional_split', canonicalLeagueId, isInternational: false } : null;
+    }
     return { tournamentType: 'international', canonicalLeagueId: null, isInternational: true };
   }
   return null;
+}
+
+/**
+ * The tournament a match belongs to. Normally one per Liquipedia `parent`, but
+ * the LCK has no splits: its single-row season is broken into Spring (Sp2 weeks
+ * + the Road to MSI spring playoff) and Summer (Sp3 weeks + play-in + playoffs),
+ * matching how every other region is chunked -- the regional play before each
+ * international. The Sp2/Sp3 marker in the bracket id decides the half.
+ */
+export function resolveTournament(match: { parent: string; tournament: string; match2bracketid: string }): { overviewPage: string; name: string } {
+  const season = /^LCK\/(\d{4})$/.exec(match.parent);
+  if (season) {
+    const half = /Sp2/.test(match.match2bracketid) ? 'Spring' : 'Summer';
+    return { overviewPage: `liquipedia:LCK/${season[1]}/${half}`, name: `LCK ${season[1]} ${half}` };
+  }
+  const roadToMsi = /^LCK\/(\d{4})\/Road_to_MSI$/.exec(match.parent);
+  if (roadToMsi) {
+    return { overviewPage: `liquipedia:LCK/${roadToMsi[1]}/Spring`, name: `LCK ${roadToMsi[1]} Spring` };
+  }
+  return { overviewPage: `liquipedia:${match.parent}`, name: match.tournament };
 }
 
 function parseLengthToSeconds(length: string): number | null {
@@ -151,7 +178,7 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
   };
   const teamsUnresolvedSet = new Set<string>();
   const playerIdCache = new Map<string, number>(); // Liquipedia's disambiguated player key -> our player_id
-  const tournamentIdByParent = new Map<string, number>();
+  const tournamentIdByOverview = new Map<string, number>();
 
   for (const match of matches) {
     const classification = classifyMatch(match.series, match.parent, leagueIdBySlug);
@@ -180,18 +207,19 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
       await ensureTeamLeagueMembership(pool, { teamId: team2Id, leagueId: classification.canonicalLeagueId, asOfDate: dateOnly });
     }
 
-    let tournamentId = tournamentIdByParent.get(match.parent);
+    const { overviewPage, name } = resolveTournament(match);
+    let tournamentId = tournamentIdByOverview.get(overviewPage);
     if (!tournamentId) {
       tournamentId = await upsertTournament(pool, {
-        overviewPage: `liquipedia:${match.parent}`,
-        name: match.tournament,
+        overviewPage,
+        name,
         rawLeagueName: match.series,
         canonicalLeagueId: classification.canonicalLeagueId,
         tournamentType: classification.tournamentType,
         dateStart: dateOnly,
         dateEnd: null,
       });
-      tournamentIdByParent.set(match.parent, tournamentId);
+      tournamentIdByOverview.set(overviewPage, tournamentId);
     }
 
     const team1Score = opp1.score ?? 0;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyMatch, goldByRole, isPlayedGame } from '../liquipediaMatchIngest.js';
+import { classifyMatch, goldByRole, isPlayedGame, resolveTournament } from '../liquipediaMatchIngest.js';
 import type { LiquipediaGamePlayer } from '../liquipediaApi.js';
 
 describe('isPlayedGame', () => {
@@ -57,9 +57,9 @@ describe('classifyMatch', () => {
     expect(classifyMatch('First Stand Tournament', 'First_Stand_Tournament/2026', leagueMap())?.isInternational).toBe(true);
   });
 
-  it('excludes a regional MSI-qualifier bracket sharing the MSI series name', () => {
+  it('routes a Road to MSI qualifier to its regional league (LCK spring playoff)', () => {
     const result = classifyMatch('Mid-Season Invitational', 'LCK/2026/Road_to_MSI', leagueMap());
-    expect(result).toBeNull();
+    expect(result).toEqual({ tournamentType: 'regional_split', canonicalLeagueId: 1, isInternational: false });
   });
 
   it('excludes non-Riot-official tournaments (Esports World Cup, KeSPA Cup) entirely', () => {
@@ -74,6 +74,27 @@ describe('classifyMatch', () => {
   it('returns null for a regional league whose id is missing from the map (defensive)', () => {
     const partialMap = new Map([['LPL', 2]]);
     expect(classifyMatch('LoL Champions Korea', 'LCK/2026', partialMap)).toBeNull();
+  });
+});
+
+describe('resolveTournament', () => {
+  const t = (parent: string, bracket: string) => resolveTournament({ parent, tournament: 'LCK 2026 Season', match2bracketid: bracket });
+
+  it('splits the LCK season into Spring (Sp2) and Summer (Sp3/playoffs)', () => {
+    expect(t('LCK/2026', 'LCK26Sp2W3')).toEqual({ overviewPage: 'liquipedia:LCK/2026/Spring', name: 'LCK 2026 Spring' });
+    expect(t('LCK/2026', 'LCK26Sp3W1')).toEqual({ overviewPage: 'liquipedia:LCK/2026/Summer', name: 'LCK 2026 Summer' });
+    expect(t('LCK/2026', 'LCK2026POB')).toEqual({ overviewPage: 'liquipedia:LCK/2026/Summer', name: 'LCK 2026 Summer' });
+  });
+
+  it('merges Road to MSI into the Spring half', () => {
+    expect(t('LCK/2026/Road_to_MSI', 'LCKRtMSI26')).toEqual({ overviewPage: 'liquipedia:LCK/2026/Spring', name: 'LCK 2026 Spring' });
+  });
+
+  it('leaves the LCK Cup and other leagues on their own parent', () => {
+    expect(resolveTournament({ parent: 'LCK/2026/Cup', tournament: 'LCK Cup 2026', match2bracketid: 'x' }))
+      .toEqual({ overviewPage: 'liquipedia:LCK/2026/Cup', name: 'LCK Cup 2026' });
+    expect(resolveTournament({ parent: 'LPL/2026/Split_1', tournament: 'LPL 2026 Split 1', match2bracketid: 'x' }))
+      .toEqual({ overviewPage: 'liquipedia:LPL/2026/Split_1', name: 'LPL 2026 Split 1' });
   });
 });
 

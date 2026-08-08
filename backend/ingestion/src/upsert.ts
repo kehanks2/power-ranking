@@ -85,6 +85,7 @@ export async function upsertSeries(
     `INSERT INTO series (tournament_id, leaguepedia_match_id, team1_id, team2_id, best_of, team1_score, team2_score, winner_team_id, is_international)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (leaguepedia_match_id) DO UPDATE SET
+       tournament_id = EXCLUDED.tournament_id,
        team1_score = EXCLUDED.team1_score,
        team2_score = EXCLUDED.team2_score,
        winner_team_id = EXCLUDED.winner_team_id
