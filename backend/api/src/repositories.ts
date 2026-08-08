@@ -409,12 +409,22 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     type: row.tournament_type,
   }));
 
+  // The board rates internationals on a fixed six-event window (recent_events),
+  // not the team's own last six -- a team present at fewer than six would
+  // otherwise reach back past it. Match that window here by name.
+  const recentIntl = await pool.query<{ name: string }>(
+    `SELECT name FROM tournaments WHERE tournament_type = 'international' ORDER BY date_start DESC LIMIT 6`,
+  );
+  const recentIntlNames = new Set(recentIntl.rows.map((r) => r.name));
+
   return {
     ...team,
     roster,
-    // Records run newest-first, so the last six splits are the first six regional rows.
+    // Regional runs newest-first, so the team's last six splits are the first six.
     regional: records.filter((r) => r.type !== 'international').slice(0, 6).map(({ type: _type, ...rest }) => rest),
-    international: records.filter((r) => r.type === 'international').map(({ type: _type, ...rest }) => rest),
+    international: records
+      .filter((r) => r.type === 'international' && recentIntlNames.has(r.event))
+      .map(({ type: _type, ...rest }) => rest),
   };
 }
 

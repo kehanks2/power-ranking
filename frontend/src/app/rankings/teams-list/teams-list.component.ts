@@ -193,18 +193,16 @@ export class TeamsListComponent {
   }
 
   /**
-   * What the slot shows: the finish where we have it, the event name where the
-   * team played but standings are missing, and a dash where they did not play.
-   *
-   * Ordinals, because "1st" is how a finish is spoken. Shared finishes stay as
-   * the range Liquipedia reports ("5-8") with the ordinal on the end, since
-   * "5th-8th" would not fit and "5th" would be a claim we cannot make.
+   * What the slot shows: the finish where we have it, a dash otherwise. A dash
+   * covers both "did not play" and "played but no finish yet" -- the slot's
+   * styling and tooltip carry that difference. Ordinals, because "1st" is how a
+   * finish is spoken. Shared finishes stay as the range Liquipedia reports
+   * ("5-8"), since "5th-8th" would not fit and "5th" is a claim we cannot make.
    */
   protected slotLabel(team: TeamSummary, event: string): string {
-    const result = this.resultFor(team, event);
-    if (!result) return '–';
-    if (!result.placement) return event.slice(0, -2);
-    return /^\d+$/.test(result.placement) ? this.ordinal(Number(result.placement)) : result.placement;
+    const placement = this.resultFor(team, event)?.placement;
+    if (!placement) return '–';
+    return /^\d+$/.test(placement) ? this.ordinal(Number(placement)) : placement;
   }
 
   /** 1st, 2nd, 3rd, 4th -- and 11th/12th/13th, which break the pattern. */
