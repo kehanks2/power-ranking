@@ -29,6 +29,20 @@ export function isTeamStanding(row: LiquipediaPlacement): boolean {
 }
 
 /**
+ * The Liquipedia tournament name(s) whose standings feed one of our tournaments.
+ * Normally the same name, but our synthetic LCK split tournaments take their
+ * finish from Liquipedia's own brackets: Spring from the Road to MSI (the LCK's
+ * spring playoff) and Summer from the LCK Season (its final playoff standing).
+ */
+export function placementSourceNames(ourName: string): string[] {
+  const spring = /^LCK (\d{4}) Spring$/.exec(ourName);
+  if (spring) return [`LCK ${spring[1]} Road to MSI`];
+  const summer = /^LCK (\d{4}) Summer$/.exec(ourName);
+  if (summer) return [`LCK ${summer[1]} Season`];
+  return [ourName];
+}
+
+/**
  * Fills tournament_placements for EVERY tournament we hold, regional splits
  * included. Games record who beat whom, not who won: a team can go 6-4 and
  * finish 3rd or 9th depending on bracket path, so the finish has to be read.
@@ -66,9 +80,17 @@ export async function ingestPlacements(pool: Pool): Promise<PlacementImportResul
   let inserted = 0;
 
   // Every request first, then the write. A batched response carries rows for
-  // several tournaments at once, so they have to be keyed back to ours by name.
-  const tournamentIdByName = new Map(tournaments.rows.map((t) => [t.name.toLowerCase(), t.id]));
-  const rows = await fetchPlacements(tournaments.rows.map((t) => t.name));
+  // several tournaments at once, so they have to be keyed back to ours by the
+  // Liquipedia name each one draws its standings from (see placementSourceNames).
+  const tournamentIdByName = new Map<string, number>();
+  const queryNames: string[] = [];
+  for (const t of tournaments.rows) {
+    for (const source of placementSourceNames(t.name)) {
+      tournamentIdByName.set(source.toLowerCase(), t.id);
+      queryNames.push(source);
+    }
+  }
+  const rows = await fetchPlacements(queryNames);
 
   const client = await pool.connect();
   try {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { placementSortValue, isTeamStanding } from '../ingestPlacements.js';
+import { placementSortValue, isTeamStanding, placementSourceNames } from '../ingestPlacements.js';
 import type { LiquipediaPlacement } from '../liquipediaApi.js';
 
 const row = (over: Partial<LiquipediaPlacement>): LiquipediaPlacement => ({
@@ -9,6 +9,18 @@ const row = (over: Partial<LiquipediaPlacement>): LiquipediaPlacement => ({
   placement: '1',
   prizemoney: 500000,
   ...over,
+});
+
+describe('placementSourceNames', () => {
+  it('draws LCK split standings from their real Liquipedia brackets', () => {
+    expect(placementSourceNames('LCK 2026 Spring')).toEqual(['LCK 2026 Road to MSI']);
+    expect(placementSourceNames('LCK 2025 Summer')).toEqual(['LCK 2025 Season']);
+  });
+
+  it('leaves every other tournament to its own name', () => {
+    expect(placementSourceNames('LCK Cup 2026')).toEqual(['LCK Cup 2026']);
+    expect(placementSourceNames('LPL 2026 Split 1')).toEqual(['LPL 2026 Split 1']);
+  });
 });
 
 describe('placementSortValue', () => {
