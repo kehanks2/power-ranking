@@ -1,0 +1,218 @@
+<!-- THROWAWAY build reference for the player confidence-range + driver-panel concept.
+     Spec: TODO.md > "Player board - rating confidence + rating drivers".
+     DELETE this file once the feature ships. -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  :root {
+    --color-bg: #0b0e14; --color-surface: #161b26; --color-surface-hover: #1e2530;
+    --color-border: #2a3040; --color-text: #f2f0e9; --color-text-muted: #a8adba;
+    --color-gold: #cda45e;
+    --lg-LCK: #7aa2f7; --role-mid: #9d7cd8; --role-top: #d9a05b; --role-bot: #6fbf8e;
+    --up: #6fbf8e; --down: #c76b7a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--color-bg); color: var(--color-text);
+    font-family: 'Segoe UI', system-ui, sans-serif; padding: 22px; }
+  .wrap { width: 900px; }
+  h1 { font-size: 0.95rem; font-weight: 600; margin: 26px 0 2px; letter-spacing: 0.02em; }
+  h1:first-child { margin-top: 0; }
+  .sub { color: var(--color-text-muted); font-size: 0.75rem; margin: 0 0 14px; }
+
+  table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 0.82rem; }
+  thead th { text-align: left; color: var(--color-text-muted); font-weight: 600;
+    font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em; padding: 6px 10px; }
+  thead tr.head th { border-bottom: 1px solid var(--color-border); }
+  th.num, td.num { text-align: right; }
+  tbody td { padding: 10px 10px; border-bottom: 1px solid var(--color-border); vertical-align: middle; }
+  .rank { color: var(--color-text-muted); font-variant-numeric: tabular-nums; width: 26px; }
+  .handle { font-weight: 600; }
+  .role { font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.03em; }
+  .role.MID { color: var(--role-mid); background: color-mix(in srgb, var(--role-mid) 15%, transparent); }
+  .role.TOP { color: var(--role-top); background: color-mix(in srgb, var(--role-top) 15%, transparent); }
+  .role.BOT { color: var(--role-bot); background: color-mix(in srgb, var(--role-bot) 15%, transparent); }
+  .team { color: var(--color-text-muted); }
+  .rating { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 0.9rem; width: 50px; }
+  .games { font-variant-numeric: tabular-nums; color: var(--color-text-muted); width: 52px; }
+
+  /* A1 confidence range with axis */
+  td.conf, th.conf { width: 320px; }
+  .conf__inner { margin-right: 1.1rem; }
+  .axis { position: relative; height: 12px; }
+  .axis .tick { position: absolute; top: 0; font-size: 0.58rem; color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums; transform: translateX(-50%); }
+  .track { position: relative; height: 18px; cursor: default; }
+  .gl { position: absolute; top: -1px; bottom: -1px; width: 1px; background: var(--color-border); }
+  .gl.mid { background: color-mix(in srgb, var(--color-border) 190%, transparent); }
+  .band { position: absolute; top: 5px; height: 8px; border-radius: 4px;
+          background: linear-gradient(90deg, rgb(205 164 94 / 22%), rgb(205 164 94 / 62%)); }
+  .headroom { position: absolute; top: 6px; height: 6px; border-radius: 3px;
+              border: 1px dashed color-mix(in srgb, var(--color-gold) 60%, transparent); border-left: none; }
+  .point { position: absolute; top: 1px; width: 2px; height: 16px; background: var(--color-text); border-radius: 1px; }
+
+  /* ---- panel ---- */
+  .panelbox { background: var(--color-surface); border: 1px solid var(--color-border);
+              border-left: 2px solid var(--role-mid); border-radius: 6px; padding: 16px 18px 18px; }
+  .phead { display: flex; flex-wrap: wrap; gap: 4px 22px; align-items: baseline; margin-bottom: 4px; }
+  .record { margin: 0; font-size: 0.82rem; }
+  .record strong { font-variant-numeric: tabular-nums; }
+  .record .unit { color: var(--color-text-muted); margin: 0 6px 0 4px; }
+  .record .rate { color: var(--color-text-muted); }
+  .coverage { color: var(--color-text-muted); font-size: 0.75rem; margin: 2px 0 0; }
+  .teamlink { color: var(--lg-LCK); font-size: 0.76rem; text-decoration: none; margin-top: 4px; display: inline-block; }
+
+  .groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 18px; }
+  .group h4 { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em;
+              color: var(--color-text-muted); margin: 0 0 8px; font-weight: 600; }
+  dl.stats { margin: 0; }
+  .stat { display: flex; align-items: center; gap: 8px; padding: 5px 0;
+          border-bottom: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent); }
+  .stat dt { font-size: 0.76rem; color: var(--color-text); flex: 1; }
+  .stat__value { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 0.78rem; min-width: 44px; text-align: right; }
+  .stat__place { font-size: 0.66rem; color: var(--color-text-muted); min-width: 28px; text-align: right; }
+  .stat__scale { position: relative; width: 48px; height: 8px; }
+  .stat__track { position: absolute; top: 3px; left: 0; right: 0; height: 2px; background: var(--color-border); border-radius: 1px; }
+  .stat__dot { position: absolute; top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--color-text-muted); transform: translateX(-50%); }
+  .stat__arrow { min-width: 12px; font-size: 0.72rem; text-align: center; }
+  .arrow-up { color: var(--up); }
+  .arrow-down { color: var(--down); }
+  .stat.standout .stat__value { color: var(--color-gold); }
+  .stat.standout .stat__dot { background: var(--color-gold); }
+  /* stats that do not feed the rating: present, but faded */
+  .stat.faded dt, .stat.faded .stat__value, .stat.faded .stat__place { color: color-mix(in srgb, var(--color-text-muted) 55%, transparent); }
+  .stat.faded .stat__dot { background: color-mix(in srgb, var(--color-text-muted) 45%, transparent); }
+  .peers { margin: 16px 0 0; font-size: 0.7rem; color: var(--color-text-muted); line-height: 1.5; max-width: 660px; }
+  .peers .key { color: var(--color-gold); }
+
+  .note { margin-top: 12px; font-size: 0.72rem; color: var(--color-text-muted); line-height: 1.55; max-width: 680px; }
+  .note b { color: var(--color-text); font-weight: 600; }
+  .swatch { display: inline-block; width: 22px; height: 8px; border-radius: 4px; vertical-align: middle; margin: 0 2px; }
+  .swatch.solid { background: linear-gradient(90deg, rgb(205 164 94 / 22%), rgb(205 164 94 / 62%)); }
+  .swatch.dash { border: 1px dashed color-mix(in srgb, var(--color-gold) 60%, transparent); height: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Concept A1 — refined: axis divisions, real dashed endpoints, label on hover</h1>
+  <p class="sub">Dashed tail now ends at each player's raw percentile (where it settles if form holds), not the edge.</p>
+  <table>
+    <thead>
+      <tr class="head">
+        <th class="rank">#</th><th>Player</th><th>Role</th>
+        <th class="num">Rating</th>
+        <th class="conf">Confidence</th>
+        <th class="num">Games</th>
+      </tr>
+      <tr class="axisrow">
+        <th colspan="4"></th>
+        <th class="conf"><div class="conf__inner"><div class="axis">
+          <span class="tick" style="left:0%">0</span>
+          <span class="tick" style="left:25%">25</span>
+          <span class="tick" style="left:50%">50</span>
+          <span class="tick" style="left:75%">75</span>
+          <span class="tick" style="left:100%">100</span>
+        </div></div></th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="rank">1</td><td class="handle">Chovy</td><td><span class="role MID">MID</span></td>
+        <td class="num rating">79.1</td>
+        <td class="conf"><div class="conf__inner"><div class="track" title="Settled — 312 games">
+          <span class="gl" style="left:25%"></span><span class="gl mid" style="left:50%"></span><span class="gl" style="left:75%"></span>
+          <span class="band" style="left:50%;width:29.1%"></span>
+          <span class="headroom" style="left:79.1%;width:0.9%"></span>
+          <span class="point" style="left:79.1%"></span>
+        </div></div></td>
+        <td class="num games">312</td>
+      </tr>
+      <tr>
+        <td class="rank">2</td><td class="handle">Ruler</td><td><span class="role BOT">BOT</span></td>
+        <td class="num rating">76.4</td>
+        <td class="conf"><div class="conf__inner"><div class="track" title="Settled — 288 games">
+          <span class="gl" style="left:25%"></span><span class="gl mid" style="left:50%"></span><span class="gl" style="left:75%"></span>
+          <span class="band" style="left:50%;width:26.4%"></span>
+          <span class="headroom" style="left:76.4%;width:0.9%"></span>
+          <span class="point" style="left:76.4%"></span>
+        </div></div></td>
+        <td class="num games">288</td>
+      </tr>
+      <tr>
+        <td class="rank">3</td><td class="handle">Zeus</td><td><span class="role TOP">TOP</span></td>
+        <td class="num rating">72.0</td>
+        <td class="conf"><div class="conf__inner"><div class="track" title="Firming — 41 games">
+          <span class="gl" style="left:25%"></span><span class="gl mid" style="left:50%"></span><span class="gl" style="left:75%"></span>
+          <span class="band" style="left:50%;width:22%"></span>
+          <span class="headroom" style="left:72%;width:5.4%"></span>
+          <span class="point" style="left:72%"></span>
+        </div></div></td>
+        <td class="num games">41</td>
+      </tr>
+      <tr>
+        <td class="rank">4</td><td class="handle">Karis</td><td><span class="role MID">MID</span></td>
+        <td class="num rating">66.7</td>
+        <td class="conf"><div class="conf__inner"><div class="track" title="Provisional — 8 games">
+          <span class="gl" style="left:25%"></span><span class="gl mid" style="left:50%"></span><span class="gl" style="left:75%"></span>
+          <span class="band" style="left:50%;width:16.7%"></span>
+          <span class="headroom" style="left:66.7%;width:20.9%"></span>
+          <span class="point" style="left:66.7%"></span>
+        </div></div></td>
+        <td class="num games">8</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="note">
+    <span class="swatch solid"></span> earned distance from the 50 midline &nbsp;·&nbsp;
+    <span class="swatch dash"></span> where it settles if this form holds (the raw percentile) &nbsp;·&nbsp;
+    gridlines at 25 / <b>50</b> / 75 &nbsp;·&nbsp; hover the bar for <b>settled / firming / provisional</b> and the game count.
+    Note the tails stop at 80, 77, 77 and 88 — a longer one just means a thinner sample, never a fixed reach to 100.
+  </p>
+
+  <h1>Concept C — folded into the grid: fade what doesn't count, arrow what helps vs hurts</h1>
+  <p class="sub">No separate bar. The stat grid itself shows what builds the rating.</p>
+  <div class="panelbox">
+    <div class="phead">
+      <p class="record"><strong>12–4</strong><span class="unit">series</span><span class="rate">75% win rate</span></p>
+      <p class="record"><strong>31–14</strong><span class="unit">games</span><span class="rate">69% win rate</span></p>
+    </div>
+    <p class="coverage">LCK Only.</p>
+    <a class="teamlink" href="#">Gen.G team page →</a>
+
+    <div class="groups">
+      <section class="group">
+        <h4>Combat</h4>
+        <dl class="stats">
+          <div class="stat standout"><dt>KDA</dt><span class="stat__value">3.82</span><span class="stat__place">5th</span><span class="stat__scale"><span class="stat__track"></span><span class="stat__dot" style="left:22%"></span></span><span class="stat__arrow arrow-up">▲</span></div>
+          <div class="stat faded"><dt>Kills</dt><span class="stat__value">3.4</span><span class="stat__place">8th</span><span class="stat__scale"><span class="stat__track"></span><span class="stat__dot" style="left:41%"></span></span><span class="stat__arrow"></span></div>
+          <div class="stat faded"><dt>Deaths</dt><span class="stat__value">2.1</span><span class="stat__place">3rd</span><span class="stat__scale"><span class="stat__track"></span><span class="stat__dot" style="left:13%"></span></span><span class="stat__arrow"></span></div>
+          <div class="stat faded"><dt>Assists</dt><span class="stat__value">6.9</span><span class="stat__place">6th</span><span class="stat__scale"><span class="stat__track"></span><span class="stat__dot" style="left:31%"></span></span><span class="stat__arrow"></span></div>
+        </dl>
+      </section>
+      <section class="group">
+        <h4>Economy</h4>
+        <dl class="stats">
+          <div class="stat standout"><dt>CS / min</dt><span class="stat__value">9.2</span><span class="stat__place">4th</span><span class="stat__scale"><span class="stat__track"></span><span class="stat__dot" style="left:18%"></span></span><span class="stat__arrow arrow-up">▲</span></div>
+          <div class="stat standout"><dt>Gold vs. lane</dt><span class="stat__value">+512</span><span class="stat__place">2nd</span><span class="stat__scale"><span class="stat__track"></span><span class="stat__dot" style="left:6%"></span></span><span class="stat__arrow arrow-up">▲</span></div>
+          <div class="stat"><dt>Gold share</dt><span class="stat__value">24%</span><span class="stat__place">7th</span><span class="stat__scale"><span class="stat__track"></span><span class="stat__dot" style="left:37%"></span></span><span class="stat__arrow arrow-up">▲</span></div>
+        </dl>
+      </section>
+      <section class="group">
+        <h4>Team impact</h4>
+        <dl class="stats">
+          <div class="stat"><dt>Kill participation</dt><span class="stat__value">68%</span><span class="stat__place">12th</span><span class="stat__scale"><span class="stat__track"></span><span class="stat__dot" style="left:66%"></span></span><span class="stat__arrow arrow-down">▼</span></div>
+          <div class="stat standout"><dt>Damage share</dt><span class="stat__value">29%</span><span class="stat__place">2nd</span><span class="stat__scale"><span class="stat__track"></span><span class="stat__dot" style="left:6%"></span></span><span class="stat__arrow arrow-up">▲</span></div>
+          <div class="stat faded"><dt>Objective control</dt><span class="stat__value">41%</span><span class="stat__place">—</span><span class="stat__scale"><span class="stat__track"></span><span class="stat__dot" style="left:55%"></span></span><span class="stat__arrow"></span></div>
+        </dl>
+      </section>
+    </div>
+    <p class="peers">Placement ranks each stat among the <span class="key">17</span> MID players on this board, lower always better. <b style="color:var(--up)">▲</b>/<b style="color:var(--down)">▼</b> mark stats lifting or dragging the rating; faded stats don't feed a MID rating (the raw K/D/A behind KDA, and objective control, a jungle stat). Highlighted values are top 25%.</p>
+  </div>
+  <p class="note"><b>The fit:</b> nothing added to the panel — the existing grid now carries the story. Faded rows read as "shown for detail, not counted"; the ▲/▼ say which counted stats are helping or hurting. The composition bar is gone.</p>
+
+</div>
+</body>
+</html>
