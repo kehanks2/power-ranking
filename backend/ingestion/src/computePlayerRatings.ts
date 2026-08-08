@@ -320,8 +320,8 @@ const INTERNATIONAL_WINDOW_MONTHS = 36;
 const INTERNATIONAL_HALF_LIFE_DAYS = 550;
 
 // Display floor, not the small-sample defence (shrinkToNeutral handles that):
-// stops the tab listing someone off one group-stage appearance.
-const MIN_INTERNATIONAL_GAMES = 5;
+// stops the tab listing someone off a short run of international games.
+const MIN_INTERNATIONAL_GAMES = 10;
 
 /**
  * Rates players on international games only, role-only peer groups. These players
