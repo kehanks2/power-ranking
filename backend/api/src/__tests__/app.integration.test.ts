@@ -295,8 +295,11 @@ describe('read API (live Postgres)', () => {
     const intlGames = res.body.international.reduce((n: number, r: { wins: number; losses: number }) => n + r.wins + r.losses, 0);
     expect(regionalGames + intlGames).toBe(board.body[0].games);
 
-    // Placements belong to internationals; we hold no regional standings.
-    expect(res.body.regional.every((r: { placement: string | null }) => r.placement === null)).toBe(true);
+    // Placements are populated where standings exist -- regional too, since the
+    // placement import -- so each is a text finish or null, never anything else.
+    expect(
+      res.body.regional.every((r: { placement: string | null }) => r.placement === null || (typeof r.placement === 'string' && r.placement.length > 0)),
+    ).toBe(true);
   });
 
   it('GET /players?window= narrows the board to that stretch of play', async () => {

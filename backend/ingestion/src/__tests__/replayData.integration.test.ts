@@ -84,6 +84,8 @@ describe('loadReplayData roster-change decay events (live Postgres, synthetic da
         team1Gold: null,
         team2Gold: null,
         gamelengthSeconds: null,
+        team1NeutralObjectives: null,
+        team2NeutralObjectives: null,
       });
       for (const [role, playerId] of Object.entries(lineup)) {
         await upsertGameLineup(pool, { gameId, teamId, playerId, role: role as 'TOP' | 'JNG' | 'MID' | 'BOT' | 'SUP' });

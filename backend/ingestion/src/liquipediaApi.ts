@@ -180,7 +180,9 @@ export interface LiquipediaGameOpponent {
   side: string;
   score: number; // 0 or 1 -- did this side win this individual game
   players: LiquipediaGamePlayer[];
-  stats: { gold: number };
+  // Team totals for the game. Objective counts are absent on some rows and 0 for
+  // types that did not exist that patch; both read as "no neutrals of that kind".
+  stats: { gold: number; dragons?: number; barons?: number; heralds?: number; grubs?: number; atakhans?: number };
 }
 
 export interface LiquipediaMatchGame {

@@ -64,3 +64,13 @@ export const RATING_PERIOD_DAYS = 1;
  * 4x, with 1x-3x inside noise (~8 games).
  */
 export const INTERNATIONAL_WEIGHT_MULTIPLIER = 2;
+
+// Roster prior for the international board: seed each team from its roster's
+// international player ratings instead of a cold RD-350 start, so a thin team is
+// not treated as a total unknown. RELIEF is how much a fully-known roster tightens
+// the prior RD; OFFSET_SCALE maps roster percentile to rating points; CONF_THRESHOLD
+// is the player games for full confidence. relief 0.8 is a held-out-Brier sweep
+// optimum (a free lunch -- tighter ranges AND lower Brier -- up to ~0.8, then it bends).
+export const ROSTER_PRIOR_RELIEF = 0.8;
+export const ROSTER_PRIOR_OFFSET_SCALE = 150;
+export const ROSTER_PRIOR_CONF_THRESHOLD = 15;

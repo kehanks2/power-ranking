@@ -159,9 +159,20 @@ export class PlayersListComponent {
       },
       {
         title: 'Team impact',
-        stats: [view('Kill participation', s.killParticipation, pct), view('Damage share', s.damageShare, pct)],
+        stats: [
+          view('Kill participation', s.killParticipation, pct),
+          view('Damage share', s.damageShare, pct),
+          view('Objective control', s.objectiveControl, pct),
+        ],
       },
     ];
+  });
+
+  // Objective control is a jungle stat; it feeds the rating for junglers (and
+  // lightly supports) but is display-only context for top/mid/bot.
+  protected readonly objectiveControlContextOnly = computed(() => {
+    const role = this.detail()?.role;
+    return role === 'TOP' || role === 'MID' || role === 'BOT';
   });
 
   constructor() {

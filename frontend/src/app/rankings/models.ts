@@ -169,6 +169,7 @@ export interface PlayerStats {
   killParticipation: PlayerStat;
   damageShare: PlayerStat;
   goldShare: PlayerStat;
+  objectiveControl: PlayerStat;
 }
 
 export interface PlayerDetail extends PlayerSummary {

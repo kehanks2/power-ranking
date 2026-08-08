@@ -122,16 +122,20 @@ export async function upsertGame(
     team1Gold: number | null;
     team2Gold: number | null;
     gamelengthSeconds: number | null;
+    team1NeutralObjectives: number | null;
+    team2NeutralObjectives: number | null;
   },
 ): Promise<number> {
   const result = await pool.query<{ id: number }>(
-    `INSERT INTO games (series_id, leaguepedia_unique_line, game_number, team1_id, team2_id, winner_team_id, datetime_utc, patch, team1_gold, team2_gold, gamelength_seconds)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `INSERT INTO games (series_id, leaguepedia_unique_line, game_number, team1_id, team2_id, winner_team_id, datetime_utc, patch, team1_gold, team2_gold, gamelength_seconds, team1_neutral_objectives, team2_neutral_objectives)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      ON CONFLICT (leaguepedia_unique_line) DO UPDATE SET
        winner_team_id = EXCLUDED.winner_team_id,
        team1_gold = EXCLUDED.team1_gold,
        team2_gold = EXCLUDED.team2_gold,
-       gamelength_seconds = EXCLUDED.gamelength_seconds
+       gamelength_seconds = EXCLUDED.gamelength_seconds,
+       team1_neutral_objectives = EXCLUDED.team1_neutral_objectives,
+       team2_neutral_objectives = EXCLUDED.team2_neutral_objectives
      RETURNING id`,
     [
       params.seriesId,
@@ -145,6 +149,8 @@ export async function upsertGame(
       params.team1Gold,
       params.team2Gold,
       params.gamelengthSeconds,
+      params.team1NeutralObjectives,
+      params.team2NeutralObjectives,
     ],
   );
   return result.rows[0].id;

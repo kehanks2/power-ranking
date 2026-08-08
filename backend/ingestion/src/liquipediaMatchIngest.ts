@@ -224,6 +224,13 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
       const gameWinnerTeamId = gameOpp1.score === 1 ? team1Id : team2Id;
       const gamelengthSeconds = parseLengthToSeconds(game.length);
 
+      // Neutral epics only (dragons/barons/heralds/grubs/atakhans); null when the
+      // side carries no stats. The jungle objective-control share is derived from these.
+      const neutralObjectives = (o: typeof gameOpp1): number | null =>
+        o.stats
+          ? (o.stats.dragons ?? 0) + (o.stats.barons ?? 0) + (o.stats.heralds ?? 0) + (o.stats.grubs ?? 0) + (o.stats.atakhans ?? 0)
+          : null;
+
       const gameId = await upsertGame(pool, {
         seriesId,
         leaguepediaUniqueLine: `liquipedia:${match.match2id}_${game.match2gameid}`,
@@ -236,6 +243,8 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
         team1Gold: gameOpp1.stats?.gold ?? null,
         team2Gold: gameOpp2.stats?.gold ?? null,
         gamelengthSeconds,
+        team1NeutralObjectives: neutralObjectives(gameOpp1),
+        team2NeutralObjectives: neutralObjectives(gameOpp2),
       });
       result.gamesProcessed += 1;
 

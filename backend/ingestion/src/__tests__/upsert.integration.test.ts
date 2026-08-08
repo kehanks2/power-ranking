@@ -68,6 +68,8 @@ describe.runIf(process.env.SKIP_DB_TESTS !== 'true')('upsert idempotency (live P
         team1Gold: 45000,
         team2Gold: 40000,
         gamelengthSeconds: 1800,
+        team1NeutralObjectives: 6,
+        team2NeutralObjectives: 3,
       });
     };
 

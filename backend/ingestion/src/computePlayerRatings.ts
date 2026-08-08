@@ -2,7 +2,7 @@ import type { Pool } from 'pg';
 import {
   percentile,
   blendComponentPercentiles,
-  componentWeights,
+  componentWeightsForRole,
   DEFAULT_WIN_WEIGHT,
   recencyWeight,
   DEFAULT_HALF_LIFE_DAYS,
@@ -20,7 +20,8 @@ import {
   type RatingWindow,
 } from '@power-ranking/shared';
 
-const PLAYER_RATING_METHOD_VERSION = 2;
+// v3: per-role stat weighting, plus CS/min, gold-diff, and jungle objective control.
+const PLAYER_RATING_METHOD_VERSION = 3;
 
 interface PlayerGroupStats {
   playerId: number;
@@ -31,6 +32,11 @@ interface PlayerGroupStats {
   damageShare: number;
   killParticipation: number;
   winRate: number;
+  // Null when the player has no game with the stat (skipped, not zeroed) -- the
+  // percentile treats a null as neutral so a missing stat neither helps nor hurts.
+  csMin: number | null;
+  goldDiff: number | null;
+  objControl: number | null;
   gamesPlayed: number;
   /** Recency-weighted game count -- what shrinkage keys off. */
   effectiveGames: number;
@@ -44,6 +50,9 @@ export interface PlayerGameRow {
   gold_share: string | null;
   damage_share: string | null;
   kill_participation: string | null;
+  cs_min: string | null;
+  gold_diff: string | null;
+  obj_control: string | null;
   won: boolean;
   age_days: string;
 }
@@ -63,6 +72,13 @@ export function buildPlayerGroupStats(
     killParticipation: number[];
     won: number[];
     weights: number[];
+    // Nullable stats: value + its own weight, pushed only on rows that carry it.
+    csMin: number[];
+    csMinW: number[];
+    goldDiff: number[];
+    goldDiffW: number[];
+    objControl: number[];
+    objControlW: number[];
   }
 
   const accumulators = new Map<string, Accumulator>();
@@ -74,23 +90,26 @@ export function buildPlayerGroupStats(
         playerId: row.player_id,
         role: row.role,
         leagueId: row.league_id,
-        kda: [],
-        goldShare: [],
-        damageShare: [],
-        killParticipation: [],
-        won: [],
-        weights: [],
+        kda: [], goldShare: [], damageShare: [], killParticipation: [], won: [], weights: [],
+        csMin: [], csMinW: [], goldDiff: [], goldDiffW: [], objControl: [], objControlW: [],
       };
       accumulators.set(key, acc);
     }
+    const w = recencyWeight(Number(row.age_days), halfLifeDays);
     acc.kda.push(Number(row.kda));
     // Missing share != zero share: fall back to role-neutral 0.2, not a bad game.
     acc.goldShare.push(row.gold_share !== null ? Number(row.gold_share) : 0.2);
     acc.damageShare.push(row.damage_share !== null ? Number(row.damage_share) : 0.2);
     acc.killParticipation.push(row.kill_participation !== null ? Number(row.kill_participation) : 0.5);
     acc.won.push(row.won ? 1 : 0);
-    acc.weights.push(recencyWeight(Number(row.age_days), halfLifeDays));
+    acc.weights.push(w);
+    if (row.cs_min !== null) { acc.csMin.push(Number(row.cs_min)); acc.csMinW.push(w); }
+    if (row.gold_diff !== null) { acc.goldDiff.push(Number(row.gold_diff)); acc.goldDiffW.push(w); }
+    if (row.obj_control !== null) { acc.objControl.push(Number(row.obj_control)); acc.objControlW.push(w); }
   }
+
+  const meanOrNull = (values: number[], weights: number[]): number | null =>
+    weights.length === 0 ? null : weightedMean(values, weights);
 
   return [...accumulators.values()].map((acc) => ({
     playerId: acc.playerId,
@@ -101,6 +120,9 @@ export function buildPlayerGroupStats(
     damageShare: weightedMean(acc.damageShare, acc.weights),
     killParticipation: weightedMean(acc.killParticipation, acc.weights),
     winRate: weightedMean(acc.won, acc.weights),
+    csMin: meanOrNull(acc.csMin, acc.csMinW),
+    goldDiff: meanOrNull(acc.goldDiff, acc.goldDiffW),
+    objControl: meanOrNull(acc.objControl, acc.objControlW),
     gamesPlayed: acc.weights.length,
     effectiveGames: acc.weights.reduce((sum, w) => sum + w, 0),
   }));
@@ -124,9 +146,8 @@ export interface PlayerGroupRating {
  */
 export function selectGroupRatings(
   groupStats: PlayerGroupStats[],
-  winWeight = DEFAULT_WIN_WEIGHT,
+  _winWeight = DEFAULT_WIN_WEIGHT,
 ): PlayerGroupRating[] {
-  const weights = componentWeights(winWeight);
   const peerGroups = new Map<string, PlayerGroupStats[]>();
   for (const player of groupStats) {
     const key = `${player.leagueId}::${player.role}`;
@@ -143,6 +164,12 @@ export function selectGroupRatings(
     const damagePeers = peers.map((p) => p.damageShare);
     const kpPeers = peers.map((p) => p.killParticipation);
     const winPeers = peers.map((p) => p.winRate);
+    // Nullable stats percentile against only the peers that have them; a player
+    // missing the stat gets neutral 50 so it neither helps nor hurts.
+    const csPeers = peers.map((p) => p.csMin).filter((v): v is number => v !== null);
+    const goldDiffPeers = peers.map((p) => p.goldDiff).filter((v): v is number => v !== null);
+    const objPeers = peers.map((p) => p.objControl).filter((v): v is number => v !== null);
+    const pct = (value: number | null, peerValues: number[]) => (value === null ? NEUTRAL_SCORE : percentile(value, peerValues));
 
     for (const player of peers) {
       const blended = blendComponentPercentiles(
@@ -152,8 +179,11 @@ export function selectGroupRatings(
           damageShare: percentile(player.damageShare, damagePeers),
           killParticipation: percentile(player.killParticipation, kpPeers),
           winRate: percentile(player.winRate, winPeers),
+          csMin: pct(player.csMin, csPeers),
+          goldDiff: pct(player.goldDiff, goldDiffPeers),
+          objControl: pct(player.objControl, objPeers),
         },
-        weights,
+        componentWeightsForRole(player.role),
       );
 
       ratings.push({
@@ -238,6 +268,10 @@ export async function fetchPlayerGameRows(pool: Pool, window: RatingWindow = 'al
       pgp.gold_share,
       pgp.damage_share,
       pgp.kill_participation,
+      pgp.creep_score * 60.0 / NULLIF(g.gamelength_seconds, 0) AS cs_min,
+      pgp.gold_diff::numeric AS gold_diff,
+      (CASE WHEN pgp.team_id = g.team1_id THEN g.team1_neutral_objectives ELSE g.team2_neutral_objectives END)::numeric
+        / NULLIF(g.team1_neutral_objectives + g.team2_neutral_objectives, 0) AS obj_control,
       (g.winner_team_id = pgp.team_id) AS won,
       EXTRACT(EPOCH FROM (NOW() - g.datetime_utc)) / 86400 AS age_days
     FROM player_game_performance pgp
@@ -308,6 +342,10 @@ export async function computeInternationalPlayerRatings(
       pgp.gold_share,
       pgp.damage_share,
       pgp.kill_participation,
+      pgp.creep_score * 60.0 / NULLIF(g.gamelength_seconds, 0) AS cs_min,
+      pgp.gold_diff::numeric AS gold_diff,
+      (CASE WHEN pgp.team_id = g.team1_id THEN g.team1_neutral_objectives ELSE g.team2_neutral_objectives END)::numeric
+        / NULLIF(g.team1_neutral_objectives + g.team2_neutral_objectives, 0) AS obj_control,
       (g.winner_team_id = pgp.team_id) AS won,
       EXTRACT(EPOCH FROM (NOW() - g.datetime_utc)) / 86400 AS age_days
     FROM player_game_performance pgp

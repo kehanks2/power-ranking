@@ -493,6 +493,8 @@ const STAT_METRICS = [
   { key: 'killParticipation', expr: 'AVG(s.kill_participation)', better: 'higher' },
   { key: 'damageShare', expr: 'AVG(s.damage_share)', better: 'higher' },
   { key: 'goldShare', expr: 'AVG(s.gold_share)', better: 'higher' },
+  // The player's team's share of neutral objectives -- a jungle-defining stat.
+  { key: 'objectiveControl', expr: 'AVG(s.obj_control)', better: 'higher' },
 ] as const;
 
 /**
@@ -564,6 +566,8 @@ export async function getPlayerById(
       SELECT pgp.player_id, pgp.role, pgp.kills, pgp.deaths, pgp.assists,
              pgp.creep_score, pgp.gold_diff, pgp.kill_participation,
              pgp.damage_share, pgp.gold_share,
+             (CASE WHEN pgp.team_id = g.team1_id THEN g.team1_neutral_objectives ELSE g.team2_neutral_objectives END)::numeric
+               / NULLIF(g.team1_neutral_objectives + g.team2_neutral_objectives, 0) AS obj_control,
              g.gamelength_seconds, g.series_id,
              (g.winner_team_id = pgp.team_id) AS won
       FROM player_game_performance pgp
@@ -650,6 +654,7 @@ export async function getPlayerById(
       killParticipation: stat('killParticipation'),
       damageShare: stat('damageShare'),
       goldShare: stat('goldShare'),
+      objectiveControl: stat('objectiveControl'),
     },
   };
 }

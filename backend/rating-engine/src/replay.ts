@@ -93,6 +93,12 @@ export interface ReplayInput {
   games: ReplayGame[];
   decayEvents: DecayEvent[];
   config: ReplayConfig;
+  /**
+   * Per-team starting contextual rating, instead of the cold phiInitMax start.
+   * Used by the international board to seed each team from its roster's
+   * international player ratings, so a thin team is not a total unknown.
+   */
+  initialTeamStates?: Map<string, RatingState>;
 }
 
 export interface TeamRatingSnapshot {
@@ -165,7 +171,8 @@ export function runReplay(input: ReplayInput): ReplayResult {
 
   const teamContextual = new Map<string, RatingState>();
   for (const teamId of input.teamIds) {
-    teamContextual.set(teamId, { mu: 0, phi: input.config.phiInitMax, sigma: input.config.sigmaDefault });
+    const seed = input.initialTeamStates?.get(teamId);
+    teamContextual.set(teamId, seed ? { ...seed } : { mu: 0, phi: input.config.phiInitMax, sigma: input.config.sigmaDefault });
   }
   const leagueMeta = new Map<string, RatingState>();
   for (const leagueId of input.leagueIds) {

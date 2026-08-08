@@ -182,6 +182,8 @@ export interface PlayerStatsDto {
   killParticipation: PlayerStatDto;
   damageShare: PlayerStatDto;
   goldShare: PlayerStatDto;
+  /** The player's team's share of neutral objectives -- a jungle-defining stat. */
+  objectiveControl: PlayerStatDto;
 }
 
 export interface PlayerDetailDto extends PlayerSummaryDto {

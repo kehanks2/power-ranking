@@ -108,7 +108,7 @@
               </td>
             }
             <td class="team">{{ player.teamName ?? '—' }}</td>
-            <td class="num rating">{{ player.rating | number: '1.0-0' }}</td>
+            <td class="num rating">{{ player.rating | number: '1.1-1' }}</td>
             <td class="num games">{{ player.gamesPlayed }}</td>
           </tr>
 
@@ -196,6 +196,9 @@
                           {{ caveat }}
                         }
                       </p>
+                      @if (objectiveControlContextOnly()) {
+                        <p class="peers">Objective control is a jungle stat, shown here for context — it isn’t part of a {{ d.role }} player’s rating.</p>
+                      }
                     }
                   } @else {
                     <p class="status">Couldn’t load stats for {{ player.handle }}.</p>

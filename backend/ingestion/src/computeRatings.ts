@@ -1,6 +1,8 @@
 import type { Pool } from 'pg';
 import {
   runReplay,
+  computeRosterImpliedMu,
+  confidenceFromGamesPlayed,
   GLICKO2_SCALE,
   DEFAULT_VOLATILITY,
   MARGIN_SCALE,
@@ -9,11 +11,60 @@ import {
   SERIES_CORRELATION,
   RATING_PERIOD_DAYS,
   INTERNATIONAL_WEIGHT_MULTIPLIER,
+  ROSTER_PRIOR_RELIEF,
+  ROSTER_PRIOR_OFFSET_SCALE,
+  ROSTER_PRIOR_CONF_THRESHOLD,
   type ReplayInput,
+  type RatingState,
+  type IncomingPlayerSignal,
 } from '@power-ranking/rating-engine';
 import { loadReplayData } from './replayData.js';
 
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
+
+/**
+ * Seeds each team's international contextual rating from its roster's international
+ * player ratings, so a team thin on its own international games isn't a total
+ * unknown. mu is the roster-implied strength; phi is tightened below cold in
+ * proportion to how much of the roster we have international reads on. Reads
+ * player_ratings_history, so it must run after computeInternationalPlayerRatings.
+ */
+async function computeInternationalSeeds(pool: Pool): Promise<Map<string, RatingState>> {
+  const ratingRows = await pool.query<{ player_id: number; rating: string; games_played: number }>(`
+    SELECT DISTINCT ON (player_id) player_id, rating, games_played
+    FROM player_ratings_history
+    WHERE scope = 'international' AND rating_window = 'all'
+    ORDER BY player_id, as_of_date DESC
+  `);
+  const playerRating = new Map<number, { rating: number; games: number }>();
+  for (const r of ratingRows.rows) playerRating.set(r.player_id, { rating: Number(r.rating), games: r.games_played });
+
+  const rosterRows = await pool.query<{ team_id: number; player_id: number }>(
+    'SELECT team_id, player_id FROM roster_memberships WHERE end_date IS NULL',
+  );
+  const roster = new Map<number, number[]>();
+  for (const r of rosterRows.rows) {
+    if (!roster.has(r.team_id)) roster.set(r.team_id, []);
+    roster.get(r.team_id)!.push(r.player_id);
+  }
+
+  const seeds = new Map<string, RatingState>();
+  for (const [teamId, playerIds] of roster) {
+    const signals: IncomingPlayerSignal[] = playerIds.map((pid) => {
+      const r = playerRating.get(pid);
+      return r
+        ? { percentile: r.rating, confidence: confidenceFromGamesPlayed(r.games, ROSTER_PRIOR_CONF_THRESHOLD) }
+        : { percentile: 50, confidence: 0 };
+    });
+    const avgConfidence = signals.length ? signals.reduce((sum, s) => sum + s.confidence, 0) / signals.length : 0;
+    seeds.set(String(teamId), {
+      mu: computeRosterImpliedMu(0, signals, ROSTER_PRIOR_OFFSET_SCALE),
+      phi: PHI_INIT_MAX * (1 - ROSTER_PRIOR_RELIEF * avgConfidence),
+      sigma: DEFAULT_VOLATILITY,
+    });
+  }
+  return seeds;
+}
 
 /**
  * Minimum games at international events before a team is rated on that board.
@@ -67,6 +118,7 @@ export async function computeRatings(pool: Pool): Promise<{ teamRows: number; le
     ...replayInput,
     games: internationalGames,
     config: { ...replayInput.config, metaWeight: 0, internationalWeightMultiplier: 1 },
+    initialTeamStates: await computeInternationalSeeds(pool),
   });
   const qualifiedInternational = internationalResult.teamHistory.filter(
     (s) => (internationalGameCount.get(s.teamId) ?? 0) >= MIN_INTERNATIONAL_GAMES,

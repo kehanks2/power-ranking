@@ -109,34 +109,47 @@ export function transferAnchor(
   return NEUTRAL_SCORE + (priorScore - NEUTRAL_SCORE) * carryover;
 }
 
-export type PlayerComponent = 'kda' | 'goldShare' | 'damageShare' | 'killParticipation' | 'winRate';
+export type PlayerComponent =
+  | 'kda' | 'goldShare' | 'damageShare' | 'killParticipation'
+  | 'csMin' | 'goldDiff' | 'objControl' | 'winRate';
 
-// Weight on "did your team win," the four box-score stats splitting the rest.
+// Weight on "did your team win," the box-score stats splitting the rest.
 // 0.5 so the outcome can outvote a stat line (a support engaging into four reads
 // as a death but wins the game); no higher, or winRate (a team stat) just
 // re-ranks teams.
 export const DEFAULT_WIN_WEIGHT = 0.5;
 
-/** Component weights summing to 1, given how much weight winning should carry. */
-export function componentWeights(winWeight = DEFAULT_WIN_WEIGHT): Record<PlayerComponent, number> {
+/** Legacy uniform weights (winRate + four box stats). Kept for callers/tests without a role. */
+export function componentWeights(winWeight = DEFAULT_WIN_WEIGHT): Partial<Record<PlayerComponent, number>> {
   const boxScoreShare = (1 - winWeight) / 4;
-  return {
-    kda: boxScoreShare,
-    goldShare: boxScoreShare,
-    damageShare: boxScoreShare,
-    killParticipation: boxScoreShare,
-    winRate: winWeight,
-  };
+  return { kda: boxScoreShare, goldShare: boxScoreShare, damageShare: boxScoreShare, killParticipation: boxScoreShare, winRate: winWeight };
 }
 
-/** Blends already-percentiled (0-100) components into one composite. */
+// Per-role component weights (each sums to 1). winRate stays 0.5; the box-score
+// half is distributed over the stats that reflect each role's job -- jungle on
+// objective control, top on lane gold-diff, support on kill participation, etc.
+// The stats not listed for a role carry no weight there.
+export const ROLE_COMPONENT_WEIGHTS: Record<string, Partial<Record<PlayerComponent, number>>> = {
+  TOP: { winRate: 0.5, goldDiff: 0.15, csMin: 0.09, goldShare: 0.08, damageShare: 0.07, kda: 0.06, killParticipation: 0.05 },
+  JNG: { winRate: 0.5, objControl: 0.13, killParticipation: 0.11, goldDiff: 0.09, kda: 0.07, csMin: 0.04, damageShare: 0.03, goldShare: 0.03 },
+  MID: { winRate: 0.5, damageShare: 0.12, goldDiff: 0.10, csMin: 0.09, killParticipation: 0.07, kda: 0.06, goldShare: 0.06 },
+  BOT: { winRate: 0.5, damageShare: 0.11, kda: 0.10, csMin: 0.09, goldShare: 0.08, goldDiff: 0.07, killParticipation: 0.05 },
+  SUP: { winRate: 0.5, killParticipation: 0.25, kda: 0.13, damageShare: 0.07, objControl: 0.05 },
+};
+
+/** Per-role weights, falling back to the legacy uniform set for an unknown role. */
+export function componentWeightsForRole(role: string): Partial<Record<PlayerComponent, number>> {
+  return ROLE_COMPONENT_WEIGHTS[role] ?? componentWeights();
+}
+
+/** Blends already-percentiled (0-100) components into one composite; a component with no percentile is treated as neutral 50. */
 export function blendComponentPercentiles(
-  percentiles: Record<PlayerComponent, number>,
-  weights: Record<PlayerComponent, number> = componentWeights(),
+  percentiles: Partial<Record<PlayerComponent, number>>,
+  weights: Partial<Record<PlayerComponent, number>> = componentWeights(),
 ): number {
   let total = 0;
   for (const [component, weight] of Object.entries(weights)) {
-    total += percentiles[component as PlayerComponent] * weight;
+    total += (percentiles[component as PlayerComponent] ?? NEUTRAL_SCORE) * (weight ?? 0);
   }
   return total;
 }
