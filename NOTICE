@@ -1,0 +1,24 @@
+PowerRanking
+Copyright (C) 2026 kehanks2
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License, version 3, as published by
+the Free Software Foundation. See LICENSE for the full text.
+
+If you run a modified version of this program to provide a service over a
+network, AGPL section 13 requires you to offer its users access to the
+corresponding source of your modified version.
+
+----
+
+Match, tournament, and player data is from Liquipedia (https://liquipedia.net),
+retrieved through the Liquipedia API and used under CC-BY-SA 3.0 US
+(https://creativecommons.org/licenses/by-sa/3.0/us/).
+
+Changes were made. Nothing here reproduces Liquipedia articles. Match results,
+rosters, and per-game statistics are parsed into a relational schema and
+transformed into ratings by this project's own model; the ratings, rankings,
+and confidence figures are computed here and are not Liquipedia content. Data
+derived from Liquipedia is shared under the same CC-BY-SA 3.0 US licence.
+
+Liquipedia is not affiliated with this project and does not endorse it.

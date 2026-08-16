@@ -87,6 +87,23 @@ This project also follows the
   the same data is not requested twice.
 - Only the API is used. No automated access to Liquipedia's HTML pages.
 
+## Licence
+
+The code is licensed **[AGPL-3.0](LICENSE)**. Use it, modify it, build on it —
+but if you run a modified version as a service, section 13 requires you to offer
+your users the corresponding source. Keep the credit in [NOTICE](NOTICE).
+
+The two licences cover different things, and the split is not optional:
+
+| | Licence |
+|---|---|
+| This project's code and rating model | AGPL-3.0 |
+| Data derived from Liquipedia | CC-BY-SA 3.0 US |
+
+Liquipedia's licence permits commercial use and forbids adding restrictions to
+it, so the derived data cannot be placed under stricter terms than CC-BY-SA —
+only the code carries the AGPL.
+
 ## Status
 
 Schema, rating engine (Glicko-2 + margin-of-victory + roster/seasonal decay +
