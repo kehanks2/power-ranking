@@ -61,7 +61,7 @@ $slot-width: 56px;
     font-size: 0.65rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--color-text-dim, #6c7385);
+    color: var(--color-text-dim);
     font-weight: 700;
     padding: 0.7rem $cell-pad-x 0.35rem;
     white-space: nowrap;
@@ -132,11 +132,30 @@ $slot-width: 56px;
 }
 
 .rank {
-  width: 3ch;
+  width: 6.5ch;
   text-align: right;
   color: var(--color-text-muted);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+// Inline, not flex: `display: flex` on a td drops it out of table layout.
+tbody td.rank {
+  white-space: nowrap;
+}
+
+.rank-num {
+  display: inline-block;
+  min-width: 2ch;
+  text-align: right;
+}
+
+// Fixed slot, or the variable-width caret drifts the rank numbers.
+pr-rank-change {
+  display: inline-block;
+  width: 3.25ch;
+  margin-left: 0.3rem;
+  text-align: left;
 }
 
 .team-cell {
@@ -355,7 +374,7 @@ td.interval {
   text-align: center;
   font-size: 0.55rem;
   letter-spacing: 0.02em;
-  color: var(--color-text-dim, #6c7385);
+  color: var(--color-text-dim);
   font-weight: 700;
 }
 
@@ -545,7 +564,7 @@ tr.is-open td {
   font-size: 0.6rem;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: var(--color-text-dim, #6c7385);
+  color: var(--color-text-dim);
   min-width: 2.1rem;
 }
 

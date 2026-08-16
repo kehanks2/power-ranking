@@ -104,15 +104,18 @@ export async function loadReplayData(
   // --- Roster-change decay, using real player-implied priors where available ---
   // A player with no rating (rookie) gets confidence 0, which
   // computeRosterImpliedMu collapses to the flat league mean.
-  // scope='regional' AND is_primary are both required for DISTINCT ON: the table
-  // also holds international ratings on a differently-centred scale, and a player
-  // with games in two leagues has a row per league sharing one run's date --
-  // without both filters DISTINCT ON picks between incomparable rows arbitrarily.
+  // Every filter here is load-bearing, and DISTINCT ON picks arbitrarily among
+  // whatever survives: international ratings sit on a differently-centred scale,
+  // a player with games in two leagues has a row per league, and the three
+  // windows are computed over different game counts. Ordering on computed_at
+  // rather than as_of_date pins the newest generation -- rows from several runs
+  // share a date, and mixing them made the roster prior shift on every recompute,
+  // which moved the ratings of teams that had not played.
   const playerRatingsResult = await pool.query<{ player_id: number; rating: string; games_played: number }>(`
     SELECT DISTINCT ON (player_id) player_id, rating, games_played
     FROM player_ratings_history
-    WHERE scope = 'regional' AND is_primary
-    ORDER BY player_id, as_of_date DESC
+    WHERE scope = 'regional' AND is_primary AND rating_window = 'all'
+    ORDER BY player_id, computed_at DESC
   `);
   const playerRatingById = new Map<number, { rating: number; gamesPlayed: number }>();
   for (const row of playerRatingsResult.rows) {

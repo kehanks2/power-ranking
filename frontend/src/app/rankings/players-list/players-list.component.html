@@ -65,12 +65,16 @@
         <tr>
           <th scope="col" class="rank">#</th>
           <th scope="col">Player</th>
-          <th scope="col">Role</th>
+          <th scope="col" class="role-col">Role</th>
           @if (isGlobal()) {
             <th scope="col">Region</th>
           }
           <th scope="col">Team</th>
           <th scope="col" class="num">Rating</th>
+          <!-- The axis sits inside the same cell as the label rather than in a
+               second header row: both rows would be sticky at the same offset
+               and pin on top of each other. -->
+          <th scope="col" class="conf"><app-confidence-axis label="Confidence" /></th>
           <th scope="col" class="num">{{ gamesColumnLabel() }}</th>
         </tr>
       </thead>
@@ -80,8 +84,16 @@
                still a real button so the control stays reachable and announced
                without a mouse; row click is a mouse-only convenience on top,
                and stopPropagation keeps the two from cancelling each other. -->
-          <tr class="row-toggle" [class.is-open]="isOpen(player.id)" (click)="toggle(player.id)">
-            <td class="rank">{{ player.rank }}</td>
+          <tr
+            class="row-toggle"
+            [id]="'player-row-' + player.id"
+            [class.is-open]="isOpen(player.id)"
+            (click)="toggle(player.id)"
+          >
+            <td class="rank">
+              <span class="rank-num">{{ player.rank }}</span>
+              <pr-rank-change [change]="player.rankChange" />
+            </td>
             <td>
               <button
                 type="button"
@@ -109,101 +121,29 @@
             }
             <td class="team">{{ player.teamName ?? '—' }}</td>
             <td class="num rating">{{ player.rating | number: '1.1-1' }}</td>
+            <td class="conf"><app-confidence-range [value]="player" /></td>
             <td class="num games">{{ player.gamesPlayed }}</td>
           </tr>
 
           @if (isOpen(player.id)) {
             <tr class="detail-row">
               <td [attr.colspan]="columnCount()">
-                <div class="panel" [id]="'player-panel-' + player.id">
-                  @if (detailLoading()) {
-                    <p class="status">Loading {{ player.handle }}’s stats…</p>
-                  } @else if (detail(); as d) {
-                    <div class="panel__head">
-                      <!-- A 0-0 record and a 0% win rate say nothing the empty
-                           state below does not say better. -->
-                      @if (d.stats.games > 0) {
-                        <!-- Series first, matching the teams board: it is the
-                             unit placement is decided in, and the two records
-                             routinely disagree. -->
-                        <p class="record">
-                          <strong>{{ d.stats.seriesWins }}–{{ d.stats.seriesLosses }}</strong>
-                          <span class="record__unit">series</span>
-                          <span class="record__rate">{{ d.stats.seriesWinRate | percent: '1.0-0' }} win rate</span>
-                        </p>
-                        <p class="record">
-                          <strong>{{ d.stats.wins }}–{{ d.stats.losses }}</strong>
-                          <span class="record__unit">games</span>
-                          <span class="record__rate">{{ d.stats.winRate | percent: '1.0-0' }} win rate</span>
-                        </p>
-                      }
-                      <p class="coverage">{{ coverageNote() }}</p>
-                      <!-- The panel answers "how is this player doing"; the
-                           next question is usually about the side they play
-                           for, and there was no way there from here. -->
-                      @if (player.teamId) {
-                        <a class="team-link" [routerLink]="['/rankings/teams', player.teamId]">
-                          {{ player.teamName }} team page →
-                        </a>
-                      }
-                    </div>
-
-                    @if (d.stats.games === 0) {
-                      <p class="status">
-                        @if (d.alsoPlaysFor) {
-                          <!-- "Liquipedia also lists", not "is currently playing for". A squad row
-                               cannot tell a concurrent academy slot from a transfer the wiki has
-                               not closed yet, and it said the wrong one about Dardoch the week DIG
-                               signed him. Attributing the claim to the source is the part we can
-                               stand behind. -->
-                          No games on this board — {{ d.handle }} is on the roster, and Liquipedia also
-                          lists them on <strong>{{ d.alsoPlaysFor }}</strong>. The rating above sits at
-                          the neutral 50 because nothing here has been earned yet.
-                        } @else {
-                          No games on this board yet, so the rating above sits at the neutral 50 rather
-                          than claiming anything.
-                        }
-                      </p>
-                    } @else {
-                      <div class="groups">
-                        @for (group of statGroups(); track group.title) {
-                          <section class="group">
-                            <h4 class="group__title">{{ group.title }}</h4>
-                            <dl class="stats">
-                              @for (stat of group.stats; track stat.label) {
-                                <div class="stat" [class.stat--standout]="stat.standout">
-                                  <dt>{{ stat.label }}</dt>
-                                  <dd>
-                                    <span class="stat__value">{{ stat.display }}</span>
-                                    <span class="stat__place">{{ stat.place ?? '—' }}</span>
-                                    <span class="stat__scale" [title]="stat.standing">
-                                      <span class="stat__track" aria-hidden="true"></span>
-                                      <span class="stat__dot" [style.left.%]="stat.position * 100"></span>
-                                    </span>
-                                    <span class="visually-hidden">{{ stat.standing }}</span>
-                                  </dd>
-                                </div>
-                              }
-                            </dl>
-                          </section>
-                        }
-                      </div>
-                      <p class="peers">
-                        Placement ranks each stat among the {{ d.peerCount }} {{ d.role }} players on
-                        this board, lower always being better (including deaths). Highlighted stats
-                        are top 25%.
-                        @if (windowCaveat(); as caveat) {
-                          {{ caveat }}
-                        }
-                      </p>
-                      @if (objectiveControlContextOnly()) {
-                        <p class="peers">Objective control is a jungle stat, shown here for context — it isn’t part of a {{ d.role }} player’s rating.</p>
-                      }
-                    }
-                  } @else {
-                    <p class="status">Couldn’t load stats for {{ player.handle }}.</p>
+                <app-player-panel
+                  [id]="'player-panel-' + player.id"
+                  [detail]="detail()"
+                  [loading]="detailLoading()"
+                  [handle]="player.handle"
+                  [coverage]="coverageNote()"
+                  [windowCaveat]="windowCaveat()"
+                >
+                  <!-- The panel answers "how is this player doing"; the next
+                       question is usually about the side they play for. -->
+                  @if (player.teamId) {
+                    <a class="team-link" [routerLink]="['/rankings/teams', player.teamId]">
+                      {{ player.teamName }} team page →
+                    </a>
                   }
-                </div>
+                </app-player-panel>
               </td>
             </tr>
           }
@@ -211,4 +151,37 @@
       </tbody>
     </table>
   </div>
+
+  <!-- Same order as the columns and marks they explain, so the legend can be
+       read against the table rather than searched. -->
+  <dl class="legend">
+    <div class="term">
+      <dt>Rating</dt>
+      <dd>
+        Where this player sits among the {{ isGlobal() ? 'international' : regionLabel() }} players
+        at their position, 0–100. It is pulled toward the neutral 50 by how little
+        has been played, so a thin record can’t read as dominance.
+      </dd>
+    </div>
+    <div class="term">
+      <dt>Confidence</dt>
+      <dd>
+        The <span class="swatch swatch--band"></span> solid band is the distance from 50 the games
+        have earned; the <span class="swatch swatch--tail"></span> dashed tail runs on to where the
+        rating settles if this form holds. A long tail means a thin sample, not a
+        prediction of improvement.
+      </dd>
+    </div>
+    <div class="term">
+      <dt>
+        <span class="drive drive--lifting">▲</span>
+        <span class="drive drive--dragging">▼</span>
+      </dt>
+      <dd>
+        In an open panel, which stats are lifting or dragging the rating relative to the
+        position’s median. Dimmed stats are shown for detail and carry no weight at
+        that position.
+      </dd>
+    </div>
+  </dl>
 }

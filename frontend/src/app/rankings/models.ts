@@ -22,6 +22,12 @@ export function isLeagueSlug(value: string | null | undefined): value is LeagueS
   return value !== null && value !== undefined && (LEAGUE_SLUGS as readonly string[]).includes(value);
 }
 
+/** `scope` is a league slug or 'international'; ISO date, null if never played. */
+export interface BoardUpdated {
+  scope: string;
+  lastUpdated: string | null;
+}
+
 export interface LeagueSummary {
   slug: LeagueSlug;
   name: string;
@@ -43,6 +49,8 @@ export interface TeamSummary {
   /** rating - rd. What the board is ranked by. */
   floor: number;
   rank: number;
+  /** Places gained since this team last played, positive upward; null when idle. */
+  rankChange: number | null;
   games: number;
   recentRosterChange: boolean;
   /** Finish at each of the last four international events this team played. */
@@ -56,6 +64,19 @@ export interface RosterEntry {
   handle: string;
   role: 'TOP' | 'JNG' | 'MID' | 'BOT' | 'SUP';
   isStarter: boolean;
+  /** In this team's league at this role -- the same figures the player board serves. */
+  rating: number;
+  rawRating: number;
+  confidence: number;
+  gamesPlayed: number;
+  /** Their place among the league's players at this position, by rating. */
+  roleRank: number;
+  rolePeerCount: number;
+  /**
+   * Whether this player is rated internationally at all. Only ~30% of rostered
+   * players are, so the panel offers that board only where there is one.
+   */
+  hasInternational: boolean;
 }
 
 /** A team's record at one tournament, in games and in series. */
@@ -129,10 +150,20 @@ export interface PlayerSummary {
   role: Role;
   rating: number;
   rank: number;
+  /** Places gained since this player last played, positive upward; null when idle. */
+  rankChange: number | null;
   scope: PlayerRatingScope;
   /** Which stretch of play it was measured over. Always 'all' internationally. */
   window: RatingWindow;
   gamesPlayed: number;
+  /** The composite before shrinkage -- where `rating` settles if this form holds. */
+  rawRating: number;
+  /**
+   * How much of `rawRating` the games have earned, 0-1. Served rather than
+   * derived from `gamesPlayed`: the shrink runs on a recency-weighted count,
+   * and a transferred player is shrunk toward a carryover anchor, not 50.
+   */
+  confidence: number;
   /**
    * Another squad they are concurrently active on -- almost always an academy
    * or partner team. Set only when they have no games on this board, which is
@@ -177,4 +208,12 @@ export interface PlayerDetail extends PlayerSummary {
   stats: PlayerStats;
   /** The denominator behind every `place`: same-role players on this board. */
   peerCount: number;
+  /** Where they sit by rating among those peers -- the board's rank filtered to their role. */
+  roleRank: number;
+  /**
+   * Which stats carry weight at this role; the rest are shown as context. Comes
+   * from the server, which reads the tuned weights directly — restating them
+   * here would let the panel and the model drift apart.
+   */
+  ratedStats: (keyof PlayerStats)[];
 }

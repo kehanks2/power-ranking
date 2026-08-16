@@ -16,6 +16,12 @@ export interface LeagueSummaryDto {
  */
 export type TeamRatingScope = 'international' | string;
 
+/** `scope` is a league slug or 'international'; ISO date, null if never played. */
+export interface BoardUpdatedDto {
+  scope: string;
+  lastUpdated: string | null;
+}
+
 export interface TeamSummaryDto {
   id: number;
   slug: string;
@@ -37,6 +43,8 @@ export interface TeamSummaryDto {
   results: { event: string; placement: string | null }[];
   /** Most recent international, when none of the last four were attended; otherwise null. */
   lastInternational: string | null;
+  /** Places gained on the board's last day of play; null when that is long past. */
+  rankChange: number | null;
 }
 
 export interface RosterEntryDto {
@@ -44,6 +52,22 @@ export interface RosterEntryDto {
   handle: string;
   role: 'TOP' | 'JNG' | 'MID' | 'BOT' | 'SUP';
   isStarter: boolean;
+  // The player's rating in this team's league at this role -- the same figures
+  // the player board serves, so the roster draws the same confidence range. An
+  // unrated signing sits at the neutral 50 rather than dropping off the roster.
+  rating: number;
+  rawRating: number;
+  confidence: number;
+  gamesPlayed: number;
+  // Where they sit among the league's players at their position, which is the
+  // board's rank filtered to that role. Read off the board itself rather than
+  // ranked in SQL, so the roster cannot disagree with the page it links to.
+  roleRank: number;
+  rolePeerCount: number;
+  // Whether this player is rated on the international board at all. Only ~30% of
+  // rostered players are (it needs 10+ international games), so the panel offers
+  // that pool only where there is one, rather than switching to an empty grid.
+  hasInternational: boolean;
 }
 
 /** One series a team played, oriented to them: `ownScore`-`opponentScore`. */
@@ -139,6 +163,8 @@ export interface PlayerSummaryDto {
   role: 'TOP' | 'JNG' | 'MID' | 'BOT' | 'SUP';
   rating: number;
   rank: number;
+  /** Places gained since the previous generation; null until a second one exists. */
+  rankChange: number | null;
   /** Which pool `rating` was measured against -- it is meaningless without this. */
   scope: PlayerRatingScope;
   /** Which stretch of play it was measured over. Always 'all' internationally. */
@@ -146,6 +172,12 @@ export interface PlayerSummaryDto {
   // Games behind `rating`: ratings shrink toward 50 by sample size, so a low one
   // on few games means "not established", not "bad".
   gamesPlayed: number;
+  /** The composite before shrinkage -- where `rating` settles if this form holds. */
+  rawRating: number;
+  // How much of the raw score the games have earned, 0-1. Served rather than
+  // derived from gamesPlayed: the shrink runs on a recency-weighted count, and a
+  // transferred player is shrunk toward a carryover anchor instead of 50.
+  confidence: number;
   // Another squad Liquipedia lists this player on (usually academy/partner, what
   // a zero-game tier-1 row means); attributed to Liquipedia since it can't be
   // told from an unclosed transfer.
@@ -191,4 +223,10 @@ export interface PlayerDetailDto extends PlayerSummaryDto {
   stats: PlayerStatsDto;
   /** The denominator behind every `place`: same-role players on this board. */
   peerCount: number;
+  /** Where they sit by rating among those peers -- the board's rank filtered to their role. */
+  roleRank: number;
+  // Which stats carry weight at this role, so the panel can show the rest as
+  // context rather than as drivers. Served, not mirrored: the weights are tuned
+  // constants and restating them here would let the two drift apart.
+  ratedStats: (keyof PlayerStatsDto)[];
 }

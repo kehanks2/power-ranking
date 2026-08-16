@@ -1,48 +1,48 @@
-import { Component, ChangeDetectionStrategy, inject, signal, computed, effect } from '@angular/core';
-import { DecimalPipe, PercentPipe } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import {
+  Component,
+  ChangeDetectionStrategy,
+  Injector,
+  afterNextRender,
+  inject,
+  signal,
+  computed,
+  effect,
+} from '@angular/core';
+import { DOCUMENT, DecimalPipe } from '@angular/common';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { RankingsApiService } from '../rankings-api.service';
 import { LeagueFilterService } from '../league-filter.service';
-import {
-  RATING_WINDOWS,
-  ROLES,
-  type PlayerDetail,
-  type PlayerStat,
-  type PlayerSummary,
-  type RatingWindow,
-  type Role,
-} from '../models';
-
-/** One stat as the panel renders it: already formatted, with its standing. */
-interface StatView {
-  label: string;
-  display: string;
-  /** "3rd", or null when the player has no value for this stat. */
-  place: string | null;
-  /** 0-1 along the ranking, best at 0. A dot marking position, not a magnitude bar. */
-  position: number;
-  /** Top quartile of the peer group (a fraction, so it holds across group sizes). */
-  standout: boolean;
-  /** Spelled out for the tooltip and for screen readers. */
-  standing: string;
-}
-
-/** The nine stats grouped by the question they answer (Combat / Economy / Team impact). */
-interface StatGroup {
-  title: string;
-  stats: StatView[];
-}
+import { ConfidenceAxisComponent } from '../confidence/confidence-axis.component';
+import { ConfidenceRangeComponent } from '../confidence/confidence-range.component';
+import { PlayerPanelComponent } from '../player-panel/player-panel.component';
+import { RankChangeComponent } from '../rank-change/rank-change.component';
+import { RATING_WINDOWS, ROLES, type PlayerDetail, type PlayerSummary, type RatingWindow, type Role } from '../models';
 
 @Component({
   selector: 'app-players-list',
-  imports: [DecimalPipe, PercentPipe, RouterLink],
+  imports: [
+    DecimalPipe,
+    RouterLink,
+    ConfidenceAxisComponent,
+    ConfidenceRangeComponent,
+    PlayerPanelComponent,
+    RankChangeComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './players-list.component.html',
   styleUrl: './players-list.component.scss',
 })
 export class PlayersListComponent {
   private readonly api = inject(RankingsApiService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly injector = inject(Injector);
+  private readonly document = inject(DOCUMENT);
   protected readonly filterService = inject(LeagueFilterService);
+
+  // Read once, not tracked: it says which row to open on arrival, and keeping it
+  // live would re-open that row every time the reader closed it.
+  private readonly requestedPlayerId = Number(this.route.snapshot.queryParamMap.get('player'));
+  private openedFromLink = false;
 
   private readonly allPlayers = signal<PlayerSummary[]>([]);
   protected readonly loading = signal(true);
@@ -85,7 +85,7 @@ export class PlayersListComponent {
   protected readonly gamesColumnLabel = computed(() => (this.isGlobal() ? "Int'l games" : 'Games'));
 
   /** Panel spans the whole row, so the count has to track the conditional Region column. */
-  protected readonly columnCount = computed(() => (this.isGlobal() ? 7 : 6));
+  protected readonly columnCount = computed(() => (this.isGlobal() ? 8 : 7));
 
   // What the panel's numbers are measured over. Phrased to match the teams
   // board's panel word for word.
@@ -110,71 +110,6 @@ export class PlayersListComponent {
       : 'Fewer games behind every rating here, so they sit closer to the neutral 50 than the full-history board does.',
   );
 
-  protected readonly statGroups = computed<StatGroup[]>(() => {
-    const detail = this.detail();
-    if (!detail) return [];
-    const s = detail.stats;
-    const peers = detail.peerCount;
-
-    const view = (label: string, stat: PlayerStat, display: (v: number) => string): StatView => {
-      // 1st sits at 0, last at 1. Guarded against a peer group of one, where
-      // there is no spread to place anyone along.
-      const position = stat.place === null || peers <= 1 ? 0 : (stat.place - 1) / (peers - 1);
-      return {
-        label,
-        display: stat.value === null ? '—' : display(stat.value),
-        place: stat.place === null ? null : this.ordinal(stat.place),
-        position,
-        standout: stat.place !== null && peers > 0 && stat.place <= Math.ceil(peers / 4),
-        standing:
-          stat.place === null
-            ? 'No games on this board to place'
-            : `${this.ordinal(stat.place)} of ${peers} ${detail.role} players on this board`,
-      };
-    };
-
-    const to = (places: number) => (v: number) => v.toFixed(places);
-    const pct = (v: number) => `${(v * 100).toFixed(0)}%`;
-    // Signed, because the sign IS the reading: negative means behind the
-    // player they were matched against.
-    const signed = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(Math.round(v)).toLocaleString('en-US')}`;
-
-    return [
-      {
-        title: 'Combat',
-        stats: [
-          view('KDA', s.kda, to(2)),
-          view('Kills', s.kills, to(1)),
-          view('Deaths', s.deaths, to(1)),
-          view('Assists', s.assists, to(1)),
-        ],
-      },
-      {
-        title: 'Economy',
-        stats: [
-          view('CS / min', s.csPerMin, to(1)),
-          view('Gold vs. lane', s.goldDiff, signed),
-          view('Gold share', s.goldShare, pct),
-        ],
-      },
-      {
-        title: 'Team impact',
-        stats: [
-          view('Kill participation', s.killParticipation, pct),
-          view('Damage share', s.damageShare, pct),
-          view('Objective control', s.objectiveControl, pct),
-        ],
-      },
-    ];
-  });
-
-  // Objective control is a jungle stat; it feeds the rating for junglers (and
-  // lightly supports) but is display-only context for top/mid/bot.
-  protected readonly objectiveControlContextOnly = computed(() => {
-    const role = this.detail()?.role;
-    return role === 'TOP' || role === 'MID' || role === 'BOT';
-  });
-
   constructor() {
     effect((onCleanup) => {
       const scope = this.filterService.selectedScope();
@@ -187,6 +122,7 @@ export class PlayersListComponent {
       const subscription = this.api.getPlayers(scope, window).subscribe((players) => {
         this.allPlayers.set(players);
         this.loading.set(false);
+        this.openRequestedPlayer(players);
       });
       onCleanup(() => subscription.unsubscribe());
     });
@@ -255,19 +191,19 @@ export class PlayersListComponent {
     return this.openPlayerId() === playerId;
   }
 
-  /** 1st, 2nd, 3rd, 4th -- and 11th/12th/13th, which break the pattern. */
-  private ordinal(n: number): string {
-    const teens = n % 100;
-    if (teens >= 11 && teens <= 13) return `${n}th`;
-    switch (n % 10) {
-      case 1:
-        return `${n}st`;
-      case 2:
-        return `${n}nd`;
-      case 3:
-        return `${n}rd`;
-      default:
-        return `${n}th`;
-    }
+  /**
+   * Opens the row a `?player=` link asked for, once, and scrolls to it -- a
+   * board is long enough that landing on it without scrolling looks like the
+   * link did nothing. Silently ignored when that player has no row here.
+   */
+  private openRequestedPlayer(players: PlayerSummary[]): void {
+    const id = this.requestedPlayerId;
+    if (!id || this.openedFromLink) return;
+    if (!players.some((p) => p.id === id)) return;
+    this.openedFromLink = true;
+    this.openPlayerId.set(id);
+    afterNextRender(() => this.document.getElementById(`player-row-${id}`)?.scrollIntoView({ block: 'center' }), {
+      injector: this.injector,
+    });
   }
 }

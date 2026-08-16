@@ -11,7 +11,6 @@ import {
   transferAnchor,
   weightedMean,
   NEUTRAL_SCORE,
-  DEFAULT_SHRINKAGE_GAMES,
 } from '@power-ranking/rating-engine';
 import {
   LEAGUE_SPLIT_START_CTE,
@@ -133,6 +132,8 @@ export interface PlayerGroupRating {
   leagueId: number;
   role: string;
   rating: number;
+  /** The blended composite before shrinkage; `rating` is this pulled toward an anchor. */
+  rawRating: number;
   gamesPlayed: number;
   effectiveGames: number;
   /** The group backed by the most recency-weighted games -- one per player. */
@@ -191,6 +192,7 @@ export function selectGroupRatings(
         leagueId: player.leagueId,
         role: player.role,
         rating: shrinkToNeutral(blended, player.effectiveGames),
+        rawRating: blended,
         gamesPlayed: player.gamesPlayed,
         effectiveGames: player.effectiveGames,
         isPrimary: false,
@@ -246,12 +248,10 @@ function applyTransferAnchors(ratings: PlayerGroupRating[]): void {
       });
       if (prior === null) return;
 
-      // Undo the neutral shrink to recover the raw blended score, then re-shrink
-      // toward the transfer anchor.
-      const confidence = group.effectiveGames / (group.effectiveGames + DEFAULT_SHRINKAGE_GAMES);
-      if (confidence === 0) return;
-      const blended = NEUTRAL_SCORE + (firstPass[index] - NEUTRAL_SCORE) / confidence;
-      group.rating = shrinkToward(blended, group.effectiveGames, transferAnchor(prior));
+      // No weighted games means no shrink to redo: shrinkToward would return the
+      // anchor outright, which would be assigning a rating rather than pulling one.
+      if (group.effectiveGames === 0) return;
+      group.rating = shrinkToward(group.rawRating, group.effectiveGames, transferAnchor(prior));
     });
   }
 }
@@ -362,9 +362,15 @@ export async function computeInternationalPlayerRatings(
   return writeRatings(pool, ratings, 'international');
 }
 
+// Distinct data frontiers kept per (scope, window) -- days of play, not runs.
+// Must exceed RANK_CHANGE_STALE_DAYS (10) or a board can fall out of history
+// while still inside the window where it should show carets.
+export const RETAINED_FRONTIERS = 15;
+
 /**
- * Replaces every row for one (scope, window), deleting only that pair -- all four
- * passes share the table, so a blanket DELETE would have each run wipe the others.
+ * Appends a generation for one (scope, window); rank-change carets read the
+ * previous one. Pruning names both scope AND window -- all four passes share
+ * the table, so a delete missing either wipes another pass's history.
  */
 async function writeRatings(
   pool: Pool,
@@ -376,15 +382,22 @@ async function writeRatings(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM player_ratings_history WHERE scope = $1 AND rating_window = $2', [scope, window]);
     let inserted = 0;
-    const today = new Date().toISOString().slice(0, 10);
+    // computed_at is the generation key, so every row of this pass shares it.
+    const computedAt = new Date();
+    const today = computedAt.toISOString().slice(0, 10);
+    // What the carets pick a baseline on -- see migration 0015.
+    const frontier = await client.query<{ day: string | null }>(
+      `SELECT max(datetime_utc)::date::text AS day FROM games`,
+    );
+    const dataFrontier = frontier.rows[0]?.day ?? null;
 
     for (const rating of ratings) {
       await client.query(
         `INSERT INTO player_ratings_history
-           (player_id, as_of_date, rating, games_played, method_version, scope, league_id, role, is_primary, rating_window)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+           (player_id, as_of_date, rating, games_played, method_version, scope, league_id, role, is_primary, rating_window,
+            raw_rating, effective_games, computed_at, data_frontier)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
           rating.playerId,
           today,
@@ -397,10 +410,46 @@ async function writeRatings(
           rating.role,
           rating.isPrimary,
           window,
+          rating.rawRating,
+          rating.effectiveGames,
+          computedAt,
+          dataFrontier,
         ],
       );
       inserted += 1;
     }
+
+    // Recomputing the same games again adds nothing a caret can read, so keep
+    // only the newest run per frontier. Without this, retention would be spent
+    // in runs rather than days and a second run in one day would halve the
+    // history the carets can reach back through.
+    await client.query(
+      `DELETE FROM player_ratings_history prh
+       WHERE prh.scope = $1 AND prh.rating_window = $2
+         AND prh.computed_at < (
+           SELECT max(p2.computed_at) FROM player_ratings_history p2
+           WHERE p2.scope = prh.scope AND p2.rating_window = prh.rating_window
+             AND p2.data_frontier IS NOT DISTINCT FROM prh.data_frontier
+         )`,
+      [scope, window],
+    );
+
+    // Retention in days of play, not runs: a board idle up to
+    // RANK_CHANGE_STALE_DAYS still needs a generation predating its last match
+    // day, or its carets go flat while it is still inside the stale window.
+    await client.query(
+      `DELETE FROM player_ratings_history
+       WHERE scope = $1 AND rating_window = $2
+         AND data_frontier < (
+           SELECT min(f) FROM (
+             SELECT DISTINCT data_frontier AS f FROM player_ratings_history
+             WHERE scope = $1 AND rating_window = $2 AND data_frontier IS NOT NULL
+             ORDER BY data_frontier DESC LIMIT $3
+           ) kept
+         )`,
+      [scope, window, RETAINED_FRONTIERS],
+    );
+
     await client.query('COMMIT');
     return inserted;
   } catch (err) {

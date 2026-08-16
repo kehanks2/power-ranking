@@ -69,7 +69,10 @@
                a mouse; the row click is a mouse-only convenience on top, and
                stopPropagation keeps the two from cancelling each other. -->
           <tr class="row-toggle" [class.is-open]="isOpen(team.id)" (click)="toggle(team.id)">
-            <td class="rank">{{ i + 1 }}</td>
+            <td class="rank">
+              <span class="rank-num">{{ i + 1 }}</span>
+              <pr-rank-change [change]="team.rankChange" />
+            </td>
             <td>
               <button
                 type="button"

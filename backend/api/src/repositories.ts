@@ -6,8 +6,12 @@ import {
   conservativeRank,
   META_WEIGHT,
   DEFAULT_CONSERVATIVE_K,
+  DEFAULT_SHRINKAGE_GAMES,
   GLICKO2_SCALE,
   DEFAULT_VOLATILITY,
+  NEUTRAL_SCORE,
+  componentWeightsForRole,
+  type PlayerComponent,
   type RatingState,
 } from '@power-ranking/rating-engine';
 import type {
@@ -16,10 +20,12 @@ import type {
   TeamDetailDto,
   PlayerSummaryDto,
   PlayerDetailDto,
+  PlayerStatsDto,
   PlayerRatingScope,
   RatingWindow,
   RosterEntryDto,
   TeamSeriesDto,
+  BoardUpdatedDto,
 } from '@power-ranking/shared';
 import { LEAGUE_SPLIT_START_CTE, playerWindowPredicate } from '@power-ranking/shared';
 
@@ -64,6 +70,25 @@ function coldStartState(): RatingState {
 function toRatingState(muCol: unknown, phiCol: unknown): RatingState | null {
   if (muCol === null || muCol === undefined) return null;
   return { mu: Number(muCol), phi: Number(phiCol), sigma: DEFAULT_VOLATILITY };
+}
+
+/** Each board's most recent day of play -- the same day the carets measure from. */
+export async function getBoardsLastUpdated(pool: Pool): Promise<BoardUpdatedDto[]> {
+  // ::text, not a JS Date: pg parses DATE at local midnight, so serialising it
+  // back through toISOString() reports the wrong day either side of UTC.
+  const result = await pool.query<{ scope: string; last_updated: string | null }>(`
+    SELECT l.slug AS scope, max(g.datetime_utc)::date::text AS last_updated
+    FROM leagues l
+    JOIN team_league_memberships tlm ON tlm.league_id = l.id AND tlm.end_date IS NULL
+    JOIN games g ON g.team1_id = tlm.team_id OR g.team2_id = tlm.team_id
+    GROUP BY l.slug
+    UNION ALL
+    SELECT 'international', max(g.datetime_utc)::date::text
+    FROM games g
+    JOIN series s ON s.id = g.series_id
+    JOIN tournaments tn ON tn.id = s.tournament_id AND tn.tournament_type = 'international'
+  `);
+  return result.rows.map((row) => ({ scope: row.scope, lastUpdated: row.last_updated }));
 }
 
 export async function getLeagues(pool: Pool): Promise<LeagueSummaryDto[]> {
@@ -188,7 +213,82 @@ function toTeamSummaries(rows: TeamRow[]): TeamSummaryDto[] {
   // Ranked on the floor, not the rating, so a thinly-evidenced high number
   // doesn't top one we actually know. See conservativeRank.
   withRatings.sort((a, b) => b.floor - a.floor);
-  return withRatings.map((row, index) => ({ ...row, rank: index + 1 }));
+  return withRatings.map((row, index) => ({ ...row, rank: index + 1, rankChange: null }));
+}
+
+// Counted from the newest game we hold, not from today -- ingestion runs in
+// bursts, and a wall-clock cutoff blanks the board whenever a pull is late.
+export const RANK_CHANGE_STALE_DAYS = 10;
+
+/** Both 'YYYY-MM-DD'. Parsed as UTC so a local offset cannot shift the day. */
+function daysBetween(from: string, to: string): number {
+  return (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
+}
+
+/**
+ * Places gained over the board's most recent day of play, positive upward.
+ * One baseline for the whole board, so the deltas cancel; anchored to a match
+ * day rather than an ingestion run, so pull cadence cannot leak into them.
+ */
+async function computeRankChanges(
+  pool: Pool,
+  ranked: { id: number; rank: number }[],
+  international: boolean,
+): Promise<Map<number, number | null>> {
+  const changes = new Map<number, number | null>(ranked.map((t) => [t.id, null]));
+  if (ranked.length === 0) return changes;
+  const teamIds = ranked.map((t) => t.id);
+
+  // The international board only moves on games at international events.
+  const gameScope = international
+    ? `JOIN series s ON s.id = g.series_id
+       JOIN tournaments tn ON tn.id = s.tournament_id AND tn.tournament_type = 'international'`
+    : '';
+  const matchDay = await pool.query<{ day: string | null }>(
+    `SELECT max(g.datetime_utc)::date::text AS day FROM games g ${gameScope}
+     WHERE g.team1_id = ANY($1) OR g.team2_id = ANY($1)`,
+    [teamIds],
+  );
+  const baselineDay = matchDay.rows[0]?.day;
+  if (!baselineDay) return changes;
+
+  // Unscoped: data freshness, not board activity. Scoped to international it
+  // floats to the last event and keeps carets up for months after it ended.
+  const newestRow = await pool.query<{ newest: string | null }>(
+    `SELECT max(datetime_utc)::date::text AS newest FROM games`,
+  );
+  const newestDay = newestRow.rows[0]?.newest;
+  if (!newestDay) return changes;
+  // The whole board dashes, never single teams, or the rest stop reconciling.
+  if (daysBetween(baselineDay, newestDay) > RANK_CHANGE_STALE_DAYS) return changes;
+
+  // id breaks the as_of_date tie -- see getTeams. $3 is cast to date, not
+  // passed as a Date: a JS Date is local midnight, which under a negative UTC
+  // offset lands hours INTO the match day and pulls its own games into "prior".
+  const snapshots = await pool.query<{ team_id: number; mu_ctx: string; phi_ctx: string }>(
+    `SELECT DISTINCT ON (team_id) team_id, mu_ctx, phi_ctx FROM team_ratings_history
+     WHERE team_id = ANY($1) AND scope = $2 AND as_of_date < $3::date
+     ORDER BY team_id, as_of_date DESC, id DESC`,
+    [teamIds, international ? 'international' : 'overall', baselineDay],
+  );
+
+  // mu - phi orders identically to the displayed floor: fromGlicko2Scale is linear.
+  const priorBoard = snapshots.rows
+    .map((row) => ({ id: row.team_id, score: Number(row.mu_ctx) - Number(row.phi_ctx) }))
+    .sort((a, b) => b.score - a.score);
+
+  // Both ranks over the teams on both boards, or a team that has since joined
+  // or left counts as movement someone else made.
+  const currentRank = new Map(ranked.map((t) => [t.id, t.rank]));
+  const nowOrder = priorBoard
+    .map((t) => ({ id: t.id, rank: currentRank.get(t.id) ?? Number.MAX_SAFE_INTEGER }))
+    .sort((a, b) => a.rank - b.rank);
+
+  priorBoard.forEach((team, index) => {
+    const nowRank = nowOrder.findIndex((t) => t.id === team.id);
+    if (nowRank >= 0) changes.set(team.id, index - nowRank);
+  });
+  return changes;
 }
 
 /**
@@ -256,8 +356,11 @@ export async function getTeams(pool: Pool, scope: string): Promise<TeamSummaryDt
     LEFT JOIN intl_game_count igc ON igc.team_id = t.id
     LEFT JOIN regional_game_count rgc ON rgc.team_id = t.id
     JOIN LATERAL (
+      -- A team takes several snapshots in one day (roster_decay then
+      -- game_update) and as_of_date is a DATE, so ordering on it alone returns
+      -- an arbitrary one. Replay inserts chronologically: highest id wins.
       SELECT mu_ctx, phi_ctx FROM team_ratings_history
-      WHERE team_id = t.id AND scope = $1 ORDER BY as_of_date DESC LIMIT 1
+      WHERE team_id = t.id AND scope = $1 ORDER BY as_of_date DESC, id DESC LIMIT 1
     ) tr ON true
     WHERE tlg.last_game_at >= lls.latest_split_start
       AND ($2::text IS NULL OR l.slug = $2)
@@ -265,7 +368,9 @@ export async function getTeams(pool: Pool, scope: string): Promise<TeamSummaryDt
     [international ? 'international' : 'overall', international ? null : scope],
   );
 
-  return toTeamSummaries(result.rows);
+  const summaries = toTeamSummaries(result.rows);
+  const changes = await computeRankChanges(pool, summaries, international);
+  return summaries.map((team) => ({ ...team, rankChange: changes.get(team.id) ?? null }));
 }
 
 export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetailDto | null> {
@@ -285,11 +390,34 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     handle: string;
     role: RosterEntryDto['role'];
     is_starter: boolean;
+    rating: string | null;
+    games_played: number | null;
+    raw_rating: string | null;
+    effective_games: string | null;
+    has_international: boolean;
   }>(
     `
-    SELECT p.id AS player_id, p.handle, rm.role, rm.is_starter
+    SELECT p.id AS player_id, p.handle, rm.role, rm.is_starter,
+           prh.rating, prh.games_played, prh.raw_rating, prh.effective_games,
+           EXISTS (
+             SELECT 1 FROM player_ratings_history intl
+             WHERE intl.player_id = p.id AND intl.scope = 'international'
+           ) AS has_international
     FROM roster_memberships rm
     JOIN players p ON p.id = rm.player_id
+    JOIN team_league_memberships tlm ON tlm.team_id = rm.team_id AND tlm.end_date IS NULL
+    -- Must name the same group the player board does, or the roster shows a
+    -- rating earned in a league this player has left.
+    LEFT JOIN LATERAL (
+      SELECT rating, games_played, raw_rating, effective_games
+      FROM player_ratings_history prh_inner
+      WHERE prh_inner.player_id = p.id
+        AND prh_inner.scope = 'regional'
+        AND prh_inner.rating_window = 'all'
+        AND prh_inner.role = rm.role
+        AND prh_inner.league_id = tlm.league_id
+      ORDER BY computed_at DESC LIMIT 1
+    ) prh ON true
     WHERE rm.team_id = $1 AND rm.end_date IS NULL
     -- In-game order (TOP/JNG/MID/BOT/SUP), not alphabetical; starters lead within a role.
     ORDER BY array_position(ARRAY['TOP','JNG','MID','BOT','SUP']::text[], rm.role), rm.is_starter DESC, p.handle
@@ -297,12 +425,33 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     [teamId],
   );
 
-  const roster: RosterEntryDto[] = rosterResult.rows.map((row) => ({
-    playerId: row.player_id,
-    handle: row.handle,
-    role: row.role,
-    isStarter: row.is_starter,
-  }));
+  // The league's board, so a roster rank is the same number that board shows
+  // when it is filtered to the role -- ranking in SQL could drift from it.
+  const leagueBoard = await getPlayers(pool, leagueRow.rows[0].slug);
+  const roleOrder = new Map<string, number[]>();
+  for (const player of leagueBoard) {
+    if (!roleOrder.has(player.role)) roleOrder.set(player.role, []);
+    roleOrder.get(player.role)!.push(player.id);
+  }
+
+  const roster: RosterEntryDto[] = rosterResult.rows.map((row) => {
+    const effectiveGames = row.effective_games !== null ? Number(row.effective_games) : 0;
+    const rating = row.rating !== null ? Number(row.rating) : NEUTRAL_SCORE;
+    const peers = roleOrder.get(row.role) ?? [];
+    return {
+      playerId: row.player_id,
+      handle: row.handle,
+      role: row.role,
+      isStarter: row.is_starter,
+      rating,
+      rawRating: row.raw_rating !== null ? Number(row.raw_rating) : rating,
+      confidence: effectiveGames / (effectiveGames + DEFAULT_SHRINKAGE_GAMES),
+      gamesPlayed: row.games_played ?? 0,
+      roleRank: peers.indexOf(row.player_id) + 1,
+      rolePeerCount: peers.length,
+      hasInternational: row.has_international,
+    };
+  });
 
   // One row per tournament, games AND series, with formats (a 12-6 in Bo1s is a
   // different season from a 12-6 in Bo5s). Placements are internationals only.
@@ -429,6 +578,104 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
 }
 
 /**
+ * Places gained since the previous generation, positive upward. Null until a
+ * second generation exists, so every row dashes before the next ingestion run.
+ */
+async function computePlayerRankChanges(
+  pool: Pool,
+  ranked: { id: number; rank: number }[],
+  scope: PlayerRatingScope,
+  ratingWindow: RatingWindow,
+): Promise<Map<number, number | null>> {
+  const changes = new Map<number, number | null>(ranked.map((p) => [p.id, null]));
+  if (ranked.length === 0) return changes;
+  const playerIds = ranked.map((p) => p.id);
+  const international = scope === 'international';
+
+  // The board's group predicate without its LIMIT 1, or a transfer is compared
+  // against a rating earned in the league they left.
+  const history = await pool.query<{
+    player_id: number;
+    computed_at: Date;
+    rating: string;
+    data_frontier: string | null;
+  }>(
+    `SELECT prh.player_id, prh.computed_at, prh.rating, prh.data_frontier::text
+     FROM players p
+     LEFT JOIN roster_memberships rm ON rm.player_id = p.id AND rm.end_date IS NULL
+     LEFT JOIN teams t ON t.id = rm.team_id
+     LEFT JOIN team_league_memberships tlm ON tlm.team_id = t.id AND tlm.end_date IS NULL
+     JOIN player_ratings_history prh ON prh.player_id = p.id
+       AND prh.scope = $2 AND prh.rating_window = $3 AND prh.role = rm.role
+       AND ($2 = 'international' OR prh.league_id = tlm.league_id)
+     WHERE p.id = ANY($1)
+     ORDER BY prh.computed_at`,
+    [playerIds, scope, ratingWindow],
+  );
+  if (history.rows.length === 0) return changes;
+
+  const generations = [...new Set(history.rows.map((r) => r.computed_at.getTime()))].sort((a, b) => a - b);
+  if (generations.length < 2) return changes;
+  const intlJoin = international
+    ? `JOIN series s ON s.id = g.series_id
+       JOIN tournaments tn ON tn.id = s.tournament_id AND tn.tournament_type = 'international'`
+    : '';
+  const matchDay = await pool.query<{ day: string | null }>(
+    `SELECT max(g.datetime_utc)::date::text AS day
+     FROM player_game_performance pgp
+     JOIN games g ON g.id = pgp.game_id
+     ${intlJoin}
+     WHERE pgp.player_id = ANY($1)`,
+    [playerIds],
+  );
+  const lastPlayed = matchDay.rows[0]?.day;
+  if (!lastPlayed) return changes;
+  // Unscoped, as on the team board.
+  const newestRow = await pool.query<{ newest: string | null }>(
+    `SELECT max(datetime_utc)::date::text AS newest FROM games`,
+  );
+  const newestDay = newestRow.rows[0]?.newest;
+  if (!newestDay) return changes;
+  if (daysBetween(lastPlayed, newestDay) > RANK_CHANGE_STALE_DAYS) return changes;
+
+  // The newest generation whose DATA stops before the last match day. Keyed on
+  // the frontier, not computed_at: recomputing old games today would otherwise
+  // look newer than a match day it does not contain. Frequency-independent --
+  // every rerun on the same data shares a frontier, so the baseline holds.
+  const frontierOf = new Map<number, string | null>();
+  for (const row of history.rows) frontierOf.set(row.computed_at.getTime(), row.data_frontier);
+  const shown = generations[generations.length - 1];
+  const baseline = generations
+    .filter((g) => {
+      const frontier = frontierOf.get(g);
+      return g !== shown && frontier !== null && frontier !== undefined && frontier < lastPlayed;
+    })
+    .pop();
+  if (baseline === undefined) return changes;
+
+  const priorBoard = history.rows
+    .filter((row) => row.computed_at.getTime() === baseline)
+    .map((row) => ({ id: row.player_id, rating: Number(row.rating) }))
+    .sort((a, b) => b.rating - a.rating);
+
+  // Both ranks over the players in both generations, or a signing or departure
+  // counts as movement someone else made.
+  const currentRank = new Map(ranked.map((p) => [p.id, p.rank]));
+  const nowOrder = priorBoard
+    .filter((p) => currentRank.has(p.id))
+    .map((p) => ({ id: p.id, rank: currentRank.get(p.id)! }))
+    .sort((a, b) => a.rank - b.rank);
+
+  priorBoard
+    .filter((p) => currentRank.has(p.id))
+    .forEach((player, index) => {
+      const nowRank = nowOrder.findIndex((p) => p.id === player.id);
+      if (nowRank >= 0) changes.set(player.id, index - nowRank);
+    });
+  return changes;
+}
+
+/**
  * 'regional' (default) ranks on within-league percentile, so it only makes sense
  * filtered to one league. 'international' (the Global tab) rates on international
  * games against a role peer group, so it IS cross-league comparable; players with
@@ -453,12 +700,14 @@ export async function getPlayers(
     role: PlayerSummaryDto['role'] | null;
     rating: string | null;
     games_played: number | null;
+    raw_rating: string | null;
+    effective_games: string | null;
     secondary_team: string | null;
   }>(
     `
     WITH ${LEAGUE_LATEST_SPLIT_CTE}
     SELECT p.id, p.handle, t.id AS team_id, t.slug AS team_slug, t.name AS team_name, l.slug AS league_slug, rm.role,
-           prh.rating, prh.games_played, rm.secondary_team
+           prh.rating, prh.games_played, prh.raw_rating, prh.effective_games, rm.secondary_team
     FROM players p
     LEFT JOIN roster_memberships rm ON rm.player_id = p.id AND rm.end_date IS NULL
     LEFT JOIN teams t ON t.id = rm.team_id
@@ -469,13 +718,13 @@ export async function getPlayers(
     -- The group must match the board: regional reads the (league, role) group for
     -- the rostered league (or a transfer is ranked on games they left). Intl is role-only.
     LEFT JOIN LATERAL (
-      SELECT rating, games_played FROM player_ratings_history prh_inner
+      SELECT rating, games_played, raw_rating, effective_games FROM player_ratings_history prh_inner
       WHERE prh_inner.player_id = p.id
         AND prh_inner.scope = $2
         AND prh_inner.rating_window = $3
         AND prh_inner.role = rm.role
         AND ($2 = 'international' OR prh_inner.league_id = l.id)
-      ORDER BY as_of_date DESC LIMIT 1
+      ORDER BY computed_at DESC LIMIT 1
     ) prh ON true
     WHERE ($1::text IS NULL OR l.slug = $1)
       AND (t.id IS NULL OR tlg.last_game_at >= lls.latest_split_start)
@@ -488,24 +737,34 @@ export async function getPlayers(
 
   const withRatings = result.rows
     .filter((row) => row.role !== null)
-    .map((row) => ({
-      id: row.id,
-      handle: row.handle,
-      teamId: row.team_id,
-      teamSlug: row.team_slug,
-      teamName: row.team_name,
-      leagueSlug: row.league_slug,
-      role: row.role as PlayerSummaryDto['role'],
-      rating: row.rating !== null ? Number(row.rating) : 50, // 50 = neutral composite score, no games yet
-      scope,
-      window: ratingWindow,
-      gamesPlayed: row.games_played ?? 0,
-      // Only on a zero-game row -- the case a second squad actually explains.
-      alsoPlaysFor: (row.games_played ?? 0) === 0 ? row.secondary_team : null,
-    }));
+    .map((row) => {
+      const rating = row.rating !== null ? Number(row.rating) : NEUTRAL_SCORE; // no games yet
+      // A row from before migration 0013 has neither figure; 0 confidence and no
+      // tail reads as "nothing vouches for this", which is what we know about it.
+      const effectiveGames = row.effective_games !== null ? Number(row.effective_games) : 0;
+      return {
+        id: row.id,
+        handle: row.handle,
+        teamId: row.team_id,
+        teamSlug: row.team_slug,
+        teamName: row.team_name,
+        leagueSlug: row.league_slug,
+        role: row.role as PlayerSummaryDto['role'],
+        rating,
+        rawRating: row.raw_rating !== null ? Number(row.raw_rating) : rating,
+        confidence: effectiveGames / (effectiveGames + DEFAULT_SHRINKAGE_GAMES),
+        scope,
+        window: ratingWindow,
+        gamesPlayed: row.games_played ?? 0,
+        // Only on a zero-game row -- the case a second squad actually explains.
+        alsoPlaysFor: (row.games_played ?? 0) === 0 ? row.secondary_team : null,
+      };
+    });
 
   withRatings.sort((a, b) => b.rating - a.rating);
-  return withRatings.map((row, index) => ({ ...row, rank: index + 1 }));
+  const ranked = withRatings.map((row, index) => ({ ...row, rank: index + 1, rankChange: null as number | null }));
+  const changes = await computePlayerRankChanges(pool, ranked, scope, ratingWindow);
+  return ranked.map((row) => ({ ...row, rankChange: changes.get(row.id) ?? null }));
 }
 
 /** Must match computePlayerRatings.ts, or the stat line disagrees with the rating. */
@@ -540,6 +799,28 @@ const STAT_METRICS = [
   // The player's team's share of neutral objectives -- a jungle-defining stat.
   { key: 'objectiveControl', expr: 'AVG(s.obj_control)', better: 'higher' },
 ] as const;
+
+// Which panel stat each rating component is shown as. winRate is deliberately
+// absent: it carries half the rating but is reported as the record above the
+// grid, not as a stat in it. Kills/deaths/assists have no component of their own
+// -- they are the raw numbers behind KDA, shown for detail.
+const COMPONENT_STATS: Partial<Record<PlayerComponent, keyof PlayerStatsDto>> = {
+  kda: 'kda',
+  csMin: 'csPerMin',
+  goldDiff: 'goldDiff',
+  goldShare: 'goldShare',
+  damageShare: 'damageShare',
+  killParticipation: 'killParticipation',
+  objControl: 'objectiveControl',
+};
+
+/** The panel stats that carry weight at this role, read off the tuned weights themselves. */
+function ratedStatsForRole(role: string): (keyof PlayerStatsDto)[] {
+  return Object.entries(componentWeightsForRole(role))
+    .filter(([, weight]) => (weight ?? 0) > 0)
+    .map(([component]) => COMPONENT_STATS[component as PlayerComponent])
+    .filter((key): key is keyof PlayerStatsDto => key !== undefined);
+}
 
 /**
  * A player's stat line for one scope, each figure placed against same-role peers.
@@ -681,6 +962,9 @@ export async function getPlayerById(
     // Every same-role row on the board, so the denominator is countable on
     // screen; an unplayed signing takes no place, so the top place can be short of it.
     peerCount: peerIds.length,
+    // peerIds keeps the board's own order, which is by rating.
+    roleRank: peerIds.indexOf(playerId) + 1,
+    ratedStats: ratedStatsForRole(summary.role),
     stats: {
       games,
       wins,

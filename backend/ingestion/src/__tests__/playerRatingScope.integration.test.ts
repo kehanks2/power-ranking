@@ -17,15 +17,48 @@ import {
   computePlayerRatings,
   computeAllPlayerRatingWindows,
   computeInternationalPlayerRatings,
+  RETAINED_FRONTIERS,
 } from '../computePlayerRatings.js';
 import { DEFAULT_WIN_WEIGHT } from '@power-ranking/rating-engine';
 import { RATING_WINDOWS, type RatingWindow } from '@power-ranking/shared';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 
+// Rows are kept per recompute, so these invariants hold within a generation
+// rather than across the table. Join this to read only the newest one.
+const CURRENT_GENERATION = `
+  current_generation AS (
+    SELECT scope, rating_window, max(computed_at) AS computed_at
+    FROM player_ratings_history GROUP BY scope, rating_window
+  )`;
+
+/** Distinct data frontiers for one (scope, window), oldest first. */
+async function frontiers(pool: pg.Pool, scope: string, window: RatingWindow): Promise<string[]> {
+  const result = await pool.query<{ data_frontier: string }>(
+    `SELECT DISTINCT data_frontier::text FROM player_ratings_history
+     WHERE scope = $1 AND rating_window = $2 AND data_frontier IS NOT NULL ORDER BY 1`,
+    [scope, window],
+  );
+  return result.rows.map((row) => row.data_frontier);
+}
+
+/** Every generation timestamp for one (scope, window), oldest first. */
+async function generations(pool: pg.Pool, scope: string, window: RatingWindow): Promise<number[]> {
+  const result = await pool.query<{ computed_at: Date }>(
+    `SELECT DISTINCT computed_at FROM player_ratings_history
+     WHERE scope = $1 AND rating_window = $2 ORDER BY computed_at`,
+    [scope, window],
+  );
+  return result.rows.map((row) => row.computed_at.getTime());
+}
+
 async function countByScope(pool: pg.Pool, scope: string): Promise<number> {
   const result = await pool.query<{ count: string }>(
-    'SELECT COUNT(*) AS count FROM player_ratings_history WHERE scope = $1',
+    `WITH ${CURRENT_GENERATION}
+     SELECT COUNT(*) AS count FROM player_ratings_history prh
+     JOIN current_generation cg ON cg.scope = prh.scope
+       AND cg.rating_window = prh.rating_window AND cg.computed_at = prh.computed_at
+     WHERE prh.scope = $1`,
     [scope],
   );
   return Number(result.rows[0].count);
@@ -33,7 +66,11 @@ async function countByScope(pool: pg.Pool, scope: string): Promise<number> {
 
 async function countByWindow(pool: pg.Pool, window: RatingWindow): Promise<number> {
   const result = await pool.query<{ count: string }>(
-    `SELECT COUNT(*) AS count FROM player_ratings_history WHERE scope = 'regional' AND rating_window = $1`,
+    `WITH ${CURRENT_GENERATION}
+     SELECT COUNT(*) AS count FROM player_ratings_history prh
+     JOIN current_generation cg ON cg.scope = prh.scope
+       AND cg.rating_window = prh.rating_window AND cg.computed_at = prh.computed_at
+     WHERE prh.scope = 'regional' AND prh.rating_window = $1`,
     [window],
   );
   return Number(result.rows[0].count);
@@ -67,6 +104,37 @@ describe('player rating scopes (live Postgres)', () => {
     expect(await countByScope(pool, 'regional')).toBe(regionalAfterBoth);
   }, 60_000);
 
+  it('retains history in days of play, not runs, and leaves other passes alone', async () => {
+    // Recomputing the same games must not consume retention: the carets need a
+    // generation predating a board's last match day for as long as that board is
+    // inside the stale window, and a second run in one day would otherwise
+    // halve how far back they can reach. The prune must also stay inside its own
+    // (scope, window) -- the trap the unscoped DELETE fell into.
+    const before = await generations(pool, 'regional', 'all');
+    const otherBefore = await generations(pool, 'regional', 'split');
+    expect(before.length).toBeGreaterThan(0);
+
+    await computePlayerRatings(pool);
+    const afterFirst = await frontiers(pool, 'regional', 'all');
+
+    // A second run over identical games replaces rather than accumulates.
+    await computePlayerRatings(pool);
+    const after = await generations(pool, 'regional', 'all');
+    expect(await frontiers(pool, 'regional', 'all')).toEqual(afterFirst);
+    expect(afterFirst.length).toBeLessThanOrEqual(RETAINED_FRONTIERS);
+    expect(after.length).toBe(afterFirst.length);
+    expect(await generations(pool, 'regional', 'split')).toEqual(otherBefore);
+
+    // Every row of a run shares its timestamp, or a prior rank is read off a
+    // partial board.
+    const partial = await pool.query<{ count: string }>(
+      `SELECT COUNT(DISTINCT as_of_date) AS count FROM player_ratings_history
+       WHERE scope = 'regional' AND rating_window = 'all' AND computed_at = $1`,
+      [new Date(after[after.length - 1])],
+    );
+    expect(Number(partial.rows[0].count)).toBe(1);
+  }, 60_000);
+
   it('keeps the three regional windows independent of each other', async () => {
     const before = new Map<RatingWindow, number>();
     for (const window of RATING_WINDOWS) before.set(window, await countByWindow(pool, window));
@@ -84,14 +152,20 @@ describe('player rating scopes (live Postgres)', () => {
     // A window is a subset of the one containing it, so its evidence can only
     // shrink; if it grew, the window predicate is letting in outside games.
     const leaked = await pool.query<{ count: string }>(`
+      WITH ${CURRENT_GENERATION},
+      current_rows AS (
+        SELECT prh.* FROM player_ratings_history prh
+        JOIN current_generation cg ON cg.scope = prh.scope
+          AND cg.rating_window = prh.rating_window AND cg.computed_at = prh.computed_at
+      )
       SELECT COUNT(*) AS count FROM (
         SELECT split.player_id
-        FROM player_ratings_history split
-        JOIN player_ratings_history year
+        FROM current_rows split
+        JOIN current_rows year
           ON year.player_id = split.player_id AND year.role = split.role
          AND year.league_id = split.league_id AND year.scope = 'regional'
          AND year.rating_window = 'year'
-        JOIN player_ratings_history whole
+        JOIN current_rows whole
           ON whole.player_id = split.player_id AND whole.role = split.role
          AND whole.league_id = split.league_id AND whole.scope = 'regional'
          AND whole.rating_window = 'all'
@@ -119,17 +193,26 @@ describe('player rating scopes (live Postgres)', () => {
     // and the primary marker must be unique per (scope, window) -- each window
     // is its own board.
     const dupeGroups = await pool.query<{ count: string }>(`
+      WITH ${CURRENT_GENERATION}
       SELECT COUNT(*) AS count FROM (
-        SELECT player_id, scope, rating_window, league_id, role FROM player_ratings_history
-        GROUP BY player_id, scope, rating_window, league_id, role HAVING COUNT(*) > 1
+        SELECT prh.player_id, prh.scope, prh.rating_window, prh.league_id, prh.role
+        FROM player_ratings_history prh
+        JOIN current_generation cg ON cg.scope = prh.scope
+          AND cg.rating_window = prh.rating_window AND cg.computed_at = prh.computed_at
+        GROUP BY prh.player_id, prh.scope, prh.rating_window, prh.league_id, prh.role
+        HAVING COUNT(*) > 1
       ) d
     `);
     expect(Number(dupeGroups.rows[0].count)).toBe(0);
 
     const badPrimary = await pool.query<{ count: string }>(`
+      WITH ${CURRENT_GENERATION}
       SELECT COUNT(*) AS count FROM (
-        SELECT player_id, scope, rating_window FROM player_ratings_history
-        WHERE is_primary GROUP BY player_id, scope, rating_window HAVING COUNT(*) <> 1
+        SELECT prh.player_id, prh.scope, prh.rating_window FROM player_ratings_history prh
+        JOIN current_generation cg ON cg.scope = prh.scope
+          AND cg.rating_window = prh.rating_window AND cg.computed_at = prh.computed_at
+        WHERE prh.is_primary
+        GROUP BY prh.player_id, prh.scope, prh.rating_window HAVING COUNT(*) <> 1
       ) d
     `);
     expect(Number(badPrimary.rows[0].count)).toBe(0);

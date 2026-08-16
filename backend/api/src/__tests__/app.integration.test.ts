@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import pg from 'pg';
+import { DEFAULT_TRANSFER_CARRYOVER, NEUTRAL_SCORE } from '@power-ranking/rating-engine';
 import { createApp } from '../app.js';
 import { createPool } from '../db.js';
 
@@ -65,6 +66,22 @@ describe('read API (live Postgres)', () => {
     expect(ranks).toEqual([...Array(res.body.length).keys()].map((i) => i + 1));
   });
 
+  it('rank changes reconcile: every drop on a board is matched by a rise', async () => {
+    // A shared baseline makes the prior ranks a permutation of the current
+    // ones, so the deltas cancel. Per-team baselines did not, and it showed.
+    for (const scope of ['LCK', 'LEC', 'LPL', 'international']) {
+      const res = await request(app).get('/teams').query({ scope });
+      expect(res.status).toBe(200);
+      const changes = res.body
+        .map((t: { rankChange: number | null }) => t.rankChange)
+        .filter((c: number | null): c is number => c !== null);
+      expect(changes.reduce((sum: number, c: number) => sum + c, 0)).toBe(0);
+
+      // All or nothing: a per-team dash leaves the rest unable to reconcile.
+      expect(changes.length === 0 || changes.length === res.body.length).toBe(true);
+    }
+  });
+
   it('GET /teams?scope=international spans regions and only rates teams with a record', async () => {
     const res = await request(app).get('/teams').query({ scope: 'international' });
     expect(res.status).toBe(200);
@@ -105,6 +122,89 @@ describe('read API (live Postgres)', () => {
   it('GET /teams/:id returns 400 for a non-numeric id', async () => {
     const res = await request(app).get('/teams/not-a-number');
     expect(res.status).toBe(400);
+  });
+
+  it('GET /teams/:id gives each roster player the rating their own league board shows', async () => {
+    const teams = await request(app).get('/teams').query({ scope: 'LCK' });
+    const board = await request(app).get('/players').query({ league: 'LCK' });
+    const byId = new Map(board.body.map((p: { id: number }) => [p.id, p]));
+
+    let checked = 0;
+    for (const team of teams.body.slice(0, 4)) {
+      const res = await request(app).get(`/teams/${team.id}`);
+      expect(res.status).toBe(200);
+
+      for (const entry of res.body.roster) {
+        // The roster draws the same range as the board, so a disagreement here
+        // would show one player two different ratings on two pages.
+        const onBoard = byId.get(entry.playerId) as { rating: number; rawRating: number; confidence: number } | undefined;
+        if (!onBoard) continue;
+        expect(entry.rating).toBeCloseTo(onBoard.rating, 6);
+        expect(entry.rawRating).toBeCloseTo(onBoard.rawRating, 6);
+        expect(entry.confidence).toBeCloseTo(onBoard.confidence, 6);
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('GET /teams/:id ranks a roster player where the role-filtered board puts them', async () => {
+    const board = await request(app).get('/players').query({ league: 'LCK' });
+    // The board arrives rating-sorted, so filtering to a role gives the order
+    // the roster's "2nd of 12" has to agree with.
+    const byRole = new Map<string, number[]>();
+    for (const p of board.body as { id: number; role: string }[]) {
+      if (!byRole.has(p.role)) byRole.set(p.role, []);
+      byRole.get(p.role)!.push(p.id);
+    }
+
+    const teams = await request(app).get('/teams').query({ scope: 'LCK' });
+    let checked = 0;
+    for (const team of teams.body.slice(0, 4)) {
+      const res = await request(app).get(`/teams/${team.id}`);
+      for (const entry of res.body.roster) {
+        const peers = byRole.get(entry.role) ?? [];
+        expect(entry.rolePeerCount).toBe(peers.length);
+        expect(entry.roleRank).toBe(peers.indexOf(entry.playerId) + 1);
+        expect(entry.roleRank).toBeGreaterThan(0);
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('GET /players/:id ranks against same-role peers on whichever board is asked for', async () => {
+    const board = await request(app).get('/players').query({ scope: 'international' });
+    const top = board.body[0];
+
+    for (const scope of ['international', 'regional'] as const) {
+      const res = await request(app).get(`/players/${top.id}`).query({ scope });
+      expect(res.status).toBe(200);
+      expect(res.body.roleRank).toBeGreaterThan(0);
+      // A rank past the peer group would mean the two came from different boards.
+      expect(res.body.roleRank).toBeLessThanOrEqual(res.body.peerCount);
+    }
+  });
+
+  it('GET /teams/:id flags exactly the roster players the international board rates', async () => {
+    const teams = await request(app).get('/teams').query({ scope: 'LCK' });
+    const intl = await request(app).get('/players').query({ scope: 'international' });
+    const rated = new Set(intl.body.map((p: { id: number }) => p.id));
+
+    let flagged = 0;
+    let unflagged = 0;
+    for (const team of teams.body) {
+      const res = await request(app).get(`/teams/${team.id}`);
+      for (const entry of res.body.roster) {
+        expect(entry.hasInternational).toBe(rated.has(entry.playerId));
+        if (entry.hasInternational) flagged += 1;
+        else unflagged += 1;
+      }
+    }
+    // Both cases must be present, or the flag is testing nothing: the panel
+    // offers the international board only where one of these is true.
+    expect(flagged).toBeGreaterThan(0);
+    expect(unflagged).toBeGreaterThan(0);
   });
 
   it('GET /players returns ranked players with roles', async () => {
@@ -151,6 +251,56 @@ describe('read API (live Postgres)', () => {
 
     const ranks = res.body.map((p: { rank: number }) => p.rank);
     expect(ranks).toEqual([...Array(res.body.length).keys()].map((i) => i + 1));
+  });
+
+  it('GET /players reports the rating as a shrink of the raw score, not a bare number', async () => {
+    const res = await request(app).get('/players').query({ league: 'LCK' });
+    expect(res.status).toBe(200);
+
+    // Most players are shrunk toward the neutral 50, but one with a record in
+    // another league is shrunk toward a carryover anchor instead, which is why
+    // the row is served these figures rather than deriving them from the rating.
+    const anchorReach = 50 * DEFAULT_TRANSFER_CARRYOVER;
+
+    let shrunk = 0;
+    for (const player of res.body) {
+      expect(player.confidence).toBeGreaterThanOrEqual(0);
+      expect(player.confidence).toBeLessThan(1);
+      expect(player.rawRating).toBeGreaterThanOrEqual(0);
+      expect(player.rawRating).toBeLessThanOrEqual(100);
+
+      // Invert rating = anchor + (raw - anchor) * confidence. The three figures
+      // are mutually consistent only if that implies a legitimate anchor, and
+      // every legitimate anchor is the neutral 50 or a carryover off it.
+      const impliedAnchor = (player.rating - player.rawRating * player.confidence) / (1 - player.confidence);
+      expect(impliedAnchor).toBeGreaterThanOrEqual(NEUTRAL_SCORE - anchorReach - 1e-6);
+      expect(impliedAnchor).toBeLessThanOrEqual(NEUTRAL_SCORE + anchorReach + 1e-6);
+
+      if (Math.abs(player.rawRating - player.rating) > 0.01) shrunk += 1;
+    }
+    expect(shrunk).toBeGreaterThan(0);
+  });
+
+  it('GET /players/:id names the stats that carry weight at the player role', async () => {
+    const board = await request(app).get('/players').query({ league: 'LCK' });
+    const byRole = new Map<string, number>();
+    for (const player of board.body) if (!byRole.has(player.role)) byRole.set(player.role, player.id);
+
+    for (const [role, id] of byRole) {
+      const res = await request(app).get(`/players/${id}`);
+      expect(res.status).toBe(200);
+      const rated: string[] = res.body.ratedStats;
+
+      // Every name has to be a stat the panel actually renders, or the fade
+      // silently misses it.
+      for (const key of rated) expect(res.body.stats[key]).toHaveProperty('place');
+      // Raw K/D/A are the numbers behind KDA; none of them is rated anywhere.
+      for (const key of ['kills', 'deaths', 'assists']) expect(rated).not.toContain(key);
+      // Objective control is the jungle stat that motivated the fade: junglers
+      // and supports rate it, the three lanes only show it.
+      expect(rated.includes('objectiveControl')).toBe(role === 'JNG' || role === 'SUP');
+    }
+    expect(byRole.size).toBe(5);
   });
 
   it('GET /players ignores an unrecognised scope rather than serving a mis-scaled rating', async () => {

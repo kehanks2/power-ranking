@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { RankingsApiService } from '../rankings-api.service';
 import { LeagueFilterService } from '../league-filter.service';
 import type { TeamDetail, TeamRecord, TeamSummary } from '../models';
+import { RankChangeComponent } from '../rank-change/rank-change.component';
 
 /**
  * The six most recent international events, OLDEST first. Column order on the
@@ -28,7 +29,7 @@ interface AxisTick {
 
 @Component({
   selector: 'app-teams-list',
-  imports: [DecimalPipe, PercentPipe, RouterLink],
+  imports: [DecimalPipe, PercentPipe, RouterLink, RankChangeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './teams-list.component.html',
   styleUrl: './teams-list.component.scss',

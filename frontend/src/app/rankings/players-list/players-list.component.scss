@@ -1,3 +1,5 @@
+@use '../confidence/confidence' as c;
+
 .status {
   color: var(--color-text-muted);
 }
@@ -39,7 +41,7 @@ $filter-gap: 1rem;
   font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--color-text-dim, #6c7385);
+  color: var(--color-text-dim);
   margin-right: 0.1rem;
 }
 
@@ -89,7 +91,7 @@ $cell-pad-x: 0.7rem;
   border-collapse: separate;
   border-spacing: 0;
   width: 100%;
-  min-width: 660px;
+  min-width: 860px;
 
   // Pinned below the shell block AND the role filter.
   thead th {
@@ -107,6 +109,30 @@ $cell-pad-x: 0.7rem;
     background: var(--color-surface);
     border-top: 1px solid var(--color-border);
     border-bottom: 1px solid var(--color-border);
+  }
+
+  // `thead th` alone beats `.num` on specificity, which left every numeric
+  // heading at the left edge of a right-aligned column.
+  thead th.num,
+  thead th.rank {
+    text-align: right;
+  }
+
+  // The role pill insets its own text by a border and 0.4rem of padding, so a
+  // heading at the cell edge sits left of the pill's label rather than over it.
+  thead th.role-col {
+    padding-left: calc(#{$cell-pad-x} + 0.4rem + 1px);
+  }
+
+  // The rating butts up against the first gridline without this; the Team
+  // column has the slack to give.
+  //
+  // `thead`/`tbody` are named only to win the cascade: encapsulation appends an
+  // `[_ngcontent]` attribute to every compound, which levels the class counts,
+  // so `tbody td` outranks a bare `td.conf` on element count alone.
+  thead th.conf,
+  tbody td.conf {
+    padding-left: 1.9rem;
   }
 
   tbody td {
@@ -132,11 +158,30 @@ $cell-pad-x: 0.7rem;
 }
 
 .rank {
-  width: 3ch;
+  width: 6.5ch;
   text-align: right;
   color: var(--color-text-muted);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+// Inline, not flex: `display: flex` on a td drops it out of table layout.
+tbody td.rank {
+  white-space: nowrap;
+}
+
+.rank-num {
+  display: inline-block;
+  min-width: 2ch;
+  text-align: right;
+}
+
+// Fixed slot, or the variable-width caret drifts the rank numbers.
+pr-rank-change {
+  display: inline-block;
+  width: 3.25ch;
+  margin-left: 0.3rem;
+  text-align: left;
 }
 
 .handle {
@@ -181,16 +226,9 @@ $cell-pad-x: 0.7rem;
   border: 1px solid currentColor;
 }
 
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+.conf {
+  width: 26%;
+  min-width: 190px;
 }
 
 // --- Detail panel ----------------------------------------------------------
@@ -253,62 +291,9 @@ tr.is-open td {
   background: var(--color-surface-hover);
 }
 
-.panel {
-  border-left: 2px solid var(--color-gold);
-  padding: 0.2rem 0 0.3rem 0.9rem;
-  animation: slide-down 160ms ease;
-}
-
-// Height isn't animatable from auto, so the reveal is transform + opacity.
-@keyframes slide-down {
-  from {
-    opacity: 0;
-    transform: translateY(-5px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .panel {
-    animation: none;
-  }
-
-  .chevron {
-    transition: none;
-  }
-}
-
-.panel__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.5rem 1.1rem;
-  margin-bottom: 0.9rem;
-}
-
-.record {
-  margin: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 0.55rem;
-
-  strong {
-    font-size: 1.5rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-  }
-}
-
-.record__unit,
-.record__rate {
-  color: var(--color-text-muted);
-  font-size: 0.86rem;
-}
-
-// A link, not a row toggle -- it leaves the board.
+// A link, not a row toggle -- it leaves the board. Projected into the panel,
+// so it stays here: content keeps the encapsulation of the template it is
+// written in, not the component it lands in.
 .team-link {
   margin-left: auto;
   align-self: center;
@@ -327,118 +312,65 @@ tr.is-open td {
   }
 }
 
-.coverage {
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: 0.84rem;
-  line-height: 1.45;
-  max-width: 62ch;
-}
+// --- Legend ----------------------------------------------------------------
 
-.groups {
+.legend {
+  margin: 1.4rem 0 0;
   display: grid;
-  gap: 1.15rem 2rem;
-  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
 }
 
-.group__title {
-  margin: 0 0 0.5rem;
-  font-size: 0.64rem;
-  font-weight: 700;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-  padding-bottom: 0.35rem;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.stats {
-  margin: 0;
-  display: grid;
-  gap: 0.62rem;
-}
-
-.stat {
-  display: grid;
-  gap: 0.18rem;
+.term {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.85rem 0.95rem;
+  background: var(--color-surface);
 
   dt {
-    font-size: 0.74rem;
-    color: var(--color-text-muted);
+    font-weight: 700;
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 0.28rem;
   }
 
   dd {
     margin: 0;
-    display: grid;
-    // value | place | meter, meter last so markers share a left edge.
-    grid-template-columns: auto auto 1fr;
-    align-items: center;
-    gap: 0.45rem;
+    color: var(--color-text-muted);
+    font-size: 0.88rem;
+    line-height: 1.5;
   }
 }
 
-.stat__value {
-  font-variant-numeric: tabular-nums;
-  font-weight: 650;
-  font-size: 1rem;
-  min-width: 3.6rem;
+.swatch {
+  display: inline-block;
+  width: 22px;
+  height: 8px;
+  vertical-align: middle;
+  border-radius: 4px;
 }
 
-.stat__place {
-  font-size: 0.72rem;
-  color: var(--color-text-muted);
-  font-variant-numeric: tabular-nums;
-  min-width: 2.2rem;
+.swatch--band {
+  background: linear-gradient(90deg, rgb(205 164 94 / 22%), rgb(205 164 94 / 62%));
 }
 
-// A marker on a scale, not a magnitude bar. Worst left, best right.
-.stat__scale {
-  position: relative;
-  height: 12px;
+.swatch--tail {
+  height: 6px;
+  border: c.$tail-dash;
+  border-radius: 3px;
 }
 
-.stat__track {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  right: 0;
-  height: 2px;
-  margin-top: -1px;
-  border-radius: 1px;
-  background: rgb(255 255 255 / 9%);
+// The legend's own key marks, matching the arrows in an open panel.
+.drive {
+  font-size: 0.85rem;
+  line-height: 1;
 }
 
-.stat__dot {
-  position: absolute;
-  top: 50%;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  // De-emphasised by default; colour is spent only on standouts. Ring keeps it legible.
-  background: #737a8c;
-  box-shadow: 0 0 0 2px var(--color-surface-hover);
+.drive--lifting {
+  color: var(--color-up);
 }
 
-// Accent marks the top quarter of the peer group; never the only signal (the
-// place is printed too).
-.stat--standout {
-  .stat__dot {
-    background: var(--color-gold);
-  }
-
-  .stat__value {
-    color: var(--color-gold);
-  }
-
-  dt {
-    color: var(--color-text);
-  }
-}
-
-.peers {
-  margin: 0.95rem 0 0;
-  color: var(--color-text-muted);
-  font-size: 0.8rem;
-  line-height: 1.45;
+.drive--dragging {
+  color: var(--color-down);
 }

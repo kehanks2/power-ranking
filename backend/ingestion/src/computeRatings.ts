@@ -34,7 +34,7 @@ async function computeInternationalSeeds(pool: Pool): Promise<Map<string, Rating
     SELECT DISTINCT ON (player_id) player_id, rating, games_played
     FROM player_ratings_history
     WHERE scope = 'international' AND rating_window = 'all'
-    ORDER BY player_id, as_of_date DESC
+    ORDER BY player_id, computed_at DESC
   `);
   const playerRating = new Map<number, { rating: number; games: number }>();
   for (const r of ratingRows.rows) playerRating.set(r.player_id, { rating: Number(r.rating), games: r.games_played });
