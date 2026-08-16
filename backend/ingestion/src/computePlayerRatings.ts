@@ -3,6 +3,7 @@ import {
   percentile,
   blendComponentPercentiles,
   componentWeightsForRoleAtWinWeight,
+  type PlayerComponent,
   DEFAULT_WIN_WEIGHT,
   recencyWeight,
   DEFAULT_HALF_LIFE_DAYS,
@@ -149,6 +150,10 @@ export interface PlayerGroupRating {
 export function selectGroupRatings(
   groupStats: PlayerGroupStats[],
   winWeight = DEFAULT_WIN_WEIGHT,
+  // Seam for weight diagnostics: they must blend through this same percentile
+  // code, or they describe a model we do not ship.
+  weightsFor: (role: string) => Partial<Record<PlayerComponent, number>> = (role) =>
+    componentWeightsForRoleAtWinWeight(role, winWeight),
 ): PlayerGroupRating[] {
   const peerGroups = new Map<string, PlayerGroupStats[]>();
   for (const player of groupStats) {
@@ -185,7 +190,7 @@ export function selectGroupRatings(
           goldDiff: pct(player.goldDiff, goldDiffPeers),
           objControl: pct(player.objControl, objPeers),
         },
-        componentWeightsForRoleAtWinWeight(player.role, winWeight),
+        weightsFor(player.role),
       );
 
       ratings.push({
