@@ -1,0 +1,11 @@
+// The header axis and every row's track must span exactly the same width, or
+// the tick labels stop sitting over the gridlines they name.
+$axis-inset: 1.1rem;
+$range-height: 18px;
+$tail-dash: 1px dashed color-mix(in srgb, var(--color-gold) 60%, transparent);
+
+@mixin axis-extent {
+  position: relative;
+  display: block;
+  margin-right: $axis-inset;
+}

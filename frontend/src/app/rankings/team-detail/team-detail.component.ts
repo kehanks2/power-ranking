@@ -1,13 +1,24 @@
-import { Component, ChangeDetectionStrategy, inject, signal, effect } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, computed, effect } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { DecimalPipe, NgOptimizedImage, PercentPipe } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { RankingsApiService } from '../rankings-api.service';
-import type { TeamDetail, TeamRecord } from '../models';
+import { ConfidenceAxisComponent } from '../confidence/confidence-axis.component';
+import { ConfidenceRangeComponent } from '../confidence/confidence-range.component';
+import { PlayerPanelComponent } from '../player-panel/player-panel.component';
+import type { BoardScope, PlayerDetail, PlayerRatingScope, TeamDetail, TeamRecord } from '../models';
 
 @Component({
   selector: 'app-team-detail',
-  imports: [DecimalPipe, NgOptimizedImage, PercentPipe, RouterLink],
+  imports: [
+    DecimalPipe,
+    NgOptimizedImage,
+    PercentPipe,
+    RouterLink,
+    ConfidenceAxisComponent,
+    ConfidenceRangeComponent,
+    PlayerPanelComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './team-detail.component.html',
   styleUrl: './team-detail.component.scss',
@@ -45,6 +56,78 @@ export class TeamDetailComponent {
       });
       onCleanup(() => subscription.unsubscribe());
     });
+
+    effect((onCleanup) => {
+      const playerId = this.openPlayerId();
+      const board = this.panelBoard();
+      if (playerId === null) return;
+      this.playerLoading.set(true);
+      const subscription = this.api.getPlayerById(playerId, board).subscribe({
+        next: (detail) => {
+          this.playerDetail.set(detail);
+          this.playerLoading.set(false);
+        },
+        error: () => {
+          this.playerDetail.set(null);
+          this.playerLoading.set(false);
+        },
+      });
+      onCleanup(() => subscription.unsubscribe());
+    });
+  }
+
+  // --- Roster detail -------------------------------------------------------
+
+  /** The roster row whose panel is open. One at a time, as on the player board. */
+  protected readonly openPlayerId = signal<number | null>(null);
+  protected readonly playerDetail = signal<PlayerDetail | null>(null);
+  protected readonly playerLoading = signal(false);
+
+  /**
+   * Which board the open panel reads. Regional is the team's own league; the
+   * international pool is role-only and cross-region, so the two are never shown
+   * together -- switching replaces the grid rather than adding to it.
+   */
+  protected readonly panelScope = signal<PlayerRatingScope>('regional');
+
+  // Read off the detail on screen, not the chip that was clicked: during a swap
+  // the request has already changed scope while the grid still shows the old
+  // board, and a coverage line taken from the request would mislabel it.
+  protected readonly panelCoverage = computed(() => {
+    const shown = this.playerDetail();
+    if (!shown) return '';
+    return shown.scope === 'international' ? 'International Only.' : `${this.team()?.leagueSlug ?? 'Regional'} Only.`;
+  });
+
+  /** Where the panel's link goes -- the board being read, not the team's own. */
+  protected readonly panelBoardLink = computed(() => {
+    const shown = this.playerDetail();
+    const league = this.team()?.leagueSlug;
+    return shown?.scope === 'international'
+      ? { label: 'international', queryParams: { player: shown.id } }
+      : { label: league ?? 'regional', queryParams: { scope: league, player: shown?.id } };
+  });
+
+  /** The board the panel is reading, in the form the API service takes. */
+  private readonly panelBoard = computed<BoardScope>(() =>
+    this.panelScope() === 'international' ? 'international' : (this.team()?.leagueSlug ?? 'international'),
+  );
+
+  protected togglePlayer(playerId: number): void {
+    const isOpen = this.openPlayerId() === playerId;
+    this.openPlayerId.set(isOpen ? null : playerId);
+    this.playerDetail.set(null);
+    // Each player is opened on their own league's board, not on whichever one
+    // the previously opened row was switched to.
+    if (!isOpen) this.panelScope.set('regional');
+  }
+
+  protected isPlayerOpen(playerId: number): boolean {
+    return this.openPlayerId() === playerId;
+  }
+
+  protected setPanelScope(scope: PlayerRatingScope): void {
+    this.panelScope.set(scope);
   }
 
   /**
@@ -115,7 +198,11 @@ export class TeamDetailComponent {
   protected finish(placement: string | null): string {
     if (!placement) return '—';
     if (!/^\d+$/.test(placement)) return placement;
-    const n = Number(placement);
+    return this.ordinal(Number(placement));
+  }
+
+  /** 1st, 2nd, 3rd, 4th -- and 11th/12th/13th, which break the pattern. */
+  protected ordinal(n: number): string {
     const teens = n % 100;
     if (teens >= 11 && teens <= 13) return `${n}th`;
     switch (n % 10) {

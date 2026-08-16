@@ -1,0 +1,120 @@
+<!-- Only the first load empties the panel. Reloading it for another board keeps
+     the current grid up, because collapsing to one line and back moves
+     everything below it and loses the reader's place. -->
+@if (loading() && !detail()) {
+  <p class="status">Loading {{ handle() }}’s stats…</p>
+} @else if (detail(); as d) {
+  <!-- Above the head, so a board switch reads as choosing what the whole
+       panel is about rather than as one more figure in it. -->
+  <ng-content select="[panelScope]" />
+
+  <div class="panel__head">
+    <!-- The rating for the board being shown, which is not always the one the
+         row above carries -- a scope switch changes this number. -->
+    @if (showRating()) {
+      <p class="record record--rating">
+        <strong>{{ d.rating | number: '1.1-1' }}</strong>
+        <span class="record__unit">rating</span>
+      </p>
+    }
+    @if (d.stats.games > 0) {
+      <p class="record">
+        <strong>{{ roleRank() }}</strong>
+        <span class="record__unit">of {{ d.peerCount }} {{ d.role }}</span>
+      </p>
+    }
+    <!-- A 0-0 record and a 0% win rate say nothing the empty state below does
+         not say better. -->
+    @if (d.stats.games > 0) {
+      <!-- Series first, matching the teams board: it is the unit placement is
+           decided in, and the two records routinely disagree. -->
+      <p class="record">
+        <strong>{{ d.stats.seriesWins }}–{{ d.stats.seriesLosses }}</strong>
+        <span class="record__unit">series</span>
+        <span class="record__rate">{{ d.stats.seriesWinRate | percent: '1.0-0' }} win rate</span>
+      </p>
+      <p class="record">
+        <strong>{{ d.stats.wins }}–{{ d.stats.losses }}</strong>
+        <span class="record__unit">games</span>
+        <span class="record__rate">{{ d.stats.winRate | percent: '1.0-0' }} win rate</span>
+      </p>
+    }
+    <p class="coverage">{{ coverage() }}</p>
+    <ng-content />
+  </div>
+
+  <!-- Carries its own axis: it sits inboard of the column the table's axis
+       labels, so there is nothing above it to read the bar against. -->
+  @if (showRating() && d.stats.games > 0) {
+    <div class="panel__range">
+      <app-confidence-axis />
+      <app-confidence-range [value]="d" />
+    </div>
+  }
+
+  @if (d.stats.games === 0) {
+    <p class="status">
+      @if (d.alsoPlaysFor) {
+        <!-- "Liquipedia also lists", not "is currently playing for". A squad row cannot
+             tell a concurrent academy slot from a transfer the wiki has not closed yet,
+             and it said the wrong one about Dardoch the week DIG signed him. -->
+        No games on this board — {{ d.handle }} is on the roster, and Liquipedia also
+        lists them on <strong>{{ d.alsoPlaysFor }}</strong>. The rating sits at
+        the neutral 50 because nothing here has been earned yet.
+      } @else {
+        No games on this board yet, so the rating sits at the neutral 50 rather
+        than claiming anything.
+      }
+    </p>
+  } @else {
+    <div class="groups">
+      @for (group of statGroups(); track group.title) {
+        <section class="group">
+          <h4 class="group__title">{{ group.title }}</h4>
+          <dl class="stats">
+            @for (stat of group.stats; track stat.label) {
+              <div class="stat" [class.stat--standout]="stat.standout" [class.stat--context]="!stat.feeds">
+                <dt>{{ stat.label }}</dt>
+                <dd>
+                  <span class="stat__value">{{ stat.display }}</span>
+                  <span class="stat__place">{{ stat.place ?? '—' }}</span>
+                  <span class="stat__scale" [title]="stat.standing">
+                    <span class="stat__track" aria-hidden="true"></span>
+                    <span class="stat__dot" [style.left.%]="stat.position * 100"></span>
+                  </span>
+                  @if (stat.drive) {
+                    <span class="stat__drive" [class]="'stat__drive--' + stat.drive" [title]="stat.drive">
+                      {{ stat.drive === 'lifting' ? '▲' : '▼' }}
+                    </span>
+                  } @else {
+                    <span class="stat__drive" aria-hidden="true"></span>
+                  }
+                  <span class="visually-hidden">
+                    {{ stat.standing }}{{ stat.drive ? ', ' + stat.drive + ' the rating' : '' }}
+                  </span>
+                </dd>
+              </div>
+            }
+          </dl>
+        </section>
+      }
+    </div>
+    <p class="peers">
+      Placement ranks each stat among the {{ d.peerCount }} {{ d.role }} players on this board,
+      lower always being better (including deaths). Highlighted stats are top 25%.
+      @if (windowCaveat(); as caveat) {
+        {{ caveat }}
+      }
+    </p>
+    <p class="peers">
+      <span class="drive drive--lifting">▲</span> and
+      <span class="drive drive--dragging">▼</span> mark the stats lifting or dragging the
+      rating, against the {{ d.role }} median.
+      @if (contextStats(); as context) {
+        Dimmed stats — {{ context }} — are shown for detail and carry no weight at {{ d.role }}.
+      }
+    </p>
+  }
+} @else {
+  <p class="status">Couldn’t load stats for {{ handle() }}.</p>
+}

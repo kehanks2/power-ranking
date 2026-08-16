@@ -1,0 +1,66 @@
+@use './confidence' as c;
+
+:host {
+  display: block;
+}
+
+.range {
+  @include c.axis-extent;
+
+  height: c.$range-height;
+  cursor: default;
+}
+
+.range__gridline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--color-border);
+}
+
+.range__gridline--mid {
+  background: color-mix(in srgb, var(--color-text-muted) 55%, transparent);
+}
+
+// Darkens toward the rating, so the bar reads as running out from 50 rather
+// than as a magnitude starting at the axis edge.
+.range__band {
+  position: absolute;
+  top: 5px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgb(205 164 94 / 22%), rgb(205 164 94 / 62%));
+}
+
+.range__band--below {
+  background: linear-gradient(270deg, rgb(205 164 94 / 22%), rgb(205 164 94 / 62%));
+}
+
+// The open side is the one the point tick sits on, so the dash reads as
+// continuing from the rating rather than as a closed box beside it.
+.range__tail {
+  position: absolute;
+  top: 6px;
+  height: 6px;
+  border: c.$tail-dash;
+  border-radius: 3px;
+  border-left: 0;
+}
+
+.range__tail--leftward {
+  border-left: c.$tail-dash;
+  border-right: 0;
+}
+
+.range__point {
+  position: absolute;
+  top: 1px;
+  width: 2px;
+  height: c.$range-height - 2px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: var(--color-text);
+}
+

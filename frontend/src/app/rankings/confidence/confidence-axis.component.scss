@@ -1,0 +1,31 @@
+@use './confidence' as c;
+
+:host {
+  display: block;
+}
+
+// Same extent as the ticks below it, so the heading centres over the scale
+// rather than over the table cell, which is wider on the right.
+.axis__label {
+  @include c.axis-extent;
+
+  text-align: center;
+}
+
+.axis {
+  @include c.axis-extent;
+
+  height: 0.85rem;
+  margin-top: 0.35rem;
+}
+
+.axis__tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 0.58rem;
+  letter-spacing: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-dim);
+}

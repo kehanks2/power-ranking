@@ -199,16 +199,104 @@
         <tr>
           <th scope="col">Role</th>
           <th scope="col">Player</th>
+          <th scope="col" class="num">In {{ t.leagueSlug }}</th>
+          <th scope="col" class="num">Rating</th>
+          <th scope="col" class="conf"><app-confidence-axis label="Confidence" /></th>
+          <th scope="col" class="num">Games</th>
         </tr>
       </thead>
       <tbody>
         @for (entry of t.roster; track entry.playerId) {
-          <tr>
+          <!-- Row click is a mouse convenience; the handle stays a real button
+               so the panel is reachable and announced without one. -->
+          <tr
+            class="row-toggle"
+            [class.is-open]="isPlayerOpen(entry.playerId)"
+            (click)="togglePlayer(entry.playerId)"
+          >
             <td>{{ entry.role }}</td>
-            <td class="handle">{{ entry.handle }}</td>
+            <td>
+              <button
+                type="button"
+                class="handle-toggle"
+                [attr.aria-expanded]="isPlayerOpen(entry.playerId)"
+                [attr.aria-controls]="'roster-panel-' + entry.playerId"
+                (click)="$event.stopPropagation(); togglePlayer(entry.playerId)"
+              >
+                <span class="handle">{{ entry.handle }}</span>
+                @if (entry.hasInternational) {
+                  <span class="dot dot--intl" title="Has an international record"></span>
+                  <span class="visually-hidden">Has an international record</span>
+                }
+              </button>
+            </td>
+            <td class="num role-rank">
+              <span class="role-rank__place">{{ ordinal(entry.roleRank) }}</span>
+              <span class="role-rank__of">of {{ entry.rolePeerCount }}</span>
+            </td>
+            <td class="num player-rating">{{ entry.rating | number: '1.1-1' }}</td>
+            <td class="conf"><app-confidence-range [value]="entry" /></td>
+            <td class="num games">{{ entry.gamesPlayed }}</td>
           </tr>
+
+          @if (isPlayerOpen(entry.playerId)) {
+            <tr class="detail-row">
+              <td colspan="6">
+                <app-player-panel
+                  [id]="'roster-panel-' + entry.playerId"
+                  [detail]="playerDetail()"
+                  [loading]="playerLoading()"
+                  [handle]="entry.handle"
+                  [coverage]="panelCoverage()"
+                  [showRating]="true"
+                >
+                  <!-- Two pools, never side by side: a regional rating is a
+                       percentile inside one league, an international one is
+                       measured against a role pool drawn from everywhere. -->
+                  @if (entry.hasInternational) {
+                    <div panelScope class="chip-group" role="group" aria-label="Rate against">
+                      <button
+                        type="button"
+                        class="chip"
+                        [class.chip--active]="panelScope() === 'regional'"
+                        [attr.aria-pressed]="panelScope() === 'regional'"
+                        (click)="setPanelScope('regional')"
+                      >
+                        {{ t.leagueSlug }}
+                      </button>
+                      <button
+                        type="button"
+                        class="chip"
+                        [class.chip--active]="panelScope() === 'international'"
+                        [attr.aria-pressed]="panelScope() === 'international'"
+                        (click)="setPanelScope('international')"
+                      >
+                        International
+                      </button>
+                    </div>
+                  }
+                  @if (playerDetail()) {
+                    <a
+                      class="board-link"
+                      [routerLink]="['/rankings/players']"
+                      [queryParams]="panelBoardLink().queryParams"
+                    >
+                      {{ entry.handle }} on the {{ panelBoardLink().label }} board →
+                    </a>
+                  }
+                </app-player-panel>
+              </td>
+            </tr>
+          }
         }
       </tbody>
     </table>
+    <p class="records-note">
+      Rank and rating are among {{ t.leagueSlug }} players at the same position, so they
+      compare within this league only. The range shows how much of the rating the games
+      have earned. Open a row for the stats behind it, and — for players with a
+      <span class="dot dot--intl"></span> international record — the same read against
+      the international pool.
+    </p>
   }
 }

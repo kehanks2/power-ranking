@@ -91,6 +91,156 @@
   font-weight: 700;
 }
 
+// --- Roster detail ---------------------------------------------------------
+
+.roster-table {
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  // Not `.rating`: that is the team's own headline stat, at 1.75rem in gold.
+  .player-rating {
+    font-weight: 650;
+  }
+
+  .role-rank {
+    white-space: nowrap;
+  }
+
+  .role-rank__place {
+    font-weight: 650;
+  }
+
+  .role-rank__of {
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+    margin-left: 0.3rem;
+  }
+
+  .games {
+    color: var(--color-text-muted);
+  }
+
+  // Padding, not width, keeps the rating off the first gridline -- the header
+  // and every track share it, so the ticks stay over the gridlines.
+  th.conf,
+  td.conf {
+    width: 34%;
+    min-width: 180px;
+    padding-left: 1.9rem;
+  }
+}
+
+tr.row-toggle {
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-surface-hover);
+  }
+}
+
+.handle-toggle {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+
+  &:hover .handle {
+    color: var(--color-gold);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-gold);
+    outline-offset: 3px;
+    border-radius: 3px;
+  }
+}
+
+// A hover-explained dot, not a column that would be empty for 70% of rows.
+.dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  display: inline-block;
+  cursor: help;
+}
+
+.dot--intl {
+  background: var(--lg-LCK);
+}
+
+tr.is-open {
+  background: var(--color-surface-hover);
+
+  .handle {
+    color: var(--color-gold);
+  }
+}
+
+.detail-row td {
+  padding: 0 0.75rem 1.1rem;
+  background: var(--color-surface-hover);
+}
+
+// Projected into the panel, so they stay here: projected content keeps the
+// encapsulation of the template it is written in, not the one it lands in.
+.chip-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
+}
+
+.chip {
+  padding: 0.32rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-surface-hover);
+    color: var(--color-text);
+  }
+}
+
+.chip--active {
+  background: var(--color-gold);
+  border-color: var(--color-gold);
+  color: var(--color-gold-contrast);
+}
+
+.board-link {
+  margin-left: auto;
+  align-self: center;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--color-gold);
+  text-decoration: none;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.32rem 0.75rem;
+  white-space: nowrap;
+
+  &:hover {
+    background: var(--color-surface);
+    border-color: var(--color-gold);
+  }
+}
+
 // Two records side by side: international first, since that is the record
 // people ask about, and the splits below it as the fuller history.
 // Wide enough for the event names before the two tables sit side by side; below

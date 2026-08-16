@@ -8,8 +8,15 @@
   --color-border: #2a3040;
   --color-text: #f2f0e9;
   --color-text-muted: #a8adba;
+  /* One step below muted, for de-emphasised text that is still data. 4.9:1 on
+     --color-surface-hover, the lightest ground it is drawn on. */
+  --color-text-dim: #8b91a1;
   --color-gold: #cda45e;
   --color-gold-contrast: #1a1206;
+  /* Direction of pull, not good/bad branding. The red is lighter than the LPL
+     accent it started from, which sits at 4.3:1 on --color-surface-hover. */
+  --color-up: #6fbf8e;
+  --color-down: #d4808d;
   --focus-ring: #6ea8fe;
 }
 
@@ -46,6 +53,20 @@ button {
 :focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+}
+
+/* Global rather than per-component: four components carry text that exists only
+   for screen readers, and a local copy in each drifts. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Region accents. Shared by the regional-strength meters, the team crests and
