@@ -115,16 +115,18 @@ export type PlayerComponent =
 
 // Weight on "did your team win," the box-score stats splitting the rest.
 //
-// 0.3, down from 0.5 (2026-08-16). The board is meant to show how good players
-// are, not how good their teams are, and at 0.5 it correlated 0.681 with the
-// player's own team win rate. Held-out accuracy cannot arbitrate this: it rises
-// monotonically to a win weight of 1.0, which is the degenerate "rank players by
-// their team's record". 0.3 costs 0.0064 AUC against 0.5 and takes the team
-// correlation to 0.611. Not 0, despite that testing better still on
-// decontamination: good players genuinely do win more, so some of the
-// correlation is real signal rather than contamination, and dropping winRate
-// entirely costs 0.036 AUC. See MODEL.md.
-export const DEFAULT_WIN_WEIGHT = 0.3;
+// 0.4, down from 0.5 (2026-08-16). This corrects a double-count rather than
+// re-weighting the model's priorities. 0.5 was chosen when the box score was
+// four uniform stats; v3 then added goldDiff and re-weighted kda, both of which
+// are 0.8-0.9 correlated with winning, so outcome exposure rose without anyone
+// choosing it -- measured as correlation with the player's own team win rate,
+// 0.653 under the old model against 0.681 under v3. 0.4 measures 0.652, which
+// is the original balance restored.
+//
+// Held-out accuracy cannot arbitrate the choice: it rises monotonically to a
+// win weight of 1.0, the degenerate "rank players by their team's record". See
+// MODEL.md.
+export const DEFAULT_WIN_WEIGHT = 0.4;
 
 /** Legacy uniform weights (winRate + four box stats). Kept for callers/tests without a role. */
 export function componentWeights(winWeight = DEFAULT_WIN_WEIGHT): Partial<Record<PlayerComponent, number>> {
@@ -137,14 +139,14 @@ export function componentWeights(winWeight = DEFAULT_WIN_WEIGHT): Partial<Record
 // on objective control, top on lane gold-diff, support on kill participation,
 // etc. The stats not listed for a role carry no weight there.
 //
-// The box-score terms are the 0.5-era figures scaled by 1.4, so lowering the win
+// The box-score terms are the 0.5-era figures scaled by 1.2, so lowering the win
 // weight did not quietly re-tune the role balance alongside it.
 export const ROLE_COMPONENT_WEIGHTS: Record<string, Partial<Record<PlayerComponent, number>>> = {
-  TOP: { winRate: 0.3, goldDiff: 0.21, csMin: 0.126, goldShare: 0.112, damageShare: 0.098, kda: 0.084, killParticipation: 0.07 },
-  JNG: { winRate: 0.3, objControl: 0.182, killParticipation: 0.154, goldDiff: 0.126, kda: 0.098, csMin: 0.056, damageShare: 0.042, goldShare: 0.042 },
-  MID: { winRate: 0.3, damageShare: 0.168, goldDiff: 0.14, csMin: 0.126, killParticipation: 0.098, kda: 0.084, goldShare: 0.084 },
-  BOT: { winRate: 0.3, damageShare: 0.154, kda: 0.14, csMin: 0.126, goldShare: 0.112, goldDiff: 0.098, killParticipation: 0.07 },
-  SUP: { winRate: 0.3, killParticipation: 0.35, kda: 0.182, damageShare: 0.098, objControl: 0.07 },
+  TOP: { winRate: 0.4, goldDiff: 0.18, csMin: 0.108, goldShare: 0.096, damageShare: 0.084, kda: 0.072, killParticipation: 0.06 },
+  JNG: { winRate: 0.4, objControl: 0.156, killParticipation: 0.132, goldDiff: 0.108, kda: 0.084, csMin: 0.048, damageShare: 0.036, goldShare: 0.036 },
+  MID: { winRate: 0.4, damageShare: 0.144, goldDiff: 0.12, csMin: 0.108, killParticipation: 0.084, kda: 0.072, goldShare: 0.072 },
+  BOT: { winRate: 0.4, damageShare: 0.132, kda: 0.12, csMin: 0.108, goldShare: 0.096, goldDiff: 0.084, killParticipation: 0.06 },
+  SUP: { winRate: 0.4, killParticipation: 0.3, kda: 0.156, damageShare: 0.084, objControl: 0.06 },
 };
 
 /** Per-role weights, falling back to the legacy uniform set for an unknown role. */

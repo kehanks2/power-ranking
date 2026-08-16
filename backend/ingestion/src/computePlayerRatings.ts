@@ -21,7 +21,10 @@ import {
 } from '@power-ranking/shared';
 import { bulkInsert } from './bulkInsert.js';
 
-// v4: win weight cut from 0.5 to 0.3, box-score terms rescaled to match.
+// v4: win weight cut from 0.5 to 0.4, box-score terms rescaled to match.
+// Bumping this is REQUIRED whenever a weight changes -- rank-change carets
+// refuse a baseline generation from a different method_version, and that guard
+// is the only thing stopping a retune being reported as player movement.
 // v3: per-role stat weighting, plus CS/min, gold-diff, and jungle objective control.
 const PLAYER_RATING_METHOD_VERSION = 4;
 

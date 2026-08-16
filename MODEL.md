@@ -176,51 +176,61 @@ accuracy it cannot be improved by shading probabilities toward 50%.
 | `OFFSET_SCALE` | 150 | Rating points a maximally-rated incoming roster is worth against the league mean |
 | `K_SEASON` | 0.25 | Split-boundary regression toward the league mean |
 
-### Player composite — the win weight is a definitional choice, not a fitted one
+### Player composite — the win weight corrects a double-count
 
-`DEFAULT_WIN_WEIGHT` is **0.3**, cut from 0.5 on 2026-08-16. It is the one
-parameter here that accuracy cannot select, and it is worth being explicit about
-why.
+`DEFAULT_WIN_WEIGHT` is **0.4**, cut from 0.5 on 2026-08-16. This is not a
+re-weighting of the model's priorities; it undoes an exposure increase nobody
+chose.
 
-Held-out accuracy improves *monotonically* as the win weight rises, all the way
-to 1.0 — "rank every player by their team's record and discard the box score".
-A prediction objective will always prefer the purest team-strength proxy, since
-team strength is what persists between games. Optimising it would produce a
-standings table wearing a player board's clothes.
+0.5 was set when the box score was four uniform stats. v3 then added `goldDiff`
+and re-weighted `kda`, and both are 0.79-0.92 correlated with a player's win
+rate — `goldDiff` is end-of-game, so it is positive 83-92% of the time the team
+won. Winning was being counted three times.
 
-So the criterion is how much of the board is team strength restated, measured as
-the correlation between a player's rating and their own team's win rate
-(`teamCorr`, from `manualWeightConfigSweep.ts`). Walk-forward AUC over six
-monthly cutoffs, 1,255 held-out games:
+Measured as the correlation between a player's rating and their own team's win
+rate (`teamCorr`, from `manualWeightConfigSweep.ts`), with walk-forward AUC over
+six monthly cutoffs on 1,255 held-out games:
 
-| win weight | teamCorr | held-out AUC |
+| config | teamCorr | held-out AUC |
 |---|---|---|
-| 0.50 (old) | 0.681 | 0.6817 |
-| 0.40 | 0.652 | 0.6795 |
-| **0.30 (shipped)** | **0.611** | **0.6752** |
-| none | 0.427 | 0.6460 |
+| v2 uniform, win 0.5 — when 0.5 was chosen | 0.653 | 0.6822 |
+| v3 per-role, win 0.5 — the double-count | 0.681 | 0.6817 |
+| **v4 per-role, win 0.4 — shipped** | **0.652** | **0.6795** |
+| win 0.3 | 0.611 | 0.6752 |
+| no winRate | 0.427 | 0.6460 |
 
-A paired bootstrap over 2,000 draws puts everything from 0.5 to 1.0 inside
-sampling noise, so the accuracy given up here is real but small — 0.0064 AUC
-against 0.5 — while a third of the way to removing the team signal.
+0.4 lands at 0.652 against the original 0.653: the balance restored, not
+changed. Note v3's extra stats bought no accuracy (0.6817 vs 0.6822) — they only
+added team correlation.
 
-**Not 0, despite that scoring better on decontamination.** Good players genuinely
-win more, and good teams recruit good players, so part of that correlation is
-signal rather than contamination and nobody knows what the irreducible level is.
-Removing `winRate` entirely costs 0.036 AUC and puts Faker 545th of 673, which
-reads as over-corrected rather than purified.
+**Held-out accuracy cannot pick this parameter.** It rises monotonically to a win
+weight of 1.0 — "rank every player by their team's record and discard the box
+score" — because a prediction objective always prefers the purest team-strength
+proxy. A paired bootstrap over 2,000 draws puts everything from 0.5 to 1.0
+inside sampling noise. Optimising it would produce a standings table wearing a
+player board's clothes, so the criterion here is `teamCorr`, not Brier.
+
+**0.3 was tried first and rejected on a behavioural check.** A blend test dating
+from the original decision asserts that a winning playmaker (KDA 20, KP 90,
+win rate 95) outranks a losing stat-padder (KDA 95, win rate 15) — the case
+where a support engages into four, reads as a death, and wins the game. That
+holds at 0.4 and breaks at 0.3.
 
 Two consequences worth knowing:
 
-- **`goldDiff` and `kda` are themselves 0.8-0.9 correlated with winning**
-  (`goldDiff` is end-of-game, so it is positive 83-92% of the time the team won).
-  The win weight is therefore not the only outcome exposure, just the labelled
-  one. Gold diff **@14** would fix this properly by isolating the laning phase,
-  but Liquipedia exposes only end-of-game totals, so it needs another source.
-- **Changing it moves the team boards too**, because player ratings feed the
-  roster-decay prior and the international seeds. Measured at this change: 5 of
-  8 team boards reordered, almost all by one place, with international moving
-  most (5 of 24 teams, up to 3 places) since it is seeded from player ratings.
+- **Gold diff @14 would fix the double-count at its source** by isolating the
+  laning phase, rather than trimming the labelled term to compensate for the
+  unlabelled ones. Liquipedia exposes only end-of-game totals, so it needs
+  another provider.
+- **Changing the win weight moves the team boards too**, because player ratings
+  feed the roster-decay prior and the international seeds. Measured: 5 of 8 team
+  boards reordered, almost all by one place, international most (5 of 24 teams)
+  since it is seeded from player ratings.
+- **`PLAYER_RATING_METHOD_VERSION` must be bumped with any weight change.**
+  Rank-change carets refuse a baseline generation from a different
+  `method_version`, and that guard is the only thing preventing a retune being
+  reported as player movement — the 0.5 → 0.3 step "moved" 42 of 57 LCK players
+  before it existed.
 
 ### Margin of victory — deliberately disabled
 

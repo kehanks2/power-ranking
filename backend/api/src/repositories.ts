@@ -599,8 +599,9 @@ async function computePlayerRankChanges(
     computed_at: Date;
     rating: string;
     data_frontier: string | null;
+    method_version: number;
   }>(
-    `SELECT prh.player_id, prh.computed_at, prh.rating, prh.data_frontier::text
+    `SELECT prh.player_id, prh.computed_at, prh.rating, prh.data_frontier::text, prh.method_version
      FROM players p
      LEFT JOIN roster_memberships rm ON rm.player_id = p.id AND rm.end_date IS NULL
      LEFT JOIN teams t ON t.id = rm.team_id
@@ -643,11 +644,21 @@ async function computePlayerRankChanges(
   // look newer than a match day it does not contain. Frequency-independent --
   // every rerun on the same data shares a frontier, so the baseline holds.
   const frontierOf = new Map<number, string | null>();
-  for (const row of history.rows) frontierOf.set(row.computed_at.getTime(), row.data_frontier);
+  const methodOf = new Map<number, number>();
+  for (const row of history.rows) {
+    frontierOf.set(row.computed_at.getTime(), row.data_frontier);
+    methodOf.set(row.computed_at.getTime(), row.method_version);
+  }
   const shown = generations[generations.length - 1];
+  const shownMethod = methodOf.get(shown);
   const baseline = generations
     .filter((g) => {
       const frontier = frontierOf.get(g);
+      // Same method_version only. Across a retune the two boards are different
+      // models, so the difference is the parameter change rather than anything
+      // a player did -- cutting the win weight 0.5 -> 0.3 "moved" 42 of 57 LCK
+      // players. Dash instead until the new model has two generations.
+      if (methodOf.get(g) !== shownMethod) return false;
       return g !== shown && frontier !== null && frontier !== undefined && frontier < lastPlayed;
     })
     .pop();

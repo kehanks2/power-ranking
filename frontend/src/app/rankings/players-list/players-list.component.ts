@@ -59,11 +59,33 @@ export class PlayersListComponent {
 
   // Renumbered 1..n for whatever is shown; the rating is unaffected (always
   // measured against role peers).
+  //
+  // The carets are renumbered too. The server's delta is against the whole
+  // board, so leaving it alone puts "+7" next to a role-filtered rank of 3 and
+  // the visible deltas stop cancelling. A player's prior board rank is
+  // recoverable as rank + rankChange (positive means they rose, so their number
+  // was higher), which re-sorts into the prior ordering of whatever subset is
+  // shown. Rows the server dashed have no prior rank, so they stay dashed and
+  // sit outside the comparison rather than shifting everyone else's.
   protected readonly players = computed(() => {
     const role = this.roleFilter();
     const rows = this.allPlayers();
     if (role === null) return rows;
-    return rows.filter((p) => p.role === role).map((p, index) => ({ ...p, rank: index + 1 }));
+
+    const filtered = rows.filter((p) => p.role === role);
+    const comparable = filtered.filter((p) => p.rankChange !== null);
+    const priorRank = new Map(
+      [...comparable]
+        .sort((a, b) => a.rank + (a.rankChange ?? 0) - (b.rank + (b.rankChange ?? 0)))
+        .map((p, index) => [p.id, index + 1] as const),
+    );
+    const currentRank = new Map(comparable.map((p, index) => [p.id, index + 1] as const));
+
+    return filtered.map((p, index) => ({
+      ...p,
+      rank: index + 1,
+      rankChange: priorRank.has(p.id) ? priorRank.get(p.id)! - currentRank.get(p.id)! : null,
+    }));
   });
 
   /** The row whose panel is open. Only one at a time -- a board of open panels scrolls badly. */
