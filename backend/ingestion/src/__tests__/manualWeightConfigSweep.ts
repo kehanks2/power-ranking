@@ -35,7 +35,8 @@ function without(base: Weights, drop: (keyof Weights)[]): Weights {
 }
 
 const CONFIGS: { label: string; weightsFor: (role: string) => Weights }[] = [
-  { label: 'shipped (win 0.50)', weightsFor: (r) => componentWeightsForRoleAtWinWeight(r, 0.5) },
+  { label: 'shipped (default)', weightsFor: (r) => componentWeightsForRole(r) },
+  { label: 'win 0.50', weightsFor: (r) => componentWeightsForRoleAtWinWeight(r, 0.5) },
   { label: 'win 0.40', weightsFor: (r) => componentWeightsForRoleAtWinWeight(r, 0.4) },
   { label: 'win 0.30', weightsFor: (r) => componentWeightsForRoleAtWinWeight(r, 0.3) },
   { label: 'no winRate', weightsFor: (r) => without(componentWeightsForRole(r), ['winRate']) },

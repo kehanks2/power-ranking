@@ -176,6 +176,52 @@ accuracy it cannot be improved by shading probabilities toward 50%.
 | `OFFSET_SCALE` | 150 | Rating points a maximally-rated incoming roster is worth against the league mean |
 | `K_SEASON` | 0.25 | Split-boundary regression toward the league mean |
 
+### Player composite — the win weight is a definitional choice, not a fitted one
+
+`DEFAULT_WIN_WEIGHT` is **0.3**, cut from 0.5 on 2026-08-16. It is the one
+parameter here that accuracy cannot select, and it is worth being explicit about
+why.
+
+Held-out accuracy improves *monotonically* as the win weight rises, all the way
+to 1.0 — "rank every player by their team's record and discard the box score".
+A prediction objective will always prefer the purest team-strength proxy, since
+team strength is what persists between games. Optimising it would produce a
+standings table wearing a player board's clothes.
+
+So the criterion is how much of the board is team strength restated, measured as
+the correlation between a player's rating and their own team's win rate
+(`teamCorr`, from `manualWeightConfigSweep.ts`). Walk-forward AUC over six
+monthly cutoffs, 1,255 held-out games:
+
+| win weight | teamCorr | held-out AUC |
+|---|---|---|
+| 0.50 (old) | 0.681 | 0.6817 |
+| 0.40 | 0.652 | 0.6795 |
+| **0.30 (shipped)** | **0.611** | **0.6752** |
+| none | 0.427 | 0.6460 |
+
+A paired bootstrap over 2,000 draws puts everything from 0.5 to 1.0 inside
+sampling noise, so the accuracy given up here is real but small — 0.0064 AUC
+against 0.5 — while a third of the way to removing the team signal.
+
+**Not 0, despite that scoring better on decontamination.** Good players genuinely
+win more, and good teams recruit good players, so part of that correlation is
+signal rather than contamination and nobody knows what the irreducible level is.
+Removing `winRate` entirely costs 0.036 AUC and puts Faker 545th of 673, which
+reads as over-corrected rather than purified.
+
+Two consequences worth knowing:
+
+- **`goldDiff` and `kda` are themselves 0.8-0.9 correlated with winning**
+  (`goldDiff` is end-of-game, so it is positive 83-92% of the time the team won).
+  The win weight is therefore not the only outcome exposure, just the labelled
+  one. Gold diff **@14** would fix this properly by isolating the laning phase,
+  but Liquipedia exposes only end-of-game totals, so it needs another source.
+- **Changing it moves the team boards too**, because player ratings feed the
+  roster-decay prior and the international seeds. Measured at this change: 5 of
+  8 team boards reordered, almost all by one place, with international moving
+  most (5 of 24 teams, up to 3 places) since it is seeded from player ratings.
+
 ### Margin of victory — deliberately disabled
 
 `MARGIN_SCALE` is set to 1e9, which makes the MOV weight ~1 for every game.

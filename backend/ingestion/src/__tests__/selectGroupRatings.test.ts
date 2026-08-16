@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { DEFAULT_WIN_WEIGHT } from '@power-ranking/rating-engine';
 import { selectGroupRatings } from '../computePlayerRatings.js';
 
 /**
@@ -65,6 +66,8 @@ describe('selectGroupRatings win weight', () => {
   });
 
   it('defaults to the shipped weights', () => {
-    expect(selectGroupRatings([winner, statPadder])).toEqual(selectGroupRatings([winner, statPadder], 0.5));
+    expect(selectGroupRatings([winner, statPadder])).toEqual(
+      selectGroupRatings([winner, statPadder], DEFAULT_WIN_WEIGHT),
+    );
   });
 });

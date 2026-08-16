@@ -21,8 +21,9 @@ import {
 } from '@power-ranking/shared';
 import { bulkInsert } from './bulkInsert.js';
 
+// v4: win weight cut from 0.5 to 0.3, box-score terms rescaled to match.
 // v3: per-role stat weighting, plus CS/min, gold-diff, and jungle objective control.
-const PLAYER_RATING_METHOD_VERSION = 3;
+const PLAYER_RATING_METHOD_VERSION = 4;
 
 interface PlayerGroupStats {
   playerId: number;

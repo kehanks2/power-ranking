@@ -232,7 +232,7 @@ describe('componentWeightsForRoleAtWinWeight', () => {
     for (const component of ['killParticipation', 'kda', 'damageShare', 'objControl'] as const) {
       expect((at40[component] ?? 0) / (base[component] ?? 1)).toBeCloseTo(ratio, 10);
     }
-    expect(ratio).toBeCloseTo(0.6 / 0.5, 10);
+    expect(ratio).toBeCloseTo((1 - 0.4) / (1 - (base.winRate ?? 0)), 10);
   });
 
   it('zeroes the box-score stats when the outcome takes all the weight', () => {
@@ -263,15 +263,23 @@ describe('blendComponentPercentiles', () => {
     expect(winner).toBeGreaterThan(padder);
   });
 
-  it('lets a winning playmaker outrank a losing stat-padder', () => {
-    // A play that trades KDA for the objective still reads as a death on the box score.
+  // At the old 0.5 win weight the playmaker won this comparison outright. At 0.3
+  // the stat line decides it, which is the deliberate trade: the board is meant
+  // to show how good a player is rather than how good their team is, and a
+  // player cannot be carried by their team's record. Kept as a guard on where
+  // the balance actually sits, not as an endorsement of either side.
+  it('lets a strong stat line outweigh a large win-rate gap at the shipped weight', () => {
     const playmaker = blendComponentPercentiles({
       kda: 20, goldShare: 40, damageShare: 40, killParticipation: 90, winRate: 95,
     });
     const padder = blendComponentPercentiles({
       kda: 95, goldShare: 90, damageShare: 90, killParticipation: 60, winRate: 15,
     });
-    expect(playmaker).toBeGreaterThan(padder);
+    expect(padder).toBeGreaterThan(playmaker);
+
+    // The 80-point win-rate gap is still worth exactly the win weight, so it
+    // takes a box-score deficit wider than that to be overturned.
+    expect(padder - playmaker).toBeLessThan(DEFAULT_WIN_WEIGHT * 100);
   });
 
   it('cannot be carried by winRate alone at the default weight', () => {
