@@ -1,0 +1,44 @@
+name: Daily update
+
+on:
+  schedule:
+    # 14:00 UTC. Liquipedia dates a series by its start, so the job's cutoff is
+    # whole dates only: a date's last series finishes at most 02:15 UTC the next
+    # day, and results appear 3-6h after a match ends, so this clears the worst
+    # case by ~12 hours. GitHub starts scheduled runs late under load, which the
+    # same margin absorbs. Note GitHub disables schedules on a repository with
+    # no activity for 60 days.
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+
+# Two runs at once would have two recomputes writing the rating tables
+# simultaneously, and each one deletes before it inserts.
+concurrency:
+  group: daily-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      # Ingestion runs through tsx, but imports both of these from their dist.
+      - run: npm run build --workspace=@power-ranking/shared
+      - run: npm run build --workspace=@power-ranking/rating-engine
+
+      # Exits non-zero on a partial pull, naming the series for the next run.
+      - name: Pull and recompute
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LIQUIPEDIA_API_KEY: ${{ secrets.LIQUIPEDIA_API_KEY }}
+        run: npm run daily --workspace=@power-ranking/ingestion
