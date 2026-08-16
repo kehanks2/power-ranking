@@ -2,7 +2,8 @@
 
 A better LoL esports power ranking: individual team ratings, a league-vs-league
 meta ranking, and a per-player rating, with a filterable Angular frontend.
-Full design rationale lives in the plan doc: `MODEL.md`.
+`MODEL.md` explains why the model is the way it is, including the alternatives
+that were measured and rejected.
 
 ## Repo layout
 
@@ -49,14 +50,41 @@ Full design rationale lives in the plan doc: `MODEL.md`.
 ## Tests
 
 - `npm test --workspace=@power-ranking/rating-engine` -- pure unit tests, no DB needed.
-- `npm test --workspace=@power-ranking/ingestion` / `@power-ranking/api` -- integration tests against the live local Postgres (steps 1-2 above).
+- `npm test --workspace=@power-ranking/ingestion` / `@power-ranking/api` -- integration
+  tests against a live Postgres. These run against **`powerranking_test`**, forced in
+  each `vitest.config.ts` and ignoring any `DATABASE_URL` you have set, because the
+  ingestion suite wipes and rebuilds the rating tables. Seed the clone with:
+  ```
+  docker exec power-ranking-db psql -U powerranking -d postgres -c "CREATE DATABASE powerranking_test TEMPLATE powerranking"
+  ```
+  They assert against real ingested data, so an empty database will fail them.
+
+## Data and attribution
+
+Match, tournament, and player data comes from **[Liquipedia](https://liquipedia.net)**
+via their API. Liquipedia content is licensed **[CC-BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)**,
+and the ratings in this project are derived from it.
+
+This project follows Liquipedia's
+[API Terms of Use](https://liquipedia.net/api-terms-of-use):
+
+- Requests carry a descriptive `User-Agent` identifying the project with a link back.
+- Requests are capped well under the documented limit (40/hour against a 60/hour cap),
+  and consecutive pages of one pull are paced apart.
+- Results are stored and re-used; pulls are bounded to the dates not already held, so
+  the same data is not requested twice.
+- Only the API is used. No automated access to Liquipedia's HTML pages.
+
+Liquipedia is not affiliated with this project and does not endorse it.
 
 ## Status
 
 Schema, rating engine (Glicko-2 + margin-of-victory + roster/seasonal decay +
-contextual/meta cross-region rating + player scoring), ingestion client, and
-read API are built and tested. **No live Leaguepedia ingestion has been run
-yet** -- the ingestion client (Cargo query builder, league-alias resolution,
-idempotent upserts) is implemented and tested against synthetic data, but
-wiring up a scheduled pull of real match data is the next step. The frontend
-currently reflects that: 6 leagues seeded, 0 teams/players until ingestion runs.
+contextual/meta cross-region rating + player scoring), ingestion, and the read
+API are built and tested, running against real ingested data across the six
+major leagues. Ratings are recomputed by a full replay, so the pipeline is safe
+to re-run at any time.
+
+Not yet done: the daily update (`backend/ingestion/src/dailyUpdate.ts`) is
+written but not scheduled, and the database is still local. `TODO.md` tracks
+what is open.

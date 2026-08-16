@@ -12,7 +12,9 @@ import { dirname, join } from 'node:path';
 
 const BASE_URL = 'https://api.liquipedia.net/api';
 const WIKI = 'leagueoflegends';
-const USER_AGENT = 'PowerRankingApp/1.0 (local research project; not yet publicly hosted)';
+// Liquipedia's API terms require a User-Agent identifying the project WITH
+// contact info; generic agents are blocked. Keep the URL reachable.
+const USER_AGENT = 'PowerRanking/1.0 (https://github.com/kehanks2/power-ranking)';
 const MAX_RESULT_LIMIT = 1000; // documented per-request max
 
 function apiKey(): string {

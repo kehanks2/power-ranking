@@ -1,5 +1,5 @@
 -- PowerRanking initial schema
--- See MODEL.md for full design rationale.
+-- See MODEL.md for the design rationale behind the rating tables.
 
 CREATE TABLE leagues (
   id            SERIAL PRIMARY KEY,
