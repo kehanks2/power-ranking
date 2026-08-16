@@ -8,6 +8,7 @@ import type {
   PlayerSummary,
   PlayerDetail,
   BoardScope,
+  BoardUpdated,
   RatingWindow,
 } from './models';
 
@@ -19,6 +20,10 @@ export class RankingsApiService {
 
   getLeagues(): Observable<LeagueSummary[]> {
     return this.http.get<LeagueSummary[]>(`${API_BASE_URL}/leagues`);
+  }
+
+  getBoardsLastUpdated(): Observable<BoardUpdated[]> {
+    return this.http.get<BoardUpdated[]>(`${API_BASE_URL}/boards/updated`);
   }
 
   /**

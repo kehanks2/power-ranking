@@ -9,17 +9,17 @@ import {
   ElementRef,
   DOCUMENT,
 } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map } from 'rxjs';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { LeagueFilterService } from '../league-filter.service';
 import { RankingsApiService } from '../rankings-api.service';
-import { BOARD_SCOPES, type BoardScope, type LeagueSummary } from '../models';
+import { BOARD_SCOPES, type BoardScope, type BoardUpdated, type LeagueSummary } from '../models';
 
 @Component({
   selector: 'app-rankings-shell',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, DecimalPipe],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, DecimalPipe, DatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './rankings-shell.component.html',
   styleUrl: './rankings-shell.component.scss',
@@ -33,6 +33,12 @@ export class RankingsShellComponent {
   // Regional strength shows alongside every board as context, not on its own
   // tab -- the only place the league rating appears now.
   protected readonly leagues = signal<LeagueSummary[]>([]);
+
+  private readonly boardsUpdated = signal<BoardUpdated[]>([]);
+
+  protected readonly lastUpdated = computed(
+    () => this.boardsUpdated().find((board) => board.scope === this.filter.selectedScope())?.lastUpdated ?? null,
+  );
 
   private readonly stickyTop = viewChild.required<ElementRef<HTMLElement>>('stickyTop');
   private readonly document = inject(DOCUMENT);
@@ -56,6 +62,7 @@ export class RankingsShellComponent {
 
   constructor() {
     this.api.getLeagues().subscribe((leagues) => this.leagues.set(leagues));
+    this.api.getBoardsLastUpdated().subscribe((boards) => this.boardsUpdated.set(boards));
 
     // Publishes the sticky block's height so a board's table header pins beneath
     // it. Measured, not hard-coded: the scope note is two or three lines

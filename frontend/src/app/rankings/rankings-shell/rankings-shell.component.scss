@@ -97,6 +97,22 @@
   margin-bottom: 0.7rem;
 }
 
+// Stretches to the row height so the last-updated line sits at the bottom.
+.control-bar__main {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+}
+
+.last-updated {
+  margin: 0.6rem 0 0;
+  margin-top: auto;
+  padding-top: 0.6rem;
+  color: var(--color-text-dim);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
 .scope-note {
   color: var(--color-text-muted);
   font-size: 0.88rem;

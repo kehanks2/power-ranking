@@ -2,7 +2,14 @@ import express, { type Express } from 'express';
 import cors from 'cors';
 import type { Pool } from 'pg';
 import { isRatingWindow } from '@power-ranking/shared';
-import { getLeagues, getTeams, getTeamById, getPlayers, getPlayerById } from './repositories.js';
+import {
+  getLeagues,
+  getTeams,
+  getTeamById,
+  getPlayers,
+  getPlayerById,
+  getBoardsLastUpdated,
+} from './repositories.js';
 
 /** Thin, precomputed-only read API -- no request-time rating computation, per plan. */
 export function createApp(pool: Pool): Express {
@@ -12,6 +19,10 @@ export function createApp(pool: Pool): Express {
   app.get('/leagues', async (_req, res) => {
     const leagues = await getLeagues(pool);
     res.json(leagues);
+  });
+
+  app.get('/boards/updated', async (_req, res) => {
+    res.json(await getBoardsLastUpdated(pool));
   });
 
   // No global team board: every board is one pool of evidence (one region, or
