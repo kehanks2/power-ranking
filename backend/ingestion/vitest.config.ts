@@ -13,5 +13,14 @@ export default defineConfig({
     // integration tests validating real DB behavior, not isolated units,
     // so parallelism isn't safe here regardless of speed cost.
     fileParallelism: false,
+
+    // Forced, and deliberately ignoring an ambient DATABASE_URL: the wipe above
+    // destroys real ratings when this points at dev, which is how an ingested
+    // generation of player_ratings_history was lost.
+    // Seed the clone with: CREATE DATABASE powerranking_test TEMPLATE powerranking;
+    env: {
+      DATABASE_URL:
+        process.env.TEST_DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking_test',
+    },
   },
 });
