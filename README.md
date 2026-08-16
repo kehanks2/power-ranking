@@ -61,11 +61,23 @@ that were measured and rejected.
 
 ## Data and attribution
 
-Match, tournament, and player data comes from **[Liquipedia](https://liquipedia.net)**
-via their API. Liquipedia content is licensed **[CC-BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)**,
-and the ratings in this project are derived from it.
+Match, tournament, and player data is from **[Liquipedia](https://liquipedia.net)**,
+retrieved through the [Liquipedia API](https://liquipedia.net/api-terms-of-use)
+for the [League of Legends wiki](https://liquipedia.net/leagueoflegends).
 
-This project follows Liquipedia's
+Liquipedia text content is licensed under
+**[CC-BY-SA 3.0 US](https://creativecommons.org/licenses/by-sa/3.0/us/)**.
+
+**Changes were made.** Nothing here reproduces Liquipedia articles. Match
+results, rosters, and per-game statistics are parsed into a relational schema and
+transformed into ratings by this project's own model (`MODEL.md`); the ratings,
+rankings, and confidence figures are computed here and are not Liquipedia
+content. The data derived from Liquipedia is shared under the same
+**CC-BY-SA 3.0 US** licence, as share-alike requires.
+
+Liquipedia is not affiliated with this project and does not endorse it.
+
+This project also follows the
 [API Terms of Use](https://liquipedia.net/api-terms-of-use):
 
 - Requests carry a descriptive `User-Agent` identifying the project with a link back.
@@ -74,8 +86,6 @@ This project follows Liquipedia's
 - Results are stored and re-used; pulls are bounded to the dates not already held, so
   the same data is not requested twice.
 - Only the API is used. No automated access to Liquipedia's HTML pages.
-
-Liquipedia is not affiliated with this project and does not endorse it.
 
 ## Status
 
@@ -86,5 +96,4 @@ major leagues. Ratings are recomputed by a full replay, so the pipeline is safe
 to re-run at any time.
 
 Not yet done: the daily update (`backend/ingestion/src/dailyUpdate.ts`) is
-written but not scheduled, and the database is still local. `TODO.md` tracks
-what is open.
+written but not scheduled, and the database is still local.

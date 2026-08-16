@@ -10,3 +10,7 @@ logs/
 .liquipedia-rate-limit.json
 tsconfig.tsbuildinfo
 **/tsconfig.tsbuildinfo
+
+# Personal working notes, not part of the project
+CLAUDE.md
+TODO.md
