@@ -19,14 +19,19 @@ that were measured and rejected.
 
 ## Local development
 
-1. Start Postgres (mapped to host port **5433**, not 5432 -- see `docker-compose.yml` comment for why):
+1. Put the database connection strings in `.env` at the repo root:
    ```
-   docker compose up -d
+   DATABASE_URL=postgresql://...      # the database the app reads and the pipeline writes
+   TEST_DATABASE_URL=postgresql://... # a clone the suites wipe; must be named *_test
+   LIQUIPEDIA_API_KEY=...
    ```
-2. Apply schema + seed data (first time only, or after wiping the volume):
+   The hosted database is [Neon](https://neon.tech). `docker-compose.yml` is kept as an
+   offline fallback, but nothing routine needs it; `psql` and `pg_dump` come from a
+   native PostgreSQL install.
+2. Apply schema + seed data (first time only, against an empty database):
    ```
-   docker exec -i power-ranking-db psql -U powerranking -d powerranking < db/migrations/0001_init.sql
-   docker exec -i power-ranking-db psql -U powerranking -d powerranking < db/seed/001_leagues_and_aliases.sql
+   psql "$DATABASE_URL" -f db/migrations/0001_init.sql
+   psql "$DATABASE_URL" -f db/seed/001_leagues_and_aliases.sql
    ```
 3. Install dependencies from the repo root (npm workspaces link the backend packages):
    ```
@@ -51,13 +56,15 @@ that were measured and rejected.
 
 - `npm test --workspace=@power-ranking/rating-engine` -- pure unit tests, no DB needed.
 - `npm test --workspace=@power-ranking/ingestion` / `@power-ranking/api` -- integration
-  tests against a live Postgres. These run against **`powerranking_test`**, forced in
+  tests against a live Postgres. These run against **`TEST_DATABASE_URL`**, forced in
   each `vitest.config.ts` and ignoring any `DATABASE_URL` you have set, because the
-  ingestion suite wipes and rebuilds the rating tables. Seed the clone with:
+  ingestion suite wipes and rebuilds the rating tables. The run refuses to start
+  unless that database is named `*_test`. Rebuild the clone with:
   ```
-  docker exec power-ranking-db psql -U powerranking -d postgres -c "CREATE DATABASE powerranking_test TEMPLATE powerranking"
+  node scripts/refreshTestDb.mjs
   ```
-  They assert against real ingested data, so an empty database will fail them.
+  They assert against real ingested data, so an empty database will fail them --
+  refresh the clone after an ingest.
 
 ## Data and attribution
 

@@ -7,7 +7,8 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "daily": "tsx src/dailyUpdate.ts",
+    "daily": "tsx --env-file-if-exists=../../.env src/dailyUpdate.ts",
+    "recompute": "tsx --env-file-if-exists=../../.env src/__tests__/manualRecompute.ts",
     "test": "vitest run"
   },
   "dependencies": {

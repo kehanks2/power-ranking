@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+import { testDatabaseUrl } from '../testDatabaseUrl.mjs';
 
 export default defineConfig({
   test: {
@@ -17,10 +18,6 @@ export default defineConfig({
     // Forced, and deliberately ignoring an ambient DATABASE_URL: the wipe above
     // destroys real ratings when this points at dev, which is how an ingested
     // generation of player_ratings_history was lost.
-    // Seed the clone with: CREATE DATABASE powerranking_test TEMPLATE powerranking;
-    env: {
-      DATABASE_URL:
-        process.env.TEST_DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking_test',
-    },
+    env: { DATABASE_URL: testDatabaseUrl() },
   },
 });
