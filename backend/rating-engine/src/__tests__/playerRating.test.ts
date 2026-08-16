@@ -10,6 +10,9 @@ import {
   transferAnchor,
   blendComponentPercentiles,
   componentWeights,
+  componentWeightsForRole,
+  componentWeightsForRoleAtWinWeight,
+  ROLE_COMPONENT_WEIGHTS,
   DEFAULT_WIN_WEIGHT,
   DEFAULT_HALF_LIFE_DAYS,
   DEFAULT_SHRINKAGE_GAMES,
@@ -197,6 +200,47 @@ describe('componentWeights', () => {
     expect(weights.goldShare).toBeCloseTo(0.125, 10);
     expect(weights.damageShare).toBeCloseTo(0.125, 10);
     expect(weights.killParticipation).toBeCloseTo(0.125, 10);
+  });
+});
+
+describe('componentWeightsForRoleAtWinWeight', () => {
+  const roles = Object.keys(ROLE_COMPONENT_WEIGHTS);
+
+  it('returns the role weights unchanged at the shipped win weight', () => {
+    for (const role of roles) {
+      expect(componentWeightsForRoleAtWinWeight(role, DEFAULT_WIN_WEIGHT)).toBe(componentWeightsForRole(role));
+    }
+  });
+
+  it('sets winRate to exactly what was asked for, and still sums to 1', () => {
+    for (const role of roles) {
+      for (const winWeight of [0, 0.3, 0.4, 0.45, 0.7, 1]) {
+        const weights = componentWeightsForRoleAtWinWeight(role, winWeight);
+        expect(weights.winRate).toBe(winWeight);
+        const total = Object.values(weights).reduce((sum, w) => sum + (w ?? 0), 0);
+        expect(total).toBeCloseTo(1, 10);
+      }
+    }
+  });
+
+  it('keeps the role internal balance, only rescaling it', () => {
+    // SUP leans on kill participation; that shape must survive the rescale, or
+    // sweeping the win weight would quietly be sweeping the role weights too.
+    const base = componentWeightsForRole('SUP');
+    const at40 = componentWeightsForRoleAtWinWeight('SUP', 0.4);
+    const ratio = (at40.killParticipation ?? 0) / (base.killParticipation ?? 1);
+    for (const component of ['killParticipation', 'kda', 'damageShare', 'objControl'] as const) {
+      expect((at40[component] ?? 0) / (base[component] ?? 1)).toBeCloseTo(ratio, 10);
+    }
+    expect(ratio).toBeCloseTo(0.6 / 0.5, 10);
+  });
+
+  it('zeroes the box-score stats when the outcome takes all the weight', () => {
+    const weights = componentWeightsForRoleAtWinWeight('TOP', 1);
+    expect(weights.winRate).toBe(1);
+    for (const [component, weight] of Object.entries(weights)) {
+      if (component !== 'winRate') expect(weight).toBe(0);
+    }
   });
 });
 

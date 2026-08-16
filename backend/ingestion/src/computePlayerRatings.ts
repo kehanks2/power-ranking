@@ -2,7 +2,7 @@ import type { Pool } from 'pg';
 import {
   percentile,
   blendComponentPercentiles,
-  componentWeightsForRole,
+  componentWeightsForRoleAtWinWeight,
   DEFAULT_WIN_WEIGHT,
   recencyWeight,
   DEFAULT_HALF_LIFE_DAYS,
@@ -148,7 +148,7 @@ export interface PlayerGroupRating {
  */
 export function selectGroupRatings(
   groupStats: PlayerGroupStats[],
-  _winWeight = DEFAULT_WIN_WEIGHT,
+  winWeight = DEFAULT_WIN_WEIGHT,
 ): PlayerGroupRating[] {
   const peerGroups = new Map<string, PlayerGroupStats[]>();
   for (const player of groupStats) {
@@ -185,7 +185,7 @@ export function selectGroupRatings(
           goldDiff: pct(player.goldDiff, goldDiffPeers),
           objControl: pct(player.objControl, objPeers),
         },
-        componentWeightsForRole(player.role),
+        componentWeightsForRoleAtWinWeight(player.role, winWeight),
       );
 
       ratings.push({

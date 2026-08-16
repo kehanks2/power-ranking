@@ -142,6 +142,33 @@ export function componentWeightsForRole(role: string): Partial<Record<PlayerComp
   return ROLE_COMPONENT_WEIGHTS[role] ?? componentWeights();
 }
 
+/**
+ * A role's weights restated at a different outcome weight: winRate becomes
+ * `winWeight` and the box-score terms are rescaled to fill what is left, so the
+ * role keeps its own internal balance and the set still sums to 1. Sweeping the
+ * win weight needs this, since per-role weights hardcode winRate at 0.5.
+ *
+ * Returns the role's weights by identity when the weight is unchanged, so the
+ * shipped path cannot drift by a rounding step.
+ */
+export function componentWeightsForRoleAtWinWeight(
+  role: string,
+  winWeight: number,
+): Partial<Record<PlayerComponent, number>> {
+  const base = componentWeightsForRole(role);
+  if (winWeight === (base.winRate ?? 0)) return base;
+
+  const rest = Object.entries(base).filter(([component]) => component !== 'winRate');
+  const restTotal = rest.reduce((sum, [, weight]) => sum + (weight ?? 0), 0);
+  const scale = restTotal === 0 ? 0 : (1 - winWeight) / restTotal;
+
+  const rescaled: Partial<Record<PlayerComponent, number>> = { winRate: winWeight };
+  for (const [component, weight] of rest) {
+    rescaled[component as PlayerComponent] = (weight ?? 0) * scale;
+  }
+  return rescaled;
+}
+
 /** Blends already-percentiled (0-100) components into one composite; a component with no percentile is treated as neutral 50. */
 export function blendComponentPercentiles(
   percentiles: Partial<Record<PlayerComponent, number>>,
