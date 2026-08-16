@@ -19,6 +19,7 @@ import {
   type IncomingPlayerSignal,
 } from '@power-ranking/rating-engine';
 import { loadReplayData } from './replayData.js';
+import { bulkInsert } from './bulkInsert.js';
 
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 
@@ -134,35 +135,51 @@ export async function computeRatings(pool: Pool): Promise<{ teamRows: number; le
     await client.query('DELETE FROM team_ratings_history');
     await client.query('DELETE FROM league_ratings_history');
 
-    for (const snapshot of result.teamHistory) {
-      await client.query(
-        `INSERT INTO team_ratings_history (team_id, as_of_date, mu_ctx, phi_ctx, sigma_ctx, reason, roster_implied_mu, method_version)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 1)`,
-        [
-          Number(snapshot.teamId),
-          snapshot.asOfDate,
-          snapshot.mu,
-          snapshot.phi,
-          snapshot.sigma,
-          snapshot.reason,
-          snapshot.rosterImpliedMu ?? null,
-        ],
-      );
-    }
-    for (const snapshot of qualifiedInternational) {
-      await client.query(
-        `INSERT INTO team_ratings_history (team_id, as_of_date, mu_ctx, phi_ctx, sigma_ctx, reason, method_version, scope)
-         VALUES ($1, $2, $3, $4, $5, $6, 1, 'international')`,
-        [Number(snapshot.teamId), snapshot.asOfDate, snapshot.mu, snapshot.phi, snapshot.sigma, snapshot.reason],
-      );
-    }
-    for (const snapshot of result.leagueHistory) {
-      await client.query(
-        `INSERT INTO league_ratings_history (league_id, as_of_date, mu_meta, phi_meta, sigma_meta, method_version)
-         VALUES ($1, $2, $3, $4, $5, 1)`,
-        [Number(snapshot.leagueId), snapshot.asOfDate, snapshot.mu, snapshot.phi, snapshot.sigma],
-      );
-    }
+    // Replay inserts chronologically and readers break as_of_date ties on id,
+    // so the rows must keep replay order. bulkInsert preserves array order.
+    await bulkInsert(
+      client,
+      'team_ratings_history',
+      ['team_id', 'as_of_date', 'mu_ctx', 'phi_ctx', 'sigma_ctx', 'reason', 'roster_implied_mu', 'method_version'],
+      result.teamHistory.map((snapshot) => [
+        Number(snapshot.teamId),
+        snapshot.asOfDate,
+        snapshot.mu,
+        snapshot.phi,
+        snapshot.sigma,
+        snapshot.reason,
+        snapshot.rosterImpliedMu ?? null,
+        1,
+      ]),
+    );
+    await bulkInsert(
+      client,
+      'team_ratings_history',
+      ['team_id', 'as_of_date', 'mu_ctx', 'phi_ctx', 'sigma_ctx', 'reason', 'method_version', 'scope'],
+      qualifiedInternational.map((snapshot) => [
+        Number(snapshot.teamId),
+        snapshot.asOfDate,
+        snapshot.mu,
+        snapshot.phi,
+        snapshot.sigma,
+        snapshot.reason,
+        1,
+        'international',
+      ]),
+    );
+    await bulkInsert(
+      client,
+      'league_ratings_history',
+      ['league_id', 'as_of_date', 'mu_meta', 'phi_meta', 'sigma_meta', 'method_version'],
+      result.leagueHistory.map((snapshot) => [
+        Number(snapshot.leagueId),
+        snapshot.asOfDate,
+        snapshot.mu,
+        snapshot.phi,
+        snapshot.sigma,
+        1,
+      ]),
+    );
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');

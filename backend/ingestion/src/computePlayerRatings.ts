@@ -18,6 +18,7 @@ import {
   RATING_WINDOWS,
   type RatingWindow,
 } from '@power-ranking/shared';
+import { bulkInsert } from './bulkInsert.js';
 
 // v3: per-role stat weighting, plus CS/min, gold-diff, and jungle objective control.
 const PLAYER_RATING_METHOD_VERSION = 3;
@@ -382,7 +383,6 @@ async function writeRatings(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    let inserted = 0;
     // computed_at is the generation key, so every row of this pass shares it.
     const computedAt = new Date();
     const today = computedAt.toISOString().slice(0, 10);
@@ -392,32 +392,43 @@ async function writeRatings(
     );
     const dataFrontier = frontier.rows[0]?.day ?? null;
 
-    for (const rating of ratings) {
-      await client.query(
-        `INSERT INTO player_ratings_history
-           (player_id, as_of_date, rating, games_played, method_version, scope, league_id, role, is_primary, rating_window,
-            raw_rating, effective_games, computed_at, data_frontier)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-        [
-          rating.playerId,
-          today,
-          rating.rating,
-          rating.gamesPlayed,
-          PLAYER_RATING_METHOD_VERSION,
-          scope,
-          // International groups are role-only, so there's no league to record.
-          scope === 'international' ? null : rating.leagueId,
-          rating.role,
-          rating.isPrimary,
-          window,
-          rating.rawRating,
-          rating.effectiveGames,
-          computedAt,
-          dataFrontier,
-        ],
-      );
-      inserted += 1;
-    }
+    const inserted = await bulkInsert(
+      client,
+      'player_ratings_history',
+      [
+        'player_id',
+        'as_of_date',
+        'rating',
+        'games_played',
+        'method_version',
+        'scope',
+        'league_id',
+        'role',
+        'is_primary',
+        'rating_window',
+        'raw_rating',
+        'effective_games',
+        'computed_at',
+        'data_frontier',
+      ],
+      ratings.map((rating) => [
+        rating.playerId,
+        today,
+        rating.rating,
+        rating.gamesPlayed,
+        PLAYER_RATING_METHOD_VERSION,
+        scope,
+        // International groups are role-only, so there's no league to record.
+        scope === 'international' ? null : rating.leagueId,
+        rating.role,
+        rating.isPrimary,
+        window,
+        rating.rawRating,
+        rating.effectiveGames,
+        computedAt,
+        dataFrontier,
+      ]),
+    );
 
     // Recomputing the same games again adds nothing a caret can read, so keep
     // only the newest run per frontier. Without this, retention would be spent
