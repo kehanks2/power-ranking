@@ -14,7 +14,11 @@
  */
 import { createPool } from '../db.js';
 import { buildPlayerGroupStats, selectGroupRatings, type PlayerGameRow } from '../computePlayerRatings.js';
-import { componentWeightsForRole, componentWeightsForRoleAtWinWeight } from '@power-ranking/rating-engine';
+import {
+  componentWeights,
+  componentWeightsForRole,
+  componentWeightsForRoleAtWinWeight,
+} from '@power-ranking/rating-engine';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const CUTOFFS = ['2026-03-01', '2026-04-01', '2026-05-01', '2026-06-01', '2026-07-01', '2026-08-01'];
@@ -36,7 +40,10 @@ function without(base: Weights, drop: (keyof Weights)[]): Weights {
 
 const CONFIGS: { label: string; weightsFor: (role: string) => Weights }[] = [
   { label: 'shipped (default)', weightsFor: (r) => componentWeightsForRole(r) },
-  { label: 'win 0.50', weightsFor: (r) => componentWeightsForRoleAtWinWeight(r, 0.5) },
+  // The model as it stood when 0.5 was chosen: uniform box score, no goldDiff,
+  // csMin or objControl. The comparison kward asked for.
+  { label: 'v2 uniform (win 0.50)', weightsFor: () => componentWeights(0.5) },
+  { label: 'v3 per-role (win 0.50)', weightsFor: (r) => componentWeightsForRoleAtWinWeight(r, 0.5) },
   { label: 'win 0.40', weightsFor: (r) => componentWeightsForRoleAtWinWeight(r, 0.4) },
   { label: 'win 0.30', weightsFor: (r) => componentWeightsForRoleAtWinWeight(r, 0.3) },
   { label: 'no winRate', weightsFor: (r) => without(componentWeightsForRole(r), ['winRate']) },
