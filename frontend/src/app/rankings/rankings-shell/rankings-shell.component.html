@@ -56,7 +56,30 @@
       </p>
       @if (lastUpdated()) {
         <!-- UTC, or a date-only string renders a day early west of Greenwich. -->
-        <p class="last-updated">Last updated {{ lastUpdated() | date: 'd MMMM y' : 'UTC' }}</p>
+        <p class="last-updated">
+          Last updated {{ lastUpdated() | date: 'd MMMM y' : 'UTC' }}
+          <!-- The arrows name their own baseline: it is neither yesterday nor
+               the last pull, and differs between the two boards. A board with
+               no prior board says so rather than going quiet -- a row of dashes
+               with no explanation reads as a bug. -->
+          @if (anchor(); as board) {
+            <span class="since">
+              <!-- Labelled rather than paired with a visually-hidden gloss: the
+                   hidden words are copied with the line, landing mid-sentence. -->
+              <!-- The gap is written in: Angular drops whitespace-only nodes
+                   between elements, and nbsp also keeps the mark off a wrap. -->
+              <span aria-hidden="true">·&nbsp;</span>
+              <span class="since__glyphs" role="img" aria-label="rank movement"
+                ><span class="up">▲</span><span class="down">▼</span></span
+              >
+              @if (board.comparedTo; as since) {
+                since {{ since | date: 'd MMMM y' : 'UTC' }}
+              } @else {
+                nothing to compare
+              }
+            </span>
+          }
+        </p>
       }
     </div>
 

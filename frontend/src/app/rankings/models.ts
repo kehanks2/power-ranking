@@ -51,6 +51,8 @@ export interface TeamSummary {
   rank: number;
   /** Places gained since this team last played, positive upward; null when idle. */
   rankChange: number | null;
+  /** ISO day `rankChange` measures from. Null exactly when `rankChange` is. */
+  comparedTo: string | null;
   games: number;
   recentRosterChange: boolean;
   /** Finish at each of the last four international events this team played. */
@@ -152,6 +154,8 @@ export interface PlayerSummary {
   rank: number;
   /** Places gained since this player last played, positive upward; null when idle. */
   rankChange: number | null;
+  /** ISO day `rankChange` measures from. Null exactly when `rankChange` is. */
+  comparedTo: string | null;
   scope: PlayerRatingScope;
   /** Which stretch of play it was measured over. Always 'all' internationally. */
   window: RatingWindow;

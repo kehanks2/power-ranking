@@ -82,6 +82,38 @@ describe('read API (live Postgres)', () => {
     }
   });
 
+  // The board names its baseline in the header, so a date beside a dashed row
+  // would claim a comparison that row is not making, and a rated row without
+  // one leaves the arrow unexplained.
+  it('every rank change carries the day it measures from, and only those do', async () => {
+    for (const scope of ['LCK', 'LEC', 'LPL', 'CBLOL', 'LCP', 'LCS', 'international']) {
+      const teams = await request(app).get('/teams').query({ scope });
+      const players = await request(app)
+        .get('/players')
+        .query(scope === 'international' ? { scope: 'international' } : { league: scope });
+      for (const row of [...teams.body, ...players.body] as { rankChange: number | null; comparedTo: string | null }[]) {
+        expect(row.comparedTo === null).toBe(row.rankChange === null);
+        if (row.comparedTo !== null) expect(row.comparedTo).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      }
+    }
+  });
+
+  // One board, one prior board -- the date is a property of the comparison, not
+  // of the row, so rows that were compared must all name the same day.
+  it('a board measures every rank change from one day', async () => {
+    for (const scope of ['LCK', 'CBLOL', 'LCP']) {
+      for (const path of ['/teams', '/players']) {
+        const res = await request(app)
+          .get(path)
+          .query(path === '/teams' ? { scope } : { league: scope });
+        const days = new Set(
+          (res.body as { comparedTo: string | null }[]).map((row) => row.comparedTo).filter((day) => day !== null),
+        );
+        expect(days.size).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
   it('GET /teams?scope=international spans regions and only rates teams with a record', async () => {
     const res = await request(app).get('/teams').query({ scope: 'international' });
     expect(res.status).toBe(200);

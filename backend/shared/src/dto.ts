@@ -45,6 +45,8 @@ export interface TeamSummaryDto {
   lastInternational: string | null;
   /** Places gained on the board's last day of play; null when that is long past. */
   rankChange: number | null;
+  /** ISO day `rankChange` measures from. Null exactly when `rankChange` is. */
+  comparedTo: string | null;
 }
 
 export interface RosterEntryDto {
@@ -165,6 +167,8 @@ export interface PlayerSummaryDto {
   rank: number;
   /** Places gained since the previous generation; null until a second one exists. */
   rankChange: number | null;
+  /** ISO day `rankChange` measures from. Null exactly when `rankChange` is. */
+  comparedTo: string | null;
   /** Which pool `rating` was measured against -- it is meaningless without this. */
   scope: PlayerRatingScope;
   /** Which stretch of play it was measured over. Always 'all' internationally. */

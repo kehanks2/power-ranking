@@ -1,6 +1,7 @@
 import {
   Component,
   ChangeDetectionStrategy,
+  DestroyRef,
   Injector,
   afterNextRender,
   inject,
@@ -12,6 +13,7 @@ import { DOCUMENT, DecimalPipe } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { RankingsApiService } from '../rankings-api.service';
 import { LeagueFilterService } from '../league-filter.service';
+import { BoardAnchorService } from '../board-anchor.service';
 import { ConfidenceAxisComponent } from '../confidence/confidence-axis.component';
 import { ConfidenceRangeComponent } from '../confidence/confidence-range.component';
 import { PlayerPanelComponent } from '../player-panel/player-panel.component';
@@ -37,6 +39,7 @@ export class PlayersListComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly injector = inject(Injector);
   private readonly document = inject(DOCUMENT);
+  private readonly anchor = inject(BoardAnchorService);
   protected readonly filterService = inject(LeagueFilterService);
 
   // Read once, not tracked: it says which row to open on arrival, and keeping it
@@ -133,6 +136,12 @@ export class PlayersListComponent {
   );
 
   constructor() {
+    // Off the shown rows, so a role filter that leaves nothing comparable drops
+    // the line with the arrows. Empty while loading: a window switch would
+    // otherwise show the previous board's baseline over the new one.
+    effect(() => this.anchor.publish(this.loading() ? [] : this.players()));
+    inject(DestroyRef).onDestroy(() => this.anchor.clear());
+
     effect((onCleanup) => {
       const scope = this.filterService.selectedScope();
       const window = this.window();

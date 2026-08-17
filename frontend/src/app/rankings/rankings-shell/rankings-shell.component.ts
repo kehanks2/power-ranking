@@ -14,6 +14,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map } from 'rxjs';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { LeagueFilterService } from '../league-filter.service';
+import { BoardAnchorService } from '../board-anchor.service';
 import { RankingsApiService } from '../rankings-api.service';
 import { BOARD_SCOPES, type BoardScope, type BoardUpdated, type LeagueSummary } from '../models';
 
@@ -39,6 +40,9 @@ export class RankingsShellComponent {
   protected readonly lastUpdated = computed(
     () => this.boardsUpdated().find((board) => board.scope === this.filter.selectedScope())?.lastUpdated ?? null,
   );
+
+  /** What the board's arrows measure against, published by the board itself. */
+  protected readonly anchor = inject(BoardAnchorService).anchor;
 
   private readonly stickyTop = viewChild.required<ElementRef<HTMLElement>>('stickyTop');
   private readonly document = inject(DOCUMENT);

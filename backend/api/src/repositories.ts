@@ -282,12 +282,23 @@ function toTeamSummaries(rows: TeamRow[]): TeamSummaryDto[] {
   // Ranked on the floor, not the rating, so a thinly-evidenced high number
   // doesn't top one we actually know. See conservativeRank.
   withRatings.sort((a, b) => b.floor - a.floor);
-  return withRatings.map((row, index) => ({ ...row, rank: index + 1, rankChange: null }));
+  return withRatings.map((row, index) => ({ ...row, rank: index + 1, rankChange: null, comparedTo: null }));
 }
 
 // Counted from the newest game we hold, not from today -- ingestion runs in
 // bursts, and a wall-clock cutoff blanks the board whenever a pull is late.
 export const RANK_CHANGE_STALE_DAYS = 10;
+
+/**
+ * Places gained per row, and the day the prior board they are measured against
+ * was taken. Carried together so the board can name its own baseline without a
+ * second derivation of which one it used -- `comparedTo` is null on exactly the
+ * paths that leave every row dashed.
+ */
+interface BoardRankChanges {
+  changes: Map<number, number | null>;
+  comparedTo: string | null;
+}
 
 /** Both 'YYYY-MM-DD'. Parsed as UTC so a local offset cannot shift the day. */
 function daysBetween(from: string, to: string): number {
@@ -371,16 +382,16 @@ async function computeRankChanges(
   ranked: { id: number; rank: number }[],
   international: boolean,
   advance: BoardAdvance | null,
-): Promise<Map<number, number | null>> {
+): Promise<BoardRankChanges> {
   const changes = new Map<number, number | null>(ranked.map((t) => [t.id, null]));
-  if (ranked.length === 0) return changes;
+  if (ranked.length === 0) return { changes, comparedTo: null };
   const teamIds = ranked.map((t) => t.id);
 
   // A held board compares stage against stage. Taking everything before the
   // shown day instead would put the end of a week against its own middle,
   // which is the half-round comparison the stage cadence exists to remove.
   if (advance) {
-    if (!advance.previousAsOfDate) return changes;
+    if (!advance.previousAsOfDate) return { changes, comparedTo: null };
     return computeRankChangesAgainst(pool, ranked, international, advance.asOfDate, advance.previousAsOfDate);
   }
 
@@ -395,7 +406,7 @@ async function computeRankChanges(
     [teamIds],
   );
   const baselineDay = matchDay.rows[0]?.day;
-  if (!baselineDay) return changes;
+  if (!baselineDay) return { changes, comparedTo: null };
 
   // Unscoped: data freshness, not board activity. Scoped to international it
   // floats to the last event and keeps carets up for months after it ended.
@@ -403,15 +414,15 @@ async function computeRankChanges(
     `SELECT max(datetime_utc)::date::text AS newest FROM games`,
   );
   const newestDay = newestRow.rows[0]?.newest;
-  if (!newestDay) return changes;
+  if (!newestDay) return { changes, comparedTo: null };
   // The whole board dashes, never single teams, or the rest stop reconciling.
-  if (daysBetween(baselineDay, newestDay) > RANK_CHANGE_STALE_DAYS) return changes;
+  if (daysBetween(baselineDay, newestDay) > RANK_CHANGE_STALE_DAYS) return { changes, comparedTo: null };
 
   // id breaks the as_of_date tie -- see getTeams. $3 is cast to date, not
   // passed as a Date: a JS Date is local midnight, which under a negative UTC
   // offset lands hours INTO the match day and pulls its own games into "prior".
-  const snapshots = await pool.query<{ team_id: number; mu_ctx: string; phi_ctx: string }>(
-    `SELECT DISTINCT ON (team_id) team_id, mu_ctx, phi_ctx FROM team_ratings_history
+  const snapshots = await pool.query<{ team_id: number; mu_ctx: string; phi_ctx: string; as_of_date: string }>(
+    `SELECT DISTINCT ON (team_id) team_id, mu_ctx, phi_ctx, as_of_date::text FROM team_ratings_history
      WHERE team_id = ANY($1) AND scope = $2 AND as_of_date < $3::date
      ORDER BY team_id, as_of_date DESC, id DESC`,
     [teamIds, international ? 'international' : 'overall', baselineDay],
@@ -433,7 +444,14 @@ async function computeRankChanges(
     const nowRank = nowOrder.findIndex((t) => t.id === team.id);
     if (nowRank >= 0) changes.set(team.id, index - nowRank);
   });
-  return changes;
+
+  // Each team's own last snapshot before the match day, so the newest of them is
+  // the freshest state the prior board contains. ISO days compare as strings.
+  const comparedTo = snapshots.rows.reduce<string | null>(
+    (newest, row) => (newest === null || row.as_of_date > newest ? row.as_of_date : newest),
+    null,
+  );
+  return { changes, comparedTo };
 }
 
 /**
@@ -448,7 +466,7 @@ async function computeRankChangesAgainst(
   international: boolean,
   shownDay: string | null,
   priorDay: string,
-): Promise<Map<number, number | null>> {
+): Promise<BoardRankChanges> {
   const changes = new Map<number, number | null>(ranked.map((t) => [t.id, null]));
   const teamIds = ranked.map((t) => t.id);
 
@@ -458,7 +476,9 @@ async function computeRankChangesAgainst(
   const newestDay = newestRow.rows[0]?.newest;
   // Staleness still counts from the data, not the clock, and dashes the whole
   // board rather than single teams so the rest keep reconciling.
-  if (!newestDay || !shownDay || daysBetween(shownDay, newestDay) > RANK_CHANGE_STALE_DAYS) return changes;
+  if (!newestDay || !shownDay || daysBetween(shownDay, newestDay) > RANK_CHANGE_STALE_DAYS) {
+    return { changes, comparedTo: null };
+  }
 
   const snapshots = await pool.query<{ team_id: number; mu_ctx: string; phi_ctx: string }>(
     `SELECT DISTINCT ON (team_id) team_id, mu_ctx, phi_ctx FROM team_ratings_history
@@ -480,7 +500,7 @@ async function computeRankChangesAgainst(
     const nowRank = nowOrder.findIndex((t) => t.id === team.id);
     if (nowRank >= 0) changes.set(team.id, index - nowRank);
   });
-  return changes;
+  return { changes, comparedTo: priorDay };
 }
 
 /**
@@ -569,8 +589,11 @@ export async function getTeams(pool: Pool, scope: string): Promise<TeamSummaryDt
   );
 
   const summaries = toTeamSummaries(result.rows);
-  const changes = await computeRankChanges(pool, summaries, international, advance);
-  return summaries.map((team) => ({ ...team, rankChange: changes.get(team.id) ?? null }));
+  const { changes, comparedTo } = await computeRankChanges(pool, summaries, international, advance);
+  return summaries.map((team) => {
+    const rankChange = changes.get(team.id) ?? null;
+    return { ...team, rankChange, comparedTo: rankChange === null ? null : comparedTo };
+  });
 }
 
 export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetailDto | null> {
@@ -798,9 +821,9 @@ async function computePlayerRankChanges(
   ratingWindow: RatingWindow,
   /** The generation the board is showing, when the stage cadence pinned one. */
   shownGeneration: Date | null,
-): Promise<Map<number, number | null>> {
+): Promise<BoardRankChanges> {
   const changes = new Map<number, number | null>(ranked.map((p) => [p.id, null]));
-  if (ranked.length === 0) return changes;
+  if (ranked.length === 0) return { changes, comparedTo: null };
   const playerIds = ranked.map((p) => p.id);
   const international = scope === 'international';
 
@@ -825,12 +848,12 @@ async function computePlayerRankChanges(
      ORDER BY prh.computed_at`,
     [playerIds, scope, ratingWindow],
   );
-  if (history.rows.length === 0) return changes;
+  if (history.rows.length === 0) return { changes, comparedTo: null };
 
   // A held board must not read carets past the generation it is showing, or the
   // arrows describe results the ratings beside them do not include.
   const shownAt = shownGeneration?.getTime();
-  if (new Set(history.rows.map((r) => r.computed_at.getTime())).size < 2) return changes;
+  if (new Set(history.rows.map((r) => r.computed_at.getTime())).size < 2) return { changes, comparedTo: null };
 
   const intlJoin = international
     ? `JOIN series s ON s.id = g.series_id
@@ -845,14 +868,14 @@ async function computePlayerRankChanges(
     [playerIds],
   );
   const lastPlayed = matchDay.rows[0]?.day;
-  if (!lastPlayed) return changes;
+  if (!lastPlayed) return { changes, comparedTo: null };
   // Unscoped, as on the team board.
   const newestRow = await pool.query<{ newest: string | null }>(
     `SELECT max(datetime_utc)::date::text AS newest FROM games`,
   );
   const newestDay = newestRow.rows[0]?.newest;
-  if (!newestDay) return changes;
-  if (daysBetween(lastPlayed, newestDay) > RANK_CHANGE_STALE_DAYS) return changes;
+  if (!newestDay) return { changes, comparedTo: null };
+  if (daysBetween(lastPlayed, newestDay) > RANK_CHANGE_STALE_DAYS) return { changes, comparedTo: null };
 
   const byGeneration = new Map<number, Generation>();
   for (const row of history.rows) {
@@ -863,8 +886,11 @@ async function computePlayerRankChanges(
     });
   }
   const chosen = selectCaretGenerations([...byGeneration.values()], lastPlayed, shownAt);
-  if (!chosen || chosen.baseline === null) return changes;
+  if (!chosen || chosen.baseline === null) return { changes, comparedTo: null };
   const baseline = chosen.baseline;
+  // The generation's data frontier, not when it was computed: a rerun on the
+  // same games would otherwise name a day whose results it does not contain.
+  const comparedTo = byGeneration.get(baseline)?.dataFrontier ?? null;
 
   const priorBoard = history.rows
     .filter((row) => row.computed_at.getTime() === baseline)
@@ -885,7 +911,7 @@ async function computePlayerRankChanges(
       const nowRank = nowOrder.findIndex((p) => p.id === player.id);
       if (nowRank >= 0) changes.set(player.id, index - nowRank);
     });
-  return changes;
+  return { changes, comparedTo };
 }
 
 /**
@@ -985,8 +1011,11 @@ export async function getPlayers(
 
   withRatings.sort((a, b) => b.rating - a.rating);
   const ranked = withRatings.map((row, index) => ({ ...row, rank: index + 1, rankChange: null as number | null }));
-  const changes = await computePlayerRankChanges(pool, ranked, scope, ratingWindow, generation);
-  return ranked.map((row) => ({ ...row, rankChange: changes.get(row.id) ?? null }));
+  const { changes, comparedTo } = await computePlayerRankChanges(pool, ranked, scope, ratingWindow, generation);
+  return ranked.map((row) => {
+    const rankChange = changes.get(row.id) ?? null;
+    return { ...row, rankChange, comparedTo: rankChange === null ? null : comparedTo };
+  });
 }
 
 /** Must match computePlayerRatings.ts, or the stat line disagrees with the rating. */

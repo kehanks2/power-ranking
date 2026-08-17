@@ -113,6 +113,16 @@
   font-style: italic;
 }
 
+// Upright against the italic line, so the glyphs read as the marks they point
+// at rather than as slanted punctuation.
+.since__glyphs {
+  font-style: normal;
+  letter-spacing: 0.02em;
+
+  .up { color: var(--color-up); }
+  .down { color: var(--color-down); }
+}
+
 .scope-note {
   color: var(--color-text-muted);
   font-size: 0.88rem;

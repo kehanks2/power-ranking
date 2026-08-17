@@ -1,8 +1,9 @@
-import { Component, ChangeDetectionStrategy, inject, signal, computed, effect } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, inject, signal, computed, effect } from '@angular/core';
 import { DecimalPipe, PercentPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { RankingsApiService } from '../rankings-api.service';
 import { LeagueFilterService } from '../league-filter.service';
+import { BoardAnchorService } from '../board-anchor.service';
 import type { TeamDetail, TeamRecord, TeamSummary } from '../models';
 import { RankChangeComponent } from '../rank-change/rank-change.component';
 
@@ -36,6 +37,7 @@ interface AxisTick {
 })
 export class TeamsListComponent {
   private readonly api = inject(RankingsApiService);
+  private readonly anchor = inject(BoardAnchorService);
   protected readonly filterService = inject(LeagueFilterService);
 
   protected readonly teams = signal<TeamSummary[]>([]);
@@ -128,6 +130,13 @@ export class TeamsListComponent {
   });
 
   constructor() {
+    // The shell's last-updated line reads this, so it has to be given up when
+    // the board leaves the screen or the other tab inherits this one's date.
+    // Empty while loading, or a scope switch shows the old board's baseline
+    // against the new board's name until the response lands.
+    effect(() => this.anchor.publish(this.loading() ? [] : this.teams()));
+    inject(DestroyRef).onDestroy(() => this.anchor.clear());
+
     effect((onCleanup) => {
       const scope = this.filterService.selectedScope();
       this.loading.set(true);
