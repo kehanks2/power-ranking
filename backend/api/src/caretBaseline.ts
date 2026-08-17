@@ -26,6 +26,12 @@ export interface CaretGenerations {
  *   Recomputing old games today looks newer than a match day it does not
  *   contain, and every rerun on the same data shares a frontier, so the
  *   baseline does not move with how often the job runs.
+ * - Measure from a STAGE BOUNDARY, not from the newest generation that happens
+ *   to predate the last match day. The job runs daily, so "the previous
+ *   generation" is yesterday: an LCK board showing the end of week 12 compared
+ *   against data stopping mid-week-12, which is the half-round comparison the
+ *   whole stage mechanism exists to prevent. Team carets already measure from
+ *   `previousAsOfDate`; this is the same interval.
  * - Only compare like with like. Across a `method_version` change the two
  *   boards are different models, so the difference is the retune rather than
  *   anything a player did: cutting the win weight once "moved" 42 of 57 LCK
@@ -33,7 +39,13 @@ export interface CaretGenerations {
  */
 export function selectCaretGenerations(
   generations: Generation[],
-  lastPlayed: string,
+  /**
+   * End of the stage before the one on screen. A generation qualifies as the
+   * baseline only if its data stops at or before it. Internationally there are
+   * no stages, so callers pass the board's own last match day and the rule
+   * degrades to "any earlier generation".
+   */
+  baselineOnOrBefore: string,
   shownAt: number | undefined,
 ): CaretGenerations | null {
   const visible = generations
@@ -48,7 +60,11 @@ export function selectCaretGenerations(
         g.computedAt !== shown.computedAt &&
         g.methodVersion === shown.methodVersion &&
         g.dataFrontier !== null &&
-        g.dataFrontier < lastPlayed,
+        g.dataFrontier <= baselineOnOrBefore &&
+        // Strictly older DATA than what is shown, not merely an earlier run. A
+        // rerun over the same games is computed later but contains no less, and
+        // comparing the board against itself yields a board of zeros.
+        (shown.dataFrontier === null || g.dataFrontier < shown.dataFrontier),
     )
     .pop();
 

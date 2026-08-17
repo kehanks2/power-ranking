@@ -844,6 +844,12 @@ async function computePlayerRankChanges(
   shownGeneration: Date | null,
   /** The board's own league. Null only on the pooled board, which the UI never shows. */
   leagueSlug: string | null,
+  /**
+   * End of the stage before the one on screen -- the interval team carets
+   * already measure. Null internationally and on the pooled board, where there
+   * are no stages, and the board's own last match day stands in.
+   */
+  previousStageEnd: string | null,
 ): Promise<BoardRankChanges> {
   const changes = new Map<number, number | null>(ranked.map((p) => [p.id, null]));
   if (ranked.length === 0) return { changes, comparedTo: null };
@@ -920,7 +926,10 @@ async function computePlayerRankChanges(
       methodVersion: row.method_version,
     });
   }
-  const chosen = selectCaretGenerations([...byGeneration.values()], lastPlayed, shownAt);
+  // A stage boundary when the league has one, so the arrows span the same
+  // interval as the team board's. Without it the daily job makes every baseline
+  // "yesterday", which compares the end of a week against the middle of it.
+  const chosen = selectCaretGenerations([...byGeneration.values()], previousStageEnd ?? lastPlayed, shownAt);
   if (!chosen || chosen.baseline === null) return { changes, comparedTo: null };
   const baseline = chosen.baseline;
   // The generation's data frontier, not when it was computed: a rerun on the
@@ -1150,6 +1159,7 @@ export async function getPlayers(
     ratingWindow,
     generation,
     leagueSlug ?? null,
+    advance?.previousAsOfDate ?? null,
   );
   return ranked.map((row) => {
     const rankChange = changes.get(row.id) ?? null;

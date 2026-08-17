@@ -72,3 +72,40 @@ describe('selectCaretGenerations', () => {
     expect(selectCaretGenerations([], LAST_PLAYED, undefined)).toBeNull();
   });
 });
+
+describe('selectCaretGenerations against a stage boundary', () => {
+  const gen = (computedAt: number, dataFrontier: string | null, methodVersion = 1): Generation => ({
+    computedAt,
+    dataFrontier,
+    methodVersion,
+  });
+
+  it('measures from the previous stage, not from yesterday', () => {
+    // The bug kward caught: the job runs daily, so a board showing the end of
+    // LCK week 12 (16 Aug) was comparing against data stopping mid-week on the
+    // 15th. The previous stage ended on the 9th, and only a generation at or
+    // before that may be the baseline.
+    const generations = [gen(1, '2026-08-09'), gen(2, '2026-08-15'), gen(3, '2026-08-16')];
+    expect(selectCaretGenerations(generations, '2026-08-09', undefined)).toEqual({ shown: 3, baseline: 1 });
+  });
+
+  it('dashes rather than comparing mid-stage when no old enough generation exists', () => {
+    // Honest, and the live state after a method-version bump wiped the older
+    // generations: three runs on three consecutive days, none reaching back to
+    // the previous stage boundary.
+    const generations = [gen(1, '2026-08-15'), gen(2, '2026-08-16'), gen(3, '2026-08-17')];
+    expect(selectCaretGenerations(generations, '2026-08-09', undefined)).toEqual({ shown: 3, baseline: null });
+  });
+
+  it('takes the newest generation that still respects the boundary', () => {
+    const generations = [gen(1, '2026-08-02'), gen(2, '2026-08-09'), gen(3, '2026-08-16')];
+    expect(selectCaretGenerations(generations, '2026-08-09', undefined)).toEqual({ shown: 3, baseline: 2 });
+  });
+
+  it('still refuses a baseline holding the same data as the board', () => {
+    // A stage boundary equal to the shown frontier must not licence comparing
+    // the board against itself, which would render a board of zeros.
+    const generations = [gen(1, '2026-08-16'), gen(2, '2026-08-16')];
+    expect(selectCaretGenerations(generations, '2026-08-16', undefined)).toEqual({ shown: 2, baseline: null });
+  });
+});
