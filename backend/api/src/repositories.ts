@@ -1012,10 +1012,14 @@ export async function getPlayers(
         AND ($4::timestamptz IS NULL OR prh.computed_at = $4::timestamptz)
         AND ($2 = 'international' OR $1::text IS NULL OR l2.slug = $1)
         -- Retired players are off the regional boards: no roster row anywhere
-        -- AND nothing played in a year. The all-time board otherwise carried
-        -- everyone who ever appeared -- Peanut, Bwipo, BeryL -- which is 146 of
-        -- the 270 unrostered players on it. A year cannot catch anyone still
-        -- playing, an off-season being two to three months.
+        -- AND nothing played in 180 days. The all-time board otherwise carried
+        -- everyone who ever appeared -- Peanut, Bwipo, BeryL -- 270 unrostered
+        -- players, of whom 217 clear this line. An off-season runs two to three
+        -- months, so 180 days cannot catch anyone between splits.
+        --
+        -- Nothing is stored, so this is self-correcting: the check runs against
+        -- game data on every read, and a player who returns reappears on their
+        -- next game with no intervention.
         --
         -- Measured from the newest game we hold, not the wall clock: on the
         -- clock a stalled ingest would start retiring active players. The
@@ -1026,7 +1030,7 @@ export async function getPlayers(
               SELECT 1 FROM game_lineups gl
               JOIN games g ON g.id = gl.game_id
               WHERE gl.player_id = prh.player_id
-                AND g.datetime_utc >= (SELECT max(datetime_utc) FROM games) - INTERVAL '365 days'
+                AND g.datetime_utc >= (SELECT max(datetime_utc) FROM games) - INTERVAL '180 days'
             ))
     )
     SELECT b.player_id AS id, p.handle,
