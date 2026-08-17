@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   stageKind,
-  isPlayoffStage,
+  isPlayoffSection,
+  isPlayoffSeries,
   resolveBoardAdvance,
   STAGE_STALL_DAYS,
   type StageStatus,
@@ -35,16 +36,6 @@ describe('stageKind', () => {
 
   it('treats brackets, play-ins, tiebreakers and opaque ids as bracket play', () => {
     for (const id of BRACKET) expect(stageKind(id), id).toBe('bracket');
-  });
-
-  it('is not the same question as isPlayoffStage', () => {
-    // stageKind must keep reading an unknown stage as bracket so a board still
-    // advances; the label must not, or it invents playoffs. LCS Lock-In's group
-    // stages are exactly where the two have to disagree.
-    for (const id of ['LCS26LIN2H', 'LCS26LIN3M', 'LCS26LINR1', 'Tp3f1vvFcF']) {
-      expect(stageKind(id), id).toBe('bracket');
-      expect(isPlayoffStage(id), id).toBeNull();
-    }
   });
 
   it('falls back to bracket play for a missing marker', () => {
@@ -222,46 +213,101 @@ describe('bracket carets', () => {
   });
 });
 
-describe('isPlayoffStage', () => {
-  // Every knockout marker held for 2026. LEC26VsPOB and LCP26S1POB carry a
-  // trailing bracket letter; LPL spells it Kn/KO; MSI spells it Brakt.
-  const PLAYOFF = [
-    'LCKCup26PO', 'LEC26SprPO', 'LEC26VsPOB', 'LCS26SPRPO', 'LCS26LINPO',
-    'LCP26S1POB', 'LCP26Sp2PO', 'LCP26SFPO1',
-    'LPL26S1KnO', 'LPL26S1KnR', '26LPLS2KnR', '26LPLS2KOS',
-    'MSI26Brakt', 'FST26KnOut',
-  ];
-
-  it('recognises every knockout marker seen in 2026', () => {
-    for (const id of PLAYOFF) expect(isPlayoffStage(id), id).toBe(true);
-  });
-
-  it('calls every regular-season marker not a playoff', () => {
-    for (const id of REGULAR_SEASON) expect(isPlayoffStage(id), id).toBe(false);
-  });
-
-  it('says "unknown" rather than guessing, which is what the bug was', () => {
-    // LCS 2026 Lock-In's group stages matched no regular-season pattern, so the
-    // old "unrecognised means bracket" rule painted the whole event as playoffs.
-    // Swiss rounds and play-ins are genuinely neither.
-    for (const id of ['LCS26LIN2H', 'LCS26LIN3M', 'LCS26LINR1', 'LCKCup26PI',
-                      'MSI26PlyIn', 'LCP26SFSR1', 'LCP26SFSSe', 'Tp3f1vvFcF']) {
-      expect(isPlayoffStage(id), id).toBeNull();
+describe('isPlayoffSection', () => {
+  // Liquipedia's own wording, confirmed against v3/match: LCKCup26PO reads
+  // "Playoffs", LCKCup26PI "Play-In", LCKCup26W2 "Week 2".
+  it('recognises knockout play however the event words it', () => {
+    for (const name of [
+      'Playoffs',
+      'Playoffs - Bracket Stage',
+      'Knockout Stage',
+      'Finals',
+      'Season Finals',
+      'Regional Finals',
+      'Grand Final',
+      'Semifinals',
+      'Quarterfinals',
+      'Bracket Stage',
+    ]) {
+      expect(isPlayoffSection(name), name).toBe(true);
     }
   });
 
-  it('says "unknown" for a missing marker, so nothing is drawn', () => {
-    // 2024 and 2025 predate migration 0016 and carry no marker at all.
-    expect(isPlayoffStage(null)).toBeNull();
-    expect(isPlayoffStage(undefined)).toBeNull();
-    expect(isPlayoffStage('')).toBeNull();
+  it('calls regular season play not a playoff', () => {
+    for (const name of ['Week 1', 'Week 9', 'Week 03', 'Regular Season']) {
+      expect(isPlayoffSection(name), name).toBe(false);
+    }
   });
 
-  it('never disagrees with itself: a marker is at most one of the three', () => {
-    for (const id of [...REGULAR_SEASON, ...PLAYOFF]) {
-      const playoff = isPlayoffStage(id);
-      expect(playoff === null, id).toBe(false);
-      if (playoff) expect(REGULAR_SEASON.includes(id), id).toBe(false);
+  it('does not call a play-in, tiebreaker or promotion a playoff', () => {
+    // Decisive, but not the playoff -- and "Play-In" would otherwise fall
+    // through to unknown, while a tiebreaker sits inside the regular season.
+    for (const name of ['Play-In', 'Play In', 'Play-In Stage', 'Tiebreaker', 'Promotion']) {
+      expect(isPlayoffSection(name), name).toBe(false);
     }
+  });
+
+  it('says "unknown" rather than guessing', () => {
+    // Swiss rounds and group stages are neither, and nothing is drawn for them.
+    for (const name of ['Group Stage', 'Swiss Stage', 'Entry Stage', '']) {
+      expect(isPlayoffSection(name), name).toBeNull();
+    }
+    expect(isPlayoffSection(null)).toBeNull();
+    expect(isPlayoffSection(undefined)).toBeNull();
+  });
+
+  it('is case-insensitive, since the wording is Liquipedia editors, not an enum', () => {
+    expect(isPlayoffSection('PLAYOFFS')).toBe(true);
+    expect(isPlayoffSection('playoffs')).toBe(true);
+    expect(isPlayoffSection('week 4')).toBe(false);
+  });
+
+  it('reads the stages the bracket-id rule got wrong, which is why it replaced it', () => {
+    // LCK Road to MSI IS the spring playoff but is spelled LCKRtMSI26; LCS
+    // Lock-In's group stages matched no pattern and were painted as playoffs;
+    // LPL 2024 Spring's playoff id is opaque (tl2OVsUfyX). All three are
+    // unambiguous in words.
+    expect(isPlayoffSection('Playoffs')).toBe(true);
+    expect(isPlayoffSection('Group Stage')).toBeNull();
+    expect(isPlayoffSection('Week 2')).toBe(false);
+  });
+});
+
+describe('isPlayoffSeries', () => {
+  it('takes the section when it is decisive, whatever the id says', () => {
+    // LCS Lock-In: the id looks like nothing, the words are clear.
+    expect(isPlayoffSeries('Playoffs', 'LCS26LINPO')).toBe(true);
+    expect(isPlayoffSeries('Week 2', 'LCKCup26W2')).toBe(false);
+    expect(isPlayoffSeries('Play-In', 'LCKCup26PI')).toBe(false);
+  });
+
+  it('falls back to the id where the section says nothing', () => {
+    // 69 series are sectioned "Results". These are the ones hiding behind it.
+    expect(isPlayoffSeries('Results', 'LCKRtMSI26')).toBe(true);
+    expect(isPlayoffSeries('Results', 'LCKRtMSI25')).toBe(true);
+    expect(isPlayoffSeries('Results', 'LCK2024RFB')).toBe(true);
+    expect(isPlayoffSeries('Results', 'LPL2025RFB')).toBe(true);
+    expect(isPlayoffSeries('Results', 'LEC24Final')).toBe(true);
+    expect(isPlayoffSeries('Results', 'LCP25S1POB')).toBe(true);
+  });
+
+  it('leaves LTA 2025 unknown, which is the recorded decision', () => {
+    // Split 1's id covers a whole split; Split 2's playoff would need a pattern
+    // that also catches it. Deliberately not drawn.
+    for (const id of ['LTANth25S1', 'LTASth25S1', 'LTANth25S2', 'LTASth25S2']) {
+      expect(isPlayoffSeries('Results', id), id).toBeNull();
+    }
+  });
+
+  it('never guesses a playoff from an unrecognised id', () => {
+    // The old rule read "unrecognised" as bracket play and invented playoffs.
+    for (const id of ['LCS26LIN2H', 'LCS26LIN3M', 'LCS26LINR1', 'Tp3f1vvFcF', 'tl2OVsUfyX']) {
+      expect(isPlayoffSeries(null, id), id).toBeNull();
+    }
+  });
+
+  it('is null when we know nothing at all', () => {
+    expect(isPlayoffSeries(null, null)).toBeNull();
+    expect(isPlayoffSeries('', '')).toBeNull();
   });
 });

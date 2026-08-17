@@ -252,6 +252,10 @@ export interface LiquipediaMatch {
   parent: string;
   series: string; // the field to classify by -- e.g. "LoL Pro League", "Esports World Cup"
   match2bracketid: string; // stage marker, e.g. "LCK26Sp2W1" -- Sp2/Sp3 splits the LCK season
+  // The stage in words: "Playoffs", "Play-In", "Week 9", "Group Stage". What a
+  // series is LABELLED by -- match2bracketid spells the same thing differently
+  // per league ("LCKCup26PO", "LCKRtMSI26", "tl2OVsUfyX") and cannot be parsed.
+  section: string;
   liquipediatier: string;
   finished: number;
   match2opponents: LiquipediaMatchOpponent[];

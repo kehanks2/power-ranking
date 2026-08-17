@@ -33,7 +33,7 @@ import {
   playerWindowPredicate,
   resolveBoardAdvance,
   STAGE_STATUS_SQL,
-  isPlayoffStage,
+  isPlayoffSeries,
   type BoardAdvance,
   type StageStatus,
 } from '@power-ranking/shared';
@@ -707,7 +707,7 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     formats: number[] | null;
     // As the JSON aggregate builds it: the stage marker is raw here and becomes
     // TeamSeriesDto's isPlayoff below.
-    series: (Omit<TeamSeriesDto, 'isPlayoff'> & { bracketId: string | null })[];
+    series: (Omit<TeamSeriesDto, 'isPlayoff'> & { stageName: string | null; bracketId: string | null })[];
     placement: string | null;
   }>(
     `
@@ -732,7 +732,7 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
                WHEN s.team1_score = s.team2_score THEN 2 * s.team1_score
                ELSE 2 * GREATEST(s.team1_score, s.team2_score) - 1
              END AS format,
-             s.bracket_id
+             s.stage_name, s.bracket_id
       FROM series s
       JOIN teams opp ON opp.id = CASE WHEN s.team1_id = $1 THEN s.team2_id ELSE s.team1_id END
       WHERE $1 IN (s.team1_id, s.team2_id)
@@ -763,6 +763,7 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
                    'opponentScore', opponent_score,
                    'format', format,
                    'won', winner_team_id = $1,
+                   'stageName', stage_name,
                    'bracketId', bracket_id
                  )
                  ORDER BY started_at DESC
@@ -803,9 +804,9 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     formats: (row.formats ?? []).map(Number).sort((a, b) => a - b),
     // Three-valued: null where the stage is unknown or is neither regular season
     // nor a bracket, so nothing is drawn rather than guessed. See isPlayoffStage.
-    series: (row.series ?? []).map(({ bracketId, ...s }) => ({
+    series: (row.series ?? []).map(({ stageName, bracketId, ...s }) => ({
       ...s,
-      isPlayoff: isPlayoffStage(bracketId),
+      isPlayoff: isPlayoffSeries(stageName, bracketId),
     })),
     placement: row.placement,
     type: row.tournament_type,

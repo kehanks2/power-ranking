@@ -307,6 +307,7 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
       bracketId: match.match2bracketid || null,
       // Same parse as the games take, so the two can never disagree by a zone.
       dateUtc: match.date ? match.date.replace(' ', 'T') + 'Z' : null,
+      stageName: match.section || null,
     });
     result.seriesProcessed += 1;
 

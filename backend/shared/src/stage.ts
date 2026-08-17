@@ -27,33 +27,89 @@ export function stageKind(bracketId: string | null | undefined): StageKind {
   return REGULAR_SEASON_STAGE_PATTERNS.some((pattern) => pattern.test(bracketId)) ? 'regular' : 'bracket';
 }
 
-/** Stage markers that name a knockout bracket. Every league spells it differently. */
-export const PLAYOFF_STAGE_PATTERNS: readonly RegExp[] = [
-  /PO/, // LCS26SPRPO, LEC26SprPO, LCKCup26PO, LCP26S1POB, LCP26Sp2PO, LCP26SFPO1
-  /Kn|KO/, // LPL26S1KnO, LPL26S1KnR, 26LPLS2KnR, 26LPLS2KOS, FST26KnOut
-  /Brakt/, // MSI26Brakt
+/** Stage names that mean knockout play, matched case-insensitively as substrings. */
+export const PLAYOFF_SECTIONS: readonly string[] = [
+  'playoff', // "Playoffs", "Playoffs - Bracket"
+  'knockout',
+  'bracket',
+  'final', // "Finals", "Season Finals", "Regional Finals", "Grand Final"
+  'semifinal',
+  'quarterfinal',
 ];
 
 /**
- * Whether a stage is knockout play, for LABELLING a series. Deliberately not
- * `stageKind`: that answers "may the board advance yet" and reads anything
- * unrecognised as bracket, which is the right fail-safe there but painted all of
- * LCS 2026 Lock-In as playoffs -- its group stages (LCS26LIN2H, LIN3M, LINR1)
- * match no regular-season pattern either.
+ * Stage names that are decisive but NOT the playoff: qualifying into one, or
+ * breaking a tie inside the regular season. Checked first, because "Play-In"
+ * contains neither a playoff word nor a week number and would otherwise fall
+ * through to unknown, and a tiebreaker must never read as a playoff.
+ */
+export const NON_PLAYOFF_SECTIONS: readonly string[] = ['play-in', 'play in', 'tiebreaker', 'tie-breaker', 'promotion'];
+
+/**
+ * Whether a series is knockout play, for LABELLING it. Reads Liquipedia's
+ * `section` -- the stage in words -- not `match2bracketid`.
  *
- * Three-valued on purpose. Null means we do not know, and nothing is drawn:
- * guessing is what produced the false positives, and a Swiss round or a play-in
- * is neither regular season nor a playoff.
+ * The id was the wrong key and failed in both directions. LCS 2026 Lock-In's
+ * group stages matched no regular-season pattern, so "anything unrecognised is
+ * a bracket" painted the whole event as playoffs; LCK's Road to MSI, which IS
+ * the spring playoff, is spelled `LCKRtMSI26` and was missed. About twenty more
+ * were wrong the same way, and some ids are opaque -- `tl2OVsUfyX` is LPL 2024
+ * Spring's playoff bracket -- so no pattern could ever have caught them. Every
+ * one of those says "Playoffs" in `section`.
+ *
+ * Still three-valued: null means unknown and nothing is drawn. A Swiss round
+ * and a group stage are neither.
  *
  * Format is NOT a substitute, measured across every 2026 series carrying a
- * marker: 37 Bo5 series sit in non-playoff stages (LCKCup26W3 is a regular
- * season week of Bo5s) and LEC's playoff bracket contains Bo3s.
+ * marker: 37 Bo5 series sit in non-playoff stages (LCKCup26W3 is "Week 3", a
+ * regular-season week of Bo5s) and LEC's playoff bracket contains Bo3s.
  */
-export function isPlayoffStage(bracketId: string | null | undefined): boolean | null {
-  if (!bracketId) return null;
-  if (PLAYOFF_STAGE_PATTERNS.some((pattern) => pattern.test(bracketId))) return true;
-  if (REGULAR_SEASON_STAGE_PATTERNS.some((pattern) => pattern.test(bracketId))) return false;
+export function isPlayoffSection(section: string | null | undefined): boolean | null {
+  if (!section) return null;
+  const name = section.toLowerCase();
+  if (NON_PLAYOFF_SECTIONS.some((word) => name.includes(word))) return false;
+  if (PLAYOFF_SECTIONS.some((word) => name.includes(word))) return true;
+  // "Week 9", "Regular Season", "Group Stage", "Swiss" and anything unforeseen.
+  if (/week\s*\d+/.test(name) || name.includes('regular season')) return false;
   return null;
+}
+
+/**
+ * Stage ids that name a knockout bracket, for the cases `section` cannot answer.
+ * 69 series are sectioned "Results", which says nothing -- and eleven brackets
+ * hide behind it, most of them genuine playoffs (Road to MSI, three Regional
+ * Finals, LEC's Season Finals).
+ */
+export const PLAYOFF_STAGE_PATTERNS: readonly RegExp[] = [
+  /PO/, // LCKCup26PO, LEC26SprPO, LCP26S1POB, LCS26SPRPO
+  /Kn|KO/, // LPL26S1KnO, 26LPLS2KOS, FST26KnOut
+  /Brakt/, // MSI26Brakt
+  /RtMSI/, // LCKRtMSI25/26 -- LCK's spring playoff, per resolveTournament
+  /RFB/, // LCK2024RFB, LPL2024RFB, LPL2025RFB -- Regional Finals brackets
+  /Final/, // LEC24Final
+];
+
+/**
+ * Whether a series is knockout play. `section` first, because it is words and
+ * league-independent; the stage id only where section says nothing.
+ *
+ * Neither signal is sufficient alone. Parsing ids painted all of LCS 2026
+ * Lock-In as playoffs (its group stages match no regular-season pattern) and
+ * missed LCK's Road to MSI (spelled `LCKRtMSI26`), and some ids are opaque --
+ * `tl2OVsUfyX` is LPL 2024 Spring's playoff. But `section` reads "Results" for
+ * 69 series, including Road to MSI and every Regional Finals.
+ *
+ * Still three-valued: null means unknown and nothing is drawn. LTA 2025's
+ * whole-split ids stay unknown deliberately -- see the closed LTA issue.
+ */
+export function isPlayoffSeries(
+  section: string | null | undefined,
+  bracketId: string | null | undefined,
+): boolean | null {
+  const fromSection = isPlayoffSection(section);
+  if (fromSection !== null) return fromSection;
+  if (!bracketId) return null;
+  return PLAYOFF_STAGE_PATTERNS.some((pattern) => pattern.test(bracketId)) ? true : null;
 }
 
 /**

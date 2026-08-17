@@ -57,6 +57,7 @@ describe.runIf(process.env.SKIP_DB_TESTS !== 'true')('upsert idempotency (live P
         isInternational: false,
         bracketId: '__TestStageW1',
         dateUtc: '2026-02-01T15:00:00Z',
+        stageName: 'Week 1',
       });
       await upsertGame(pool, {
         seriesId,

@@ -24,14 +24,17 @@ const CHUNK = 500;
 
 const pool = createPool(DATABASE_URL);
 
-const byMatchId = new Map<string, string>();
+const byMatchId = new Map<string, { bracketId: string; section: string }>();
 for (const series of ALL_SERIES) {
   try {
     const matches = await fetchMatches(`[[series::${series}]] AND [[date::>${START}]] AND [[date::<${END}]]`);
     let withStage = 0;
     for (const match of matches) {
-      if (!match.match2bracketid) continue;
-      byMatchId.set(`liquipedia:${match.match2id}`, match.match2bracketid);
+      if (!match.match2bracketid && !match.section) continue;
+      byMatchId.set(`liquipedia:${match.match2id}`, {
+        bracketId: match.match2bracketid,
+        section: match.section,
+      });
       withStage += 1;
     }
     console.log(`  ${series}: ${matches.length} series, ${withStage} carrying a stage`);
@@ -49,15 +52,19 @@ for (let start = 0; start < entries.length; start += CHUNK) {
   const chunk = entries.slice(start, start + CHUNK);
   const values: string[] = [];
   const params: string[] = [];
-  chunk.forEach(([matchId, bracketId], i) => {
-    values.push(`($${i * 2 + 1}, $${i * 2 + 2})`);
-    params.push(matchId, bracketId);
+  chunk.forEach(([matchId, stage], i) => {
+    values.push(`($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`);
+    params.push(matchId, stage.bracketId, stage.section);
   });
+  // NULLIF so an empty string never overwrites a known value with a blank.
   const res = await pool.query(
-    `UPDATE series SET bracket_id = v.bracket_id
-       FROM (VALUES ${values.join(', ')}) AS v(match_id, bracket_id)
+    `UPDATE series SET
+       bracket_id = COALESCE(NULLIF(v.bracket_id, ''), series.bracket_id),
+       stage_name = COALESCE(NULLIF(v.stage_name, ''), series.stage_name)
+       FROM (VALUES ${values.join(', ')}) AS v(match_id, bracket_id, stage_name)
       WHERE series.leaguepedia_match_id = v.match_id
-        AND series.bracket_id IS DISTINCT FROM v.bracket_id`,
+        AND (series.bracket_id IS DISTINCT FROM NULLIF(v.bracket_id, '')
+             OR series.stage_name IS DISTINCT FROM NULLIF(v.stage_name, ''))`,
     params,
   );
   updated += res.rowCount ?? 0;
