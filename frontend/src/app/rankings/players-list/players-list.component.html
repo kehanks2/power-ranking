@@ -103,10 +103,7 @@
                 (click)="$event.stopPropagation(); toggle(player.id)"
               >
                 <span class="handle">{{ player.handle }}</span>
-                @if (player.alsoPlaysFor) {
-                  <span class="dot dot--academy" [title]="'No games on this board — Liquipedia also lists them on ' + player.alsoPlaysFor"></span>
-                  <span class="visually-hidden">No games on this board; Liquipedia also lists them on {{ player.alsoPlaysFor }}</span>
-                }
+                <pr-unplayed-marker [gamesPlayed]="player.gamesPlayed" [alsoPlaysFor]="player.alsoPlaysFor" />
               </button>
             </td>
             <td><span class="role" [class]="'role-' + player.role">{{ player.role }}</span></td>
@@ -170,6 +167,14 @@
         have earned; the <span class="swatch swatch--tail"></span> dashed tail runs on to where the
         rating settles if this form holds. A long tail means a thin sample, not a
         prediction of improvement.
+      </dd>
+    </div>
+    <div class="term">
+      <dt><span class="dot dot--unplayed"></span></dt>
+      <dd>
+        No games on this board. The player is on the roster but has not played, so the
+        rating is the neutral 50 rather than anything earned. Hover the mark for the
+        detail.
       </dd>
     </div>
     <div class="term">

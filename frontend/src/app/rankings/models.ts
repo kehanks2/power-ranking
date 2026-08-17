@@ -79,6 +79,8 @@ export interface RosterEntry {
    * players are, so the panel offers that board only where there is one.
    */
   hasInternational: boolean;
+  /** The other squad Liquipedia names, when this player has no games here. */
+  alsoPlaysFor: string | null;
 }
 
 /** A team's record at one tournament, in games and in series. */

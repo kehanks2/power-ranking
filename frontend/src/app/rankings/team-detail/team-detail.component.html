@@ -228,6 +228,7 @@
                   <span class="dot dot--intl" title="Has an international record"></span>
                   <span class="visually-hidden">Has an international record</span>
                 }
+                <pr-unplayed-marker [gamesPlayed]="entry.gamesPlayed" [alsoPlaysFor]="entry.alsoPlaysFor" />
               </button>
             </td>
             <td class="num role-rank">
@@ -294,7 +295,9 @@
     <p class="records-note">
       Rank and rating are among {{ t.leagueSlug }} players at the same position, so they
       compare within this league only. The range shows how much of the rating the games
-      have earned. Open a row for the stats behind it, and — for players with a
+      have earned. A <span class="dot dot--unplayed"></span> marks a player with no games
+      on this board, whose 50 is the neutral starting point rather than anything earned.
+      Open a row for the stats behind it, and — for players with a
       <span class="dot dot--intl"></span> international record — the same read against
       the international pool.
     </p>
