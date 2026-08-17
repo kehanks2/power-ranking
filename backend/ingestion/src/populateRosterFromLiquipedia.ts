@@ -19,6 +19,8 @@ export interface RosterImportResult {
   teamsFromPlayerFallback: string[];
   /** Matched teams that ended up with NO roster from either source. */
   teamsWithNoRoster: string[];
+  /** Academy squads dropped from a parent team's page -- see withoutAcademyCohorts. */
+  academyCohortsDropped: { team: string; squad: string; handles: string[] }[];
 }
 
 // Blank role = starter; any label ("Substitute", "Loan") = not. Testing for a
@@ -78,6 +80,45 @@ export function humanizePagename(pagename: string): string {
 }
 
 /**
+ * Three, not two, so a double academy call-up survives the rule. Any value 2-5
+ * fits today's data -- Rising Bees is the only group above one.
+ */
+export const ACADEMY_COHORT_MIN = 3;
+
+/**
+ * Drops an academy squad that Liquipedia lists on its parent team's page.
+ * Team_Vitality returned ten players: the real five plus the five Rising Bees,
+ * who then sat on the LEC board at a neutral 50 with no games.
+ *
+ * The discriminator is the COHORT, never `secondary_team` alone. Measured over
+ * every active roster, Rising Bees is the only untracked squad named by more
+ * than one player; every other is a single player and real -- a signing who has
+ * not debuted, or collegiate noise like Ruler's "Ohio State University".
+ */
+export function withoutAcademyCohorts<T extends { handle: string }>(
+  members: T[],
+  secondaryTeamByHandle: Map<string, string>,
+): { kept: T[]; dropped: { handle: string; squad: string }[] } {
+  const countBySquad = new Map<string, number>();
+  for (const member of members) {
+    const squad = secondaryTeamByHandle.get(member.handle);
+    if (squad) countBySquad.set(squad, (countBySquad.get(squad) ?? 0) + 1);
+  }
+
+  const kept: T[] = [];
+  const dropped: { handle: string; squad: string }[] = [];
+  for (const member of members) {
+    const squad = secondaryTeamByHandle.get(member.handle);
+    if (squad && (countBySquad.get(squad) ?? 0) >= ACADEMY_COHORT_MIN) {
+      dropped.push({ handle: member.handle, squad: humanizePagename(squad) });
+    } else {
+      kept.push(member);
+    }
+  }
+  return { kept, dropped };
+}
+
+/**
  * Normalises a `v3/player` row into a roster slot, or undefined. `type` must be
  * "player" (staff carry role "coach" with lane strings in their `roles` map, so
  * filtering on role alone would field a coach), and position comes from
@@ -109,9 +150,13 @@ export function squadMemberFromSquadRow(row: LiquipediaSquadPlayer): ResolvedSqu
  * Liquipedia's current squad data. If a second writer is ever added, scope its
  * DELETE -- an unscoped one here regressed the LCS rosters twice. Two players
  * can share a position (Cloud9's APA/Loki at MID); both show is_starter=true.
- * This is a display-only table the rating engine never reads. Teams are matched
- * by name (tracked teams only) and players by handle, creating a new
- * `liquipedia:player:<id>` row for anyone not already known from OE.
+ * Teams are matched by name (tracked teams only) and players by handle, creating
+ * a new `liquipedia:player:<id>` row for anyone not already known from OE.
+ *
+ * NOT display-only: `computeRatings` reads this table to seed a team's
+ * international rating from its roster's player ratings, so a roster edit can
+ * move a rating. Only a rostered player who HAS a player rating contributes,
+ * which is why dropping the five zero-game Rising Bees moved nothing.
  */
 export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterImportResult> {
   const ourTeams = await pool.query<{ id: number; name: string }>('SELECT id, name FROM teams');
@@ -155,6 +200,7 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
 
   const teamsFromFallback: string[] = [];
   const teamsStillEmpty: string[] = [];
+  const academyCohortsDropped: RosterImportResult['academyCohortsDropped'] = [];
 
   const client = await pool.connect();
   let membershipsInserted = 0;
@@ -177,6 +223,16 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
           .filter((m): m is ResolvedSquadMember => m !== undefined);
         if (members.length > 0) teamsFromFallback.push(pagename);
         else teamsStillEmpty.push(pagename);
+      }
+
+      const { kept, dropped } = withoutAcademyCohorts(members, secondaryTeamByHandle);
+      members = kept;
+      for (const squad of new Set(dropped.map((d) => d.squad))) {
+        academyCohortsDropped.push({
+          team: humanizePagename(pagename),
+          squad,
+          handles: dropped.filter((d) => d.squad === squad).map((d) => d.handle),
+        });
       }
 
       for (const member of members) {
@@ -227,5 +283,6 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
     playersCreated,
     teamsFromPlayerFallback: teamsFromFallback,
     teamsWithNoRoster: teamsStillEmpty,
+    academyCohortsDropped,
   };
 }
