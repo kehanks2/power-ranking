@@ -247,13 +247,15 @@ function daysBetween(from: string, to: string): number {
  * merely because ingestion is behind.
  */
 async function getBoardAdvance(pool: Pool, leagueSlug: string): Promise<BoardAdvance | null> {
-  const [stages, frontier] = await Promise.all([
-    pool.query<{ league_id: number; bracket_id: string | null; last_played_day: string | null; unplayed_series: string }>(
-      STAGE_STATUS_SQL,
-    ),
-    pool.query<{ day: string | null }>(`SELECT max(datetime_utc)::date::text AS day FROM games`),
-  ]);
-  const today = frontier.rows[0]?.day;
+  const stages = await pool.query<{
+    league_id: number;
+    bracket_id: string | null;
+    last_played_day: string | null;
+    unplayed_series: string;
+    frontier_day: string | null;
+  }>(STAGE_STATUS_SQL, [leagueSlug]);
+
+  const today = stages.rows[0]?.frontier_day;
   if (!today) return null;
 
   const statuses: StageStatus[] = stages.rows.map((row) => ({
@@ -263,11 +265,8 @@ async function getBoardAdvance(pool: Pool, leagueSlug: string): Promise<BoardAdv
     unplayedSeries: Number(row.unplayed_series),
   }));
 
-  const league = await pool.query<{ id: number }>(`SELECT id FROM leagues WHERE slug = $1`, [leagueSlug]);
-  const leagueId = league.rows[0]?.id;
-  if (leagueId === undefined) return null;
-
-  return resolveBoardAdvance(statuses, today).find((a) => a.leagueId === leagueId) ?? null;
+  // Narrowed to this league in SQL, so there is exactly one advance to take.
+  return resolveBoardAdvance(statuses, today)[0] ?? null;
 }
 
 /**

@@ -20,7 +20,8 @@ const { rows } = await pool.query<{
   bracket_id: string | null;
   last_played_day: string | null;
   unplayed_series: string;
-}>(STAGE_STATUS_SQL);
+  frontier_day: string | null;
+}>(STAGE_STATUS_SQL, [null]);
 
 const leagues = await pool.query<{ id: number; slug: string }>(`SELECT id, slug FROM leagues`);
 const slugOf = new Map(leagues.rows.map((l) => [l.id, l.slug]));
@@ -34,8 +35,7 @@ const statuses: StageStatus[] = rows.map((r) => ({
 
 // The frontier, not the wall clock: the stall window has to be measured against
 // the data we hold, or a board goes stale purely because ingestion is behind.
-const frontier = await pool.query<{ day: string | null }>(`SELECT max(datetime_utc)::date::text AS day FROM games`);
-const today = frontier.rows[0]?.day ?? new Date().toISOString().slice(0, 10);
+const today = rows[0]?.frontier_day ?? new Date().toISOString().slice(0, 10);
 console.log(`data frontier ${today}\n`);
 
 const advances = resolveBoardAdvance(statuses, today);

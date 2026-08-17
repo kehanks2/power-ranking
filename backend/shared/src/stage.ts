@@ -149,20 +149,29 @@ export function resolveBoardAdvance(rows: StageStatus[], today: string): BoardAd
 }
 
 /**
- * Per (league, stage) status for `resolveBoardAdvance`. Regional only --
- * international play is bracket-shaped throughout and advances per series.
+ * Per (league, stage) status for `resolveBoardAdvance`, plus the data frontier
+ * the stall window is measured against. Regional only -- international play is
+ * bracket-shaped throughout and advances per series.
+ *
+ * `$1` optionally narrows to one league slug, and the frontier rides along on
+ * every row, so a board costs ONE round trip rather than three. That matters
+ * more than the query does: the statement runs in ~7ms, while each extra trip
+ * to a hosted database costs a hundred times that.
  */
 export const STAGE_STATUS_SQL = `
+  WITH frontier AS (SELECT max(datetime_utc)::date::text AS day FROM games)
   SELECT t.canonical_league_id            AS league_id,
          s.bracket_id                     AS bracket_id,
          max(g.day)::date::text           AS last_played_day,
-         count(*) FILTER (WHERE g.day IS NULL) AS unplayed_series
+         count(*) FILTER (WHERE g.day IS NULL) AS unplayed_series,
+         (SELECT day FROM frontier)       AS frontier_day
     FROM series s
     JOIN tournaments t ON t.id = s.tournament_id
+    JOIN leagues l ON l.id = t.canonical_league_id
     LEFT JOIN LATERAL (
       SELECT max(datetime_utc) AS day FROM games WHERE series_id = s.id
     ) g ON true
-   WHERE t.canonical_league_id IS NOT NULL
-     AND t.tournament_type <> 'international'
+   WHERE t.tournament_type <> 'international'
+     AND ($1::text IS NULL OR l.slug = $1)
    GROUP BY t.canonical_league_id, s.bracket_id
 `;
