@@ -2,8 +2,18 @@
  * Client for Liquipedia's LiquipediaDB API v3, the authoritative source for
  * current rosters. Rate limit is 60 requests/hour; an in-memory limiter isn't
  * enough because every fresh `tsx` process starts an empty counter, so state is
- * persisted to RATE_LIMIT_STATE_FILE. A 429 hard-blocks that endpoint for an
- * hour, and there is NO auto-retry anywhere.
+ * persisted to RATE_LIMIT_STATE_FILE.
+ *
+ * A 429 is retried on a bounded backoff before it hard-blocks the endpoint for
+ * an hour. It is not always our own volume that earns one: the scheduled job
+ * shares an egress IP with every other GitHub Actions tenant, and on
+ * 2026-08-17 its FIRST v3/match call took a 429 while the same key answered 200
+ * from a desktop 23 minutes later. Failing fast there cost the whole day's
+ * pull, because one hard block on this endpoint fails all ten series.
+ *
+ * Liquipedia sends no rate-limit headers at all — no X-RateLimit-*, no
+ * Retry-After — so a 429 is the only signal there is, and the delays below are
+ * a guess at a throttle we cannot observe.
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -99,30 +109,56 @@ function recordHardBlock(endpoint: string): void {
   saveState(state);
 }
 
-// No 429 retry; fails fast rather than sleeping internally.
-async function liquipediaGet<T>(endpoint: string, params: Record<string, string>): Promise<T[]> {
-  assertCanCall(endpoint);
+/**
+ * Waits between 429 retries. Bounded so a run cannot outlive the scheduled
+ * job's 30-minute timeout: three waits plus jitter is ~11 min worst case, and
+ * once these are spent the endpoint hard-blocks and every later series in the
+ * same run fails immediately.
+ */
+export const RETRY_DELAYS_MS = [60_000, 180_000, 420_000];
 
+/** ±20% jitter, so a fleet of clients retrying on one clock does not resynchronise. */
+export function retryDelayMs(attempt: number, random = Math.random): number {
+  const base = RETRY_DELAYS_MS[attempt];
+  if (base === undefined) return 0;
+  return Math.round(base * (0.8 + 0.4 * random()));
+}
+
+async function liquipediaGet<T>(endpoint: string, params: Record<string, string>): Promise<T[]> {
   const url = new URL(`${BASE_URL}/${endpoint}`);
   url.searchParams.set('wiki', WIKI);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
 
-  recordRequest(endpoint);
-  const res = await fetch(url, {
-    headers: { Authorization: `Apikey ${apiKey()}`, 'User-Agent': USER_AGENT, 'Accept-Encoding': 'gzip' },
-  });
-  if (res.status === 429) {
-    recordHardBlock(endpoint);
-    throw new Error(`Liquipedia API ${endpoint} returned 429. Hard-blocked for 1 hour from now. NOT retrying.`);
+  for (let attempt = 0; ; attempt += 1) {
+    // Re-checked per attempt: the sliding-window budget can run out while we wait.
+    assertCanCall(endpoint);
+    recordRequest(endpoint);
+    const res = await fetch(url, {
+      headers: { Authorization: `Apikey ${apiKey()}`, 'User-Agent': USER_AGENT, 'Accept-Encoding': 'gzip' },
+    });
+
+    if (res.status === 429) {
+      if (attempt >= RETRY_DELAYS_MS.length) {
+        recordHardBlock(endpoint);
+        throw new Error(
+          `Liquipedia API ${endpoint} returned 429 on ${attempt + 1} attempts. Hard-blocked for 1 hour from now.`,
+        );
+      }
+      const wait = retryDelayMs(attempt);
+      console.warn(`  Liquipedia ${endpoint} 429; retrying in ${Math.round(wait / 1000)}s`);
+      await sleep(wait);
+      continue;
+    }
+
+    if (!res.ok) {
+      throw new Error(`Liquipedia API ${endpoint} failed: HTTP ${res.status}`);
+    }
+    const json = (await res.json()) as { result: T[]; error?: string[] };
+    if (json.error) {
+      throw new Error(`Liquipedia API ${endpoint} error: ${json.error.join('; ')}`);
+    }
+    return json.result;
   }
-  if (!res.ok) {
-    throw new Error(`Liquipedia API ${endpoint} failed: HTTP ${res.status}`);
-  }
-  const json = (await res.json()) as { result: T[]; error?: string[] };
-  if (json.error) {
-    throw new Error(`Liquipedia API ${endpoint} error: ${json.error.join('; ')}`);
-  }
-  return json.result;
 }
 
 // Rows per page. v3/match rows are huge (every game, two ten-player stat lines),
