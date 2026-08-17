@@ -63,6 +63,14 @@ export interface BoardAdvance {
   /** The stage that date came from, for display and diagnosis. */
   stage: string | null;
   reason: AdvanceReason;
+  /**
+   * End of the stage before the one being shown -- what rank-change carets
+   * measure from. It must be a stage boundary, not simply "before asOfDate":
+   * the latter would compare the end of a week against the middle of it, which
+   * is the same half-round comparison the whole mechanism exists to avoid.
+   */
+  previousAsOfDate: string | null;
+  previousStage: string | null;
 }
 
 const DAY_MS = 86_400_000;
@@ -97,33 +105,45 @@ export function resolveBoardAdvance(rows: StageStatus[], today: string): BoardAd
       .sort((a, b) => (a.lastPlayedDay < b.lastPlayedDay ? -1 : 1));
 
     if (played.length === 0) {
-      advances.push({ leagueId, asOfDate: null, stage: null, reason: 'no-data' });
+      advances.push({
+        leagueId,
+        asOfDate: null,
+        stage: null,
+        reason: 'no-data',
+        previousAsOfDate: null,
+        previousStage: null,
+      });
       continue;
     }
 
     const current = played[played.length - 1];
-    const settled = (reason: AdvanceReason): BoardAdvance => ({
-      leagueId,
-      asOfDate: current.lastPlayedDay,
-      stage: current.bracketId,
-      reason,
-    });
+    let shownIndex: number;
+    let reason: AdvanceReason;
 
     if (stageKind(current.bracketId) === 'bracket') {
-      advances.push(settled('bracket'));
+      shownIndex = played.length - 1;
+      reason = 'bracket';
     } else if (current.unplayedSeries === 0) {
-      advances.push(settled('stage-complete'));
+      shownIndex = played.length - 1;
+      reason = 'stage-complete';
     } else if (daysBetween(current.lastPlayedDay, today) >= STAGE_STALL_DAYS) {
-      advances.push(settled('stage-stalled'));
+      shownIndex = played.length - 1;
+      reason = 'stage-stalled';
     } else {
-      const previous = played[played.length - 2];
-      advances.push({
-        leagueId,
-        asOfDate: previous?.lastPlayedDay ?? null,
-        stage: previous?.bracketId ?? null,
-        reason: previous ? 'holding' : 'no-data',
-      });
+      shownIndex = played.length - 2;
+      reason = shownIndex >= 0 ? 'holding' : 'no-data';
     }
+
+    const shown = shownIndex >= 0 ? played[shownIndex] : undefined;
+    const previous = shownIndex >= 1 ? played[shownIndex - 1] : undefined;
+    advances.push({
+      leagueId,
+      asOfDate: shown?.lastPlayedDay ?? null,
+      stage: shown?.bracketId ?? null,
+      reason,
+      previousAsOfDate: previous?.lastPlayedDay ?? null,
+      previousStage: previous?.bracketId ?? null,
+    });
   }
   return advances;
 }

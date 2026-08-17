@@ -124,3 +124,33 @@ describe('resolveBoardAdvance', () => {
     });
   });
 });
+
+describe('resolveBoardAdvance previous stage', () => {
+  const weeks = [
+    stage('LCK26Sp3W1', '2026-08-02'),
+    stage('LCK26Sp3W2', '2026-08-09'),
+    stage('LCK26Sp3W3', '2026-08-16'),
+  ];
+
+  it('measures from the previous stage boundary, not from mid-week', () => {
+    // The caret must compare the end of one week with the end of the last, or
+    // it reintroduces the half-round comparison at one remove.
+    const [advance] = resolveBoardAdvance(weeks, '2026-08-17');
+    expect(advance.asOfDate).toBe('2026-08-16');
+    expect(advance.previousAsOfDate).toBe('2026-08-09');
+  });
+
+  it('steps the baseline back too while holding', () => {
+    const holding = [weeks[0], weeks[1], stage('LCK26Sp3W3', '2026-08-16', 2)];
+    const [advance] = resolveBoardAdvance(holding, '2026-08-17');
+    expect(advance.reason).toBe('holding');
+    expect(advance.asOfDate).toBe('2026-08-09');
+    expect(advance.previousAsOfDate).toBe('2026-08-02');
+  });
+
+  it('has no baseline for the first stage on record', () => {
+    const [advance] = resolveBoardAdvance([weeks[0]], '2026-08-03');
+    expect(advance.asOfDate).toBe('2026-08-02');
+    expect(advance.previousAsOfDate).toBeNull();
+  });
+});

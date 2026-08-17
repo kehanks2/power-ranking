@@ -27,7 +27,14 @@ import type {
   TeamSeriesDto,
   BoardUpdatedDto,
 } from '@power-ranking/shared';
-import { LEAGUE_SPLIT_START_CTE, playerWindowPredicate } from '@power-ranking/shared';
+import {
+  LEAGUE_SPLIT_START_CTE,
+  playerWindowPredicate,
+  resolveBoardAdvance,
+  STAGE_STATUS_SQL,
+  type BoardAdvance,
+  type StageStatus,
+} from '@power-ranking/shared';
 
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 // A team with no game in its league's latest split is no longer competing.
@@ -230,14 +237,89 @@ function daysBetween(from: string, to: string): number {
  * One baseline for the whole board, so the deltas cancel; anchored to a match
  * day rather than an ingestion run, so pull cadence cannot leak into them.
  */
+/**
+ * How far forward one league's board may read, and what its carets measure
+ * from. Regional only: international play is bracket-shaped throughout, so it
+ * advances per series and is never held.
+ *
+ * The stall window is measured against the data frontier rather than the wall
+ * clock, matching the caret staleness rule -- a board must not release itself
+ * merely because ingestion is behind.
+ */
+async function getBoardAdvance(pool: Pool, leagueSlug: string): Promise<BoardAdvance | null> {
+  const [stages, frontier] = await Promise.all([
+    pool.query<{ league_id: number; bracket_id: string | null; last_played_day: string | null; unplayed_series: string }>(
+      STAGE_STATUS_SQL,
+    ),
+    pool.query<{ day: string | null }>(`SELECT max(datetime_utc)::date::text AS day FROM games`),
+  ]);
+  const today = frontier.rows[0]?.day;
+  if (!today) return null;
+
+  const statuses: StageStatus[] = stages.rows.map((row) => ({
+    leagueId: row.league_id,
+    bracketId: row.bracket_id,
+    lastPlayedDay: row.last_played_day,
+    unplayedSeries: Number(row.unplayed_series),
+  }));
+
+  const league = await pool.query<{ id: number }>(`SELECT id FROM leagues WHERE slug = $1`, [leagueSlug]);
+  const leagueId = league.rows[0]?.id;
+  if (leagueId === undefined) return null;
+
+  return resolveBoardAdvance(statuses, today).find((a) => a.leagueId === leagueId) ?? null;
+}
+
+/**
+ * Which generation of player ratings a held board should read.
+ *
+ * Player ratings are snapshots per recompute rather than a time series, so a
+ * board cannot simply read "as of" a date the way team ratings can -- it has to
+ * pick the generation whose data stops at or before the stage being shown.
+ *
+ * Falls back to the OLDEST generation held when none is old enough, not the
+ * newest: every candidate is then past the target, so the oldest is nearest to
+ * it. That only happens when history is shorter than the hold, which is
+ * transient at one recompute a day.
+ */
+async function resolvePlayerGeneration(
+  pool: Pool,
+  scope: PlayerRatingScope,
+  window: RatingWindow,
+  asOfDate: string | null,
+): Promise<Date | null> {
+  if (!asOfDate) return null;
+  const { rows } = await pool.query<{ computed_at: Date; data_frontier: string | null }>(
+    `SELECT DISTINCT ON (data_frontier) computed_at, data_frontier::text
+       FROM player_ratings_history
+      WHERE scope = $1 AND rating_window = $2 AND data_frontier IS NOT NULL
+      ORDER BY data_frontier, computed_at DESC`,
+    [scope, window],
+  );
+  if (rows.length === 0) return null;
+
+  const ordered = [...rows].sort((a, b) => (a.data_frontier! < b.data_frontier! ? -1 : 1));
+  const qualifying = ordered.filter((row) => row.data_frontier! <= asOfDate);
+  return (qualifying.length > 0 ? qualifying[qualifying.length - 1] : ordered[0]).computed_at;
+}
+
 async function computeRankChanges(
   pool: Pool,
   ranked: { id: number; rank: number }[],
   international: boolean,
+  advance: BoardAdvance | null,
 ): Promise<Map<number, number | null>> {
   const changes = new Map<number, number | null>(ranked.map((t) => [t.id, null]));
   if (ranked.length === 0) return changes;
   const teamIds = ranked.map((t) => t.id);
+
+  // A held board compares stage against stage. Taking everything before the
+  // shown day instead would put the end of a week against its own middle,
+  // which is the half-round comparison the stage cadence exists to remove.
+  if (advance) {
+    if (!advance.previousAsOfDate) return changes;
+    return computeRankChangesAgainst(pool, ranked, international, advance.asOfDate, advance.previousAsOfDate);
+  }
 
   // The international board only moves on games at international events.
   const gameScope = international
@@ -292,12 +374,60 @@ async function computeRankChanges(
 }
 
 /**
+ * Rank change between two stage boundaries, for a board on the stage cadence.
+ * Both ends are pinned: the prior board is the state at the end of the previous
+ * stage, not merely "before today", so a completed week is compared with the
+ * previous completed week rather than with its own middle.
+ */
+async function computeRankChangesAgainst(
+  pool: Pool,
+  ranked: { id: number; rank: number }[],
+  international: boolean,
+  shownDay: string | null,
+  priorDay: string,
+): Promise<Map<number, number | null>> {
+  const changes = new Map<number, number | null>(ranked.map((t) => [t.id, null]));
+  const teamIds = ranked.map((t) => t.id);
+
+  const newestRow = await pool.query<{ newest: string | null }>(
+    `SELECT max(datetime_utc)::date::text AS newest FROM games`,
+  );
+  const newestDay = newestRow.rows[0]?.newest;
+  // Staleness still counts from the data, not the clock, and dashes the whole
+  // board rather than single teams so the rest keep reconciling.
+  if (!newestDay || !shownDay || daysBetween(shownDay, newestDay) > RANK_CHANGE_STALE_DAYS) return changes;
+
+  const snapshots = await pool.query<{ team_id: number; mu_ctx: string; phi_ctx: string }>(
+    `SELECT DISTINCT ON (team_id) team_id, mu_ctx, phi_ctx FROM team_ratings_history
+     WHERE team_id = ANY($1) AND scope = $2 AND as_of_date <= $3::date
+     ORDER BY team_id, as_of_date DESC, id DESC`,
+    [teamIds, international ? 'international' : 'overall', priorDay],
+  );
+
+  const priorBoard = snapshots.rows
+    .map((row) => ({ id: row.team_id, score: Number(row.mu_ctx) - Number(row.phi_ctx) }))
+    .sort((a, b) => b.score - a.score);
+
+  const currentRank = new Map(ranked.map((t) => [t.id, t.rank]));
+  const nowOrder = priorBoard
+    .map((t) => ({ id: t.id, rank: currentRank.get(t.id) ?? Number.MAX_SAFE_INTEGER }))
+    .sort((a, b) => a.rank - b.rank);
+
+  priorBoard.forEach((team, index) => {
+    const nowRank = nowOrder.findIndex((t) => t.id === team.id);
+    if (nowRank >= 0) changes.set(team.id, index - nowRank);
+  });
+  return changes;
+}
+
+/**
  * A league slug ranks on contextual rating alone (the shared meta cancels) and
  * isn't comparable between regions. 'international' ranks on cross-region games
  * with the league prior off; teams under MIN_INTERNATIONAL_GAMES are absent.
  */
 export async function getTeams(pool: Pool, scope: string): Promise<TeamSummaryDto[]> {
   const international = scope === 'international';
+  const advance = international ? null : await getBoardAdvance(pool, scope);
   const result = await pool.query<TeamRow>(
     `
     WITH ${LEAGUE_LATEST_SPLIT_CTE},
@@ -359,17 +489,22 @@ export async function getTeams(pool: Pool, scope: string): Promise<TeamSummaryDt
       -- A team takes several snapshots in one day (roster_decay then
       -- game_update) and as_of_date is a DATE, so ordering on it alone returns
       -- an arbitrary one. Replay inserts chronologically: highest id wins.
+      -- Bounded to the stage the board has advanced to, so a part-played week
+      -- is not on screen: a team playing Saturday would otherwise leapfrog one
+      -- playing Sunday and drop back a day later.
       SELECT mu_ctx, phi_ctx FROM team_ratings_history
-      WHERE team_id = t.id AND scope = $1 ORDER BY as_of_date DESC, id DESC LIMIT 1
+      WHERE team_id = t.id AND scope = $1
+        AND ($3::text IS NULL OR as_of_date <= $3::date)
+      ORDER BY as_of_date DESC, id DESC LIMIT 1
     ) tr ON true
     WHERE tlg.last_game_at >= lls.latest_split_start
       AND ($2::text IS NULL OR l.slug = $2)
     `,
-    [international ? 'international' : 'overall', international ? null : scope],
+    [international ? 'international' : 'overall', international ? null : scope, advance?.asOfDate ?? null],
   );
 
   const summaries = toTeamSummaries(result.rows);
-  const changes = await computeRankChanges(pool, summaries, international);
+  const changes = await computeRankChanges(pool, summaries, international, advance);
   return summaries.map((team) => ({ ...team, rankChange: changes.get(team.id) ?? null }));
 }
 
@@ -586,6 +721,8 @@ async function computePlayerRankChanges(
   ranked: { id: number; rank: number }[],
   scope: PlayerRatingScope,
   ratingWindow: RatingWindow,
+  /** The generation the board is showing, when the stage cadence pinned one. */
+  shownGeneration: Date | null,
 ): Promise<Map<number, number | null>> {
   const changes = new Map<number, number | null>(ranked.map((p) => [p.id, null]));
   if (ranked.length === 0) return changes;
@@ -615,7 +752,12 @@ async function computePlayerRankChanges(
   );
   if (history.rows.length === 0) return changes;
 
-  const generations = [...new Set(history.rows.map((r) => r.computed_at.getTime()))].sort((a, b) => a - b);
+  // A held board must not read carets past the generation it is showing, or the
+  // arrows describe results the ratings beside them do not include.
+  const shownAt = shownGeneration?.getTime();
+  const generations = [...new Set(history.rows.map((r) => r.computed_at.getTime()))]
+    .filter((g) => shownAt === undefined || g <= shownAt)
+    .sort((a, b) => a - b);
   if (generations.length < 2) return changes;
   const intlJoin = international
     ? `JOIN series s ON s.id = g.series_id
@@ -701,6 +843,13 @@ export async function getPlayers(
   // The international pass only ever writes 'all' (events are too sparse for a
   // bounded window), so a bounded request there would return an empty board.
   const ratingWindow: RatingWindow = scope === 'international' ? 'all' : window;
+
+  // Only a named regional league can be held: the stage cadence is per league,
+  // and international is bracket-shaped throughout so it never holds. The
+  // pooled call (no league) is left ungated -- it is not a board the UI shows,
+  // since regional percentiles from different leagues are not comparable.
+  const advance = scope === 'international' || !leagueSlug ? null : await getBoardAdvance(pool, leagueSlug);
+  const generation = await resolvePlayerGeneration(pool, scope, ratingWindow, advance?.asOfDate ?? null);
   const result = await pool.query<{
     id: number;
     handle: string;
@@ -735,6 +884,8 @@ export async function getPlayers(
         AND prh_inner.rating_window = $3
         AND prh_inner.role = rm.role
         AND ($2 = 'international' OR prh_inner.league_id = l.id)
+        -- Pinned to the generation the stage cadence allows, when one applies.
+        AND ($4::timestamptz IS NULL OR prh_inner.computed_at = $4::timestamptz)
       ORDER BY computed_at DESC LIMIT 1
     ) prh ON true
     WHERE ($1::text IS NULL OR l.slug = $1)
@@ -743,7 +894,7 @@ export async function getPlayers(
       -- signings at the neutral 50 so a roster is never missing anyone.
       AND ($2 <> 'international' OR prh.rating IS NOT NULL)
     `,
-    [leagueSlug ?? null, scope, ratingWindow],
+    [leagueSlug ?? null, scope, ratingWindow, generation],
   );
 
   const withRatings = result.rows
@@ -774,7 +925,7 @@ export async function getPlayers(
 
   withRatings.sort((a, b) => b.rating - a.rating);
   const ranked = withRatings.map((row, index) => ({ ...row, rank: index + 1, rankChange: null as number | null }));
-  const changes = await computePlayerRankChanges(pool, ranked, scope, ratingWindow);
+  const changes = await computePlayerRankChanges(pool, ranked, scope, ratingWindow, generation);
   return ranked.map((row) => ({ ...row, rankChange: changes.get(row.id) ?? null }));
 }
 
