@@ -11,6 +11,7 @@ import {
   DEFAULT_VOLATILITY,
   NEUTRAL_SCORE,
   componentWeightsForRole,
+  ROSTER_CHANGE_MIN_GAMES,
   type PlayerComponent,
   type RatingState,
 } from '@power-ranking/rating-engine';
@@ -208,9 +209,24 @@ const TEAM_CONTEXT_CTE = `
       WHERE tn.tournament_type = 'international'
     ) x WHERE rn = 1
   ),
+  -- Games since the change, not days since it. A split runs 6-9 weeks, so 60
+  -- days let a team that changed before the split still read as settled by the
+  -- playoffs -- and an off-season change aged out without the new roster
+  -- playing once. The flag says the rating has not settled yet, which is a
+  -- statement about evidence, so it is counted in games. Threshold is the
+  -- model's own ROSTER_CHANGE_MIN_GAMES, interpolated rather than restated.
   recent_churn AS (
-    SELECT DISTINCT team_id FROM team_ratings_history
-    WHERE reason = 'roster_decay' AND as_of_date > NOW() - INTERVAL '60 days'
+    SELECT changed.team_id
+    FROM (
+      SELECT team_id, MAX(as_of_date) AS changed_on
+      FROM team_ratings_history WHERE reason = 'roster_decay'
+      GROUP BY team_id
+    ) changed
+    WHERE (
+      SELECT COUNT(*) FROM games g
+      WHERE (g.team1_id = changed.team_id OR g.team2_id = changed.team_id)
+        AND g.datetime_utc::date >= changed.changed_on
+    ) < ${ROSTER_CHANGE_MIN_GAMES}
   ),
   -- Games at international events (incl. intra-region matchups played there).
   intl_game_count AS (

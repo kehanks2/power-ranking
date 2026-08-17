@@ -74,3 +74,10 @@ export const INTERNATIONAL_WEIGHT_MULTIPLIER = 2;
 export const ROSTER_PRIOR_RELIEF = 0.8;
 export const ROSTER_PRIOR_OFFSET_SCALE = 150;
 export const ROSTER_PRIOR_CONF_THRESHOLD = 15;
+
+// Games an incoming player must play before their rating is trusted in full.
+// Shared because two places need the same number: the replay, which weights a
+// new player's carryover by it, and the board, which flags a team whose rating
+// has not settled yet. Restating it in the API let the flag drift from the
+// model it is describing.
+export const ROSTER_CHANGE_MIN_GAMES = 10;

@@ -3,6 +3,7 @@ import {
   detectRosterChanges,
   computeRosterImpliedMu,
   confidenceFromGamesPlayed,
+  ROSTER_CHANGE_MIN_GAMES,
   type ReplayGame,
   type DecayEvent,
   type IncomingPlayerSignal,
@@ -12,7 +13,6 @@ import { buildTeamLineupGames } from './teamLineups.js';
 // 5, not 2: at 2, ordinary bench rotation counted as full roster turnover and
 // spiked RD. Matches ROSTER_DISPLAY_PERSISTENCE_GAMES in computePlayerRatings.ts.
 const DEFAULT_ROSTER_CHANGE_PERSISTENCE_GAMES = 5;
-const ROSTER_CHANGE_MIN_GAMES = 10; // games before an incoming player's rating is trusted in full
 const OFFSET_SCALE = 150; // rating points a maximally-rated incoming roster is worth vs the league mean
 const K_SEASON = 0.25; // matches plan's design default
 
