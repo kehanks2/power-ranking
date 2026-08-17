@@ -176,6 +176,12 @@ export interface PlayerSummary {
    * the case it explains.
    */
   alsoPlaysFor: string | null;
+  /** Where they are now, when they hold no roster row in this board's league. */
+  movedToTeam: string | null;
+  movedToLeague: string | null;
+  /** The team they last played for on this board, and the day of that game. */
+  lastTeamName: string | null;
+  lastPlayedOn: string | null;
 }
 
 /**

@@ -184,6 +184,24 @@ export class PlayersListComponent {
     this.window.set(window);
   }
 
+  /**
+   * Explains an empty Team cell. "Not on a roster we track" rather than "has no
+   * team": `roster_memberships` is rebuilt from Liquipedia's current squad pages
+   * and keeps no history, so absence means the squad pages do not name them, not
+   * that they are unsigned. The last team is past tense with the day of the game.
+   */
+  protected teamNote(player: PlayerSummary): string {
+    const past = player.lastTeamName
+      ? ` Last played for ${player.lastTeamName} on ${player.lastPlayedOn}.`
+      : '';
+    if (player.movedToTeam) {
+      // No article before the league: "a LCK" and "an CBLOL" are both wrong, and
+      // which one is right depends on how the initialism is said aloud.
+      return `Not rostered in ${this.regionLabel()} — now with ${player.movedToTeam} in the ${player.movedToLeague}.${past}`;
+    }
+    return `Not on a roster we track.${past}`;
+  }
+
   protected windowLabel(window: RatingWindow): string {
     switch (window) {
       case 'year':

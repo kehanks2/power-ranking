@@ -189,6 +189,17 @@ export interface PlayerSummaryDto {
   // a zero-game tier-1 row means); attributed to Liquipedia since it can't be
   // told from an unclosed transfer.
   alsoPlaysFor: string | null;
+  // Where a player with NO roster row in this board's league is now, when they
+  // hold one elsewhere. Never a claim about this league: Viper is on the LCK
+  // all-time board off 229 games and plays for Bilibili Gaming in the LPL, so
+  // "no team" would be false. Both null when they are on this league's roster.
+  movedToTeam: string | null;
+  movedToLeague: string | null;
+  // The last team they played for ON THIS BOARD, in the past tense with the day
+  // of that game. Never rendered as their team -- a Team column is a claim about
+  // now, and a departed player has no current team to claim.
+  lastTeamName: string | null;
+  lastPlayedOn: string | null;
 }
 
 // One stat plus its place among same-role players (value alone says little: 8.1

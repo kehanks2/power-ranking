@@ -274,6 +274,12 @@ tr.row-toggle {
   background: var(--color-unplayed);
 }
 
+.team-gone {
+  color: var(--color-text-dim);
+  font-style: italic;
+  cursor: help;
+}
+
 tr.is-open {
   background: var(--color-surface-hover);
 
