@@ -305,6 +305,8 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
       winnerTeamId,
       isInternational: classification.isInternational,
       bracketId: match.match2bracketid || null,
+      // Same parse as the games take, so the two can never disagree by a zone.
+      dateUtc: match.date ? match.date.replace(' ', 'T') + 'Z' : null,
     });
     result.seriesProcessed += 1;
 

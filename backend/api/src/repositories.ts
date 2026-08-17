@@ -715,8 +715,11 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
       SELECT s.id,
              s.tournament_id,
              s.winner_team_id,
-             -- series carries no date of its own, so order by its first game.
-             (SELECT MIN(g.datetime_utc) FROM games g WHERE g.series_id = s.id) AS started_at,
+             -- The series' own date, falling back to its first game for any row
+             -- predating migration 0019. Deriving it from the games alone left a
+             -- blank date on a series whose games are held for missing stat
+             -- lines -- it has none to derive from.
+             COALESCE(s.date_utc, (SELECT MIN(g.datetime_utc) FROM games g WHERE g.series_id = s.id)) AS started_at,
              -- Oriented to this team, so the expanded row reads "3-1" for a win.
              CASE WHEN s.team1_id = $1 THEN s.team1_score ELSE s.team2_score END AS own_score,
              CASE WHEN s.team1_id = $1 THEN s.team2_score ELSE s.team1_score END AS opponent_score,

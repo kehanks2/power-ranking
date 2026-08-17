@@ -39,7 +39,18 @@ async function sleep(ms: number): Promise<void> {
 
 // Repo root (this file is backend/ingestion/src/liquipediaApi.ts).
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const RATE_LIMIT_STATE_FILE = join(REPO_ROOT, '.liquipedia-rate-limit.json');
+
+/**
+ * Where the budget lives. Overridable because the default is a fixed path in
+ * the working copy, which makes it unusable in two places: a test exercising the
+ * retry loop would spend the desktop's real budget and could hard-block it for
+ * an hour, and an Actions runner discards the file with itself, so a scheduled
+ * run starts blind. Read per call rather than frozen at import, so setting the
+ * variable after this module loads still takes effect.
+ */
+function stateFilePath(): string {
+  return process.env.LIQUIPEDIA_RATE_LIMIT_FILE ?? join(REPO_ROOT, '.liquipedia-rate-limit.json');
+}
 
 export interface RateLimitState {
   requestTimestampsByEndpoint: Record<string, number[]>;
@@ -47,18 +58,19 @@ export interface RateLimitState {
 }
 
 function loadState(): RateLimitState {
-  if (!existsSync(RATE_LIMIT_STATE_FILE)) {
+  const path = stateFilePath();
+  if (!existsSync(path)) {
     return { requestTimestampsByEndpoint: {}, blockedUntilByEndpoint: {} };
   }
   try {
-    return JSON.parse(readFileSync(RATE_LIMIT_STATE_FILE, 'utf8'));
+    return JSON.parse(readFileSync(path, 'utf8'));
   } catch {
     return { requestTimestampsByEndpoint: {}, blockedUntilByEndpoint: {} };
   }
 }
 
 function saveState(state: RateLimitState): void {
-  writeFileSync(RATE_LIMIT_STATE_FILE, JSON.stringify(state, null, 2));
+  writeFileSync(stateFilePath(), JSON.stringify(state, null, 2));
 }
 
 // 40, under the documented 60/hour ceiling, since our count and theirs have
