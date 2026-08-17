@@ -624,10 +624,11 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     raw_rating: string | null;
     effective_games: string | null;
     has_international: boolean;
+    secondary_team: string | null;
   }>(
     `
     SELECT p.id AS player_id, p.handle, COALESCE(prh.role, rm.role) AS role, rm.is_starter,
-           prh.rating, prh.games_played, prh.raw_rating, prh.effective_games,
+           prh.rating, prh.games_played, prh.raw_rating, prh.effective_games, rm.secondary_team,
            EXISTS (
              SELECT 1 FROM player_ratings_history intl
              WHERE intl.player_id = p.id AND intl.scope = 'international'
@@ -687,6 +688,8 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
       roleRank: peers.indexOf(row.player_id) + 1,
       rolePeerCount: peers.length,
       hasInternational: row.has_international,
+      // Only on a zero-game row -- the case a second squad actually explains.
+      alsoPlaysFor: (row.games_played ?? 0) === 0 ? row.secondary_team : null,
     };
   });
 

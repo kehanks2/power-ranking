@@ -80,6 +80,10 @@ button {
   --lg-LCP: #d9a05b;
   --lg-CBLOL: #4fb0c6;
   --color-churn: #d98a5b;
+  // Marks a roster row with no games on the board it is shown on. Shared by the
+  // pr-unplayed-marker component and both legends, which are separately
+  // encapsulated, so it has to be a global token to stay one colour.
+  --color-unplayed: #d98a5b;
 }
 
 .lg-LCK { color: var(--lg-LCK); }

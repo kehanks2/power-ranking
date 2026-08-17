@@ -239,6 +239,53 @@ describe('read API (live Postgres)', () => {
     expect(unflagged).toBeGreaterThan(0);
   });
 
+  it('names a second squad only where the roster row has no games to explain', async () => {
+    // The board and the team page share one "no games here" marker, and the
+    // second squad is the reason text it carries. A player who HAS played needs
+    // no explanation, so naming another squad there would only mislead.
+    // One league: a hosted database pays a round trip per query, and walking all
+    // six teams-deep blows the 30s suite timeout.
+    const teams = await request(app).get('/teams').query({ scope: 'LPL' });
+    let checked = 0;
+    let unplayed = 0;
+    for (const team of teams.body) {
+      const res = await request(app).get(`/teams/${team.id}`);
+      for (const entry of res.body.roster) {
+        expect(entry).toHaveProperty('alsoPlaysFor');
+        if (entry.gamesPlayed > 0) expect(entry.alsoPlaysFor).toBeNull();
+        else unplayed += 1;
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+    // Or the case the marker exists for is not in this league's data and the
+    // test is only asserting the null branch.
+    expect(unplayed).toBeGreaterThan(0);
+  });
+
+  it('serves the same rating and game count for a player on the board and on their team page', async () => {
+    // The marker keys on gamesPlayed, so the two surfaces disagreeing would put
+    // a mark on one and not the other for the same player.
+    const board = await request(app).get('/players').query({ league: 'LPL' });
+    const byId = new Map(
+      board.body.map((p: { id: number; gamesPlayed: number; rating: number }) => [p.id, p]),
+    );
+    const teams = await request(app).get('/teams').query({ scope: 'LPL' });
+
+    let compared = 0;
+    for (const team of teams.body) {
+      const res = await request(app).get(`/teams/${team.id}`);
+      for (const entry of res.body.roster) {
+        const onBoard = byId.get(entry.playerId) as { gamesPlayed: number; rating: number } | undefined;
+        if (!onBoard) continue;
+        expect(entry.gamesPlayed).toBe(onBoard.gamesPlayed);
+        expect(entry.rating).toBeCloseTo(onBoard.rating, 6);
+        compared += 1;
+      }
+    }
+    expect(compared).toBeGreaterThan(0);
+  });
+
   it('GET /players returns ranked players with roles', async () => {
     const res = await request(app).get('/players');
     expect(res.status).toBe(200);

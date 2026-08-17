@@ -70,6 +70,9 @@ export interface RosterEntryDto {
   // rostered players are (it needs 10+ international games), so the panel offers
   // that pool only where there is one, rather than switching to an empty grid.
   hasInternational: boolean;
+  // The other squad Liquipedia names for a player with no games here, so the
+  // "no games" marker can say why. Null once they have played.
+  alsoPlaysFor: string | null;
 }
 
 /** One series a team played, oriented to them: `ownScore`-`opponentScore`. */

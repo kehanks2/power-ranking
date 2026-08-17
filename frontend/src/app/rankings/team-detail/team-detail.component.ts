@@ -6,6 +6,7 @@ import { RankingsApiService } from '../rankings-api.service';
 import { ConfidenceAxisComponent } from '../confidence/confidence-axis.component';
 import { ConfidenceRangeComponent } from '../confidence/confidence-range.component';
 import { PlayerPanelComponent } from '../player-panel/player-panel.component';
+import { UnplayedMarkerComponent } from '../unplayed-marker/unplayed-marker.component';
 import type { BoardScope, PlayerDetail, PlayerRatingScope, TeamDetail, TeamRecord } from '../models';
 
 @Component({
@@ -18,6 +19,7 @@ import type { BoardScope, PlayerDetail, PlayerRatingScope, TeamDetail, TeamRecor
     ConfidenceAxisComponent,
     ConfidenceRangeComponent,
     PlayerPanelComponent,
+    UnplayedMarkerComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './team-detail.component.html',

@@ -178,6 +178,10 @@ tr.row-toggle {
   background: var(--lg-LCK);
 }
 
+.dot--unplayed {
+  background: var(--color-unplayed);
+}
+
 tr.is-open {
   background: var(--color-surface-hover);
 
