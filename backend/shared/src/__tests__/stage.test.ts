@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   stageKind,
+  stageKindOf,
   isPlayoffSection,
   isPlayoffSeries,
   resolveBoardAdvance,
@@ -66,9 +67,13 @@ const stage = (
   lastPlayedDay: string | null,
   unplayedSeries = 0,
   previousPlayedDay: string | null = null,
+  // Null by default, so these keep exercising the id fallback they were
+  // written for. Stage-name behaviour is covered separately below.
+  stageName: string | null = null,
 ): StageStatus => ({
   leagueId: LCK,
   bracketId,
+  stageName,
   lastPlayedDay,
   previousPlayedDay,
   unplayedSeries,
@@ -120,8 +125,8 @@ describe('resolveBoardAdvance', () => {
     const advances = resolveBoardAdvance(
       [
         stage('LCK26Sp3W3', '2026-08-15', 0),
-        { leagueId: LEC, bracketId: 'LEC26SumW3', lastPlayedDay: '2026-08-10', previousPlayedDay: null, unplayedSeries: 0 },
-        { leagueId: LEC, bracketId: 'LEC26SumW4', lastPlayedDay: '2026-08-15', previousPlayedDay: null, unplayedSeries: 4 },
+        { leagueId: LEC, bracketId: 'LEC26SumW3', stageName: null, lastPlayedDay: '2026-08-10', previousPlayedDay: null, unplayedSeries: 0 },
+        { leagueId: LEC, bracketId: 'LEC26SumW4', stageName: null, lastPlayedDay: '2026-08-15', previousPlayedDay: null, unplayedSeries: 4 },
       ],
       '2026-08-16',
     );
@@ -309,5 +314,60 @@ describe('isPlayoffSeries', () => {
   it('is null when we know nothing at all', () => {
     expect(isPlayoffSeries(null, null)).toBeNull();
     expect(isPlayoffSeries('', '')).toBeNull();
+  });
+});
+
+describe('stageKindOf', () => {
+  it('trusts the stage name over the id, in both directions', () => {
+    // The 22 stages the id rule got wrong, and how. LTA's playoff bracket ends
+    // in W6, so the pattern called it a week and the board would have held a
+    // bracket -- waiting for a round that never completes as one.
+    expect(stageKindOf('Playoffs', 'LTAN25S3W6')).toBe('bracket');
+    expect(stageKindOf('Playoffs', 'LTAS25S3W6')).toBe('bracket');
+    expect(stageKind('LTAN25S3W6')).toBe('regular'); // what it used to say
+
+    // 18 CBLOL 2024 weeks carry opaque ids, so the pattern called a whole
+    // season bracket play and advanced it per series instead of per week.
+    for (const id of ['SSbeVdPy0y', 'aZuW69Ghfj', 'JGsnM3wvew', '3Y6Su22mNM']) {
+      expect(stageKindOf('Week 5', id), id).toBe('regular');
+      expect(stageKind(id), id).toBe('bracket'); // what it used to say
+    }
+
+    // LCP's Season Finals group weeks, same shape.
+    expect(stageKindOf('Week 3', 'LCP25S3GS3')).toBe('regular');
+  });
+
+  it('agrees with the id rule wherever the two already agreed', () => {
+    expect(stageKindOf('Week 12', 'LCK26Sp3W3')).toBe('regular');
+    expect(stageKindOf('Week 4', 'LCS26SumW4')).toBe('regular');
+    expect(stageKindOf('Playoffs', 'LCKCup26PO')).toBe('bracket');
+    expect(stageKindOf('Play-In', 'LCKCup26PI')).toBe('bracket');
+  });
+
+  it('falls back to the id when there is no stage name', () => {
+    // Series predating migration 0020, and the 102 Liquipedia gives nothing for.
+    expect(stageKindOf(null, 'LCK26Sp3W3')).toBe('regular');
+    expect(stageKindOf(null, 'LCKCup26PO')).toBe('bracket');
+    expect(stageKindOf('', 'LCK26Sp3W3')).toBe('regular');
+    expect(stageKindOf(null, null)).toBe('bracket');
+  });
+
+  it('treats anything that is not a round-robin week as bracket play', () => {
+    // The fail-safe direction: per-series updates rather than a frozen board.
+    for (const name of ['Group Stage', 'Swiss Stage', 'Results', 'Round 1', 'Day 3']) {
+      expect(stageKindOf(name, 'whatever'), name).toBe('bracket');
+    }
+  });
+
+  it('holds a week whose board would otherwise move mid-round', () => {
+    // End to end: the CBLOL 2024 case. With only the opaque id the stage reads
+    // as a bracket and the board advances on a part-played week.
+    const rows = [
+      stage('EoMtEalgU2', '2024-06-02', 0, null, 'Week 1'),
+      stage('GYNoSvPnct', '2024-06-09', 4, null, 'Week 2'),
+    ];
+    const [advance] = resolveBoardAdvance(rows, '2024-06-10');
+    expect(advance.reason).toBe('holding');
+    expect(advance.asOfDate).toBe('2024-06-02');
   });
 });

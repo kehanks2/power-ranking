@@ -21,10 +21,41 @@ export const REGULAR_SEASON_STAGE_PATTERNS: readonly RegExp[] = [
 
 export type StageKind = 'regular' | 'bracket';
 
-/** A missing marker reads as bracket play: series predating migration 0016 keep advancing per game day. */
+/**
+ * Fallback only: the stage id, for series with no `section`. A missing marker
+ * reads as bracket play, so series predating migration 0016 keep advancing per
+ * game day rather than freezing a board.
+ */
 export function stageKind(bracketId: string | null | undefined): StageKind {
   if (!bracketId) return 'bracket';
   return REGULAR_SEASON_STAGE_PATTERNS.some((pattern) => pattern.test(bracketId)) ? 'regular' : 'bracket';
+}
+
+/**
+ * Whether a stage is a round-robin week the board should HOLD until complete,
+ * or bracket play it advances through per series. Reads Liquipedia's `section`
+ * first and falls back to the id.
+ *
+ * The id alone was wrong on 22 stages, in both directions:
+ *
+ * - `LTAN25S3W6` and `LTAS25S3W6` are sectioned "Playoffs" but end in `W6`, so
+ *   the pattern called them weeks -- the board would hold a playoff bracket,
+ *   waiting for a round that never completes as one.
+ * - 18 CBLOL 2024 weeks carry opaque ids (`SSbeVdPy0y`), so the pattern called
+ *   them brackets and a whole season advanced per series instead of per week.
+ * - LCP 2025's Season Finals group weeks (`LCP25S3GS1..3`) likewise.
+ *
+ * Anything that is not recognisably a round-robin week stays bracket play: that
+ * fail-safe degrades to per-series updates instead of freezing a board, which is
+ * the direction to fail in.
+ */
+export function stageKindOf(stageName: string | null | undefined, bracketId: string | null | undefined): StageKind {
+  if (stageName) {
+    const name = stageName.toLowerCase();
+    if (/week\s*\d+/.test(name) || name.includes('regular season')) return 'regular';
+    return 'bracket';
+  }
+  return stageKind(bracketId);
 }
 
 /** Stage names that mean knockout play, matched case-insensitively as substrings. */
@@ -128,6 +159,8 @@ export const STAGE_STALL_DAYS = 2;
 export interface StageStatus {
   leagueId: number;
   bracketId: string | null;
+  /** Liquipedia's `section` for the stage -- "Week 9", "Playoffs", "Play-In". */
+  stageName: string | null;
   /** Last day a game in this stage was played, or null if none has been. */
   lastPlayedDay: string | null;
   /**
@@ -200,7 +233,10 @@ export function resolveBoardAdvance(rows: StageStatus[], today: string): BoardAd
       .filter((s): s is StageStatus & { lastPlayedDay: string } => s.lastPlayedDay !== null)
       .sort((a, b) => {
         if (a.lastPlayedDay !== b.lastPlayedDay) return a.lastPlayedDay < b.lastPlayedDay ? -1 : 1;
-        return Number(stageKind(a.bracketId) === 'bracket') - Number(stageKind(b.bracketId) === 'bracket');
+        return (
+          Number(stageKindOf(a.stageName, a.bracketId) === 'bracket') -
+          Number(stageKindOf(b.stageName, b.bracketId) === 'bracket')
+        );
       });
 
     if (played.length === 0) {
@@ -219,7 +255,7 @@ export function resolveBoardAdvance(rows: StageStatus[], today: string): BoardAd
     let shownIndex: number;
     let reason: AdvanceReason;
 
-    if (stageKind(current.bracketId) === 'bracket') {
+    if (stageKindOf(current.stageName, current.bracketId) === 'bracket') {
       shownIndex = played.length - 1;
       reason = 'bracket';
     } else if (current.unplayedSeries === 0) {
@@ -268,6 +304,9 @@ export const STAGE_STATUS_SQL = `
   SELECT t.canonical_league_id            AS league_id,
          l.slug                           AS league_slug,
          s.bracket_id                     AS bracket_id,
+         -- Grouping stays on the id: "Playoffs" names a stage in every event,
+         -- so a section cannot identify one. It rides along to classify it.
+         max(s.stage_name)                AS stage_name,
          max(g.day)::date::text           AS last_played_day,
          -- Second-newest day of play inside the stage, for bracket carets.
          (array_agg(DISTINCT g.day::date ORDER BY g.day::date DESC) FILTER (WHERE g.day IS NOT NULL))[2]::text

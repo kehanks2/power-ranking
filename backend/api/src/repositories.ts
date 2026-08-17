@@ -104,6 +104,7 @@ export async function getBoardsLastUpdated(pool: Pool): Promise<BoardUpdatedDto[
     league_id: number;
     league_slug: string;
     bracket_id: string | null;
+    stage_name: string | null;
     last_played_day: string | null;
     previous_played_day: string | null;
     unplayed_series: string;
@@ -115,6 +116,7 @@ export async function getBoardsLastUpdated(pool: Pool): Promise<BoardUpdatedDto[
   const statuses: StageStatus[] = stages.rows.map((row) => ({
     leagueId: row.league_id,
     bracketId: row.bracket_id,
+    stageName: row.stage_name,
     lastPlayedDay: row.last_played_day,
     previousPlayedDay: row.previous_played_day,
     unplayedSeries: Number(row.unplayed_series),
@@ -324,6 +326,7 @@ async function getBoardAdvance(pool: Pool, leagueSlug: string): Promise<BoardAdv
   const stages = await pool.query<{
     league_id: number;
     bracket_id: string | null;
+    stage_name: string | null;
     last_played_day: string | null;
     previous_played_day: string | null;
     unplayed_series: string;
@@ -336,6 +339,7 @@ async function getBoardAdvance(pool: Pool, leagueSlug: string): Promise<BoardAdv
   const statuses: StageStatus[] = stages.rows.map((row) => ({
     leagueId: row.league_id,
     bracketId: row.bracket_id,
+    stageName: row.stage_name,
     lastPlayedDay: row.last_played_day,
     previousPlayedDay: row.previous_played_day,
     unplayedSeries: Number(row.unplayed_series),
