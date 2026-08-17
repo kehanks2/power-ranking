@@ -116,7 +116,19 @@
                 }
               </td>
             }
-            <td class="team">{{ player.teamName ?? '—' }}</td>
+            <!-- A Team column is a claim about NOW, so a player who has left this
+                 league's rosters never carries one. Where they went is shown
+                 instead when we know it; the last team they played for is in the
+                 title, in the past tense, where it cannot read as current. -->
+            <td class="team">
+              @if (player.teamName) {
+                {{ player.teamName }}
+              } @else if (player.movedToTeam) {
+                <span class="team-gone" [title]="teamNote(player)">→ {{ player.movedToLeague }}</span>
+              } @else {
+                <span class="team-gone" [title]="teamNote(player)">No team</span>
+              }
+            </td>
             <td class="num rating">{{ player.rating | number: '1.1-1' }}</td>
             <td class="conf"><app-confidence-range [value]="player" /></td>
             <td class="num games">{{ player.gamesPlayed }}</td>

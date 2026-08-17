@@ -476,6 +476,54 @@ describe('read API (live Postgres)', () => {
     }
   });
 
+  it('narrows membership as the window narrows, so split is inside year is inside all', async () => {
+    // A board is a list of who PLAYED over the window. The model writes a rating
+    // row only for a group a player has games in, so a departed player drops off
+    // 'split' while staying on 'year' and 'all'. Asserted as a set relation
+    // rather than by naming players, which the next roster change would break.
+    const ids = async (window: string) => {
+      const res = await request(app).get('/players').query({ league: 'LCK', window });
+      return new Set<number>(res.body.map((p: { id: number }) => p.id));
+    };
+    const [split, year, all] = [await ids('split'), await ids('year'), await ids('all')];
+
+    expect(split.size).toBeGreaterThan(0);
+    for (const id of split) expect(year.has(id)).toBe(true);
+    for (const id of year) expect(all.has(id)).toBe(true);
+    // Strictly narrowing, or the windows are not selecting anything and the
+    // subset assertions above hold trivially.
+    expect(all.size).toBeGreaterThan(year.size);
+    expect(year.size).toBeGreaterThan(split.size);
+  });
+
+  it('never shows a team for a player who is not on that board league roster', async () => {
+    // kward's rule: a Team column is a claim about NOW. A player who left still
+    // belongs on the all-time board off their games, but must not be labelled
+    // with the team they used to play for.
+    const res = await request(app).get('/players').query({ league: 'LCK', window: 'all' });
+    let teamless = 0;
+    let moved = 0;
+    for (const p of res.body) {
+      if (p.teamName) {
+        // A rostered player has nowhere else to be and no past to report.
+        expect(p.movedToTeam).toBeNull();
+        expect(p.lastTeamName).toBeNull();
+        continue;
+      }
+      teamless += 1;
+      if (p.movedToTeam) {
+        moved += 1;
+        expect(p.movedToLeague).not.toBeNull();
+      }
+      // Either way the row says something about them rather than nothing.
+      expect(p.movedToTeam !== null || p.lastTeamName !== null).toBe(true);
+      if (p.lastTeamName) expect(p.lastPlayedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+    expect(teamless).toBeGreaterThan(0);
+    // Transfers are the case that makes "no team" a lie, so one must be present.
+    expect(moved).toBeGreaterThan(0);
+  });
+
   it('GET /players/:id places against exactly the same-role rows on that board', async () => {
     // The denominator has to be countable on screen, so it is the board's own
     // same-role row count -- not "players with enough games", which silently

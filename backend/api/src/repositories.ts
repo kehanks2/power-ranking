@@ -828,6 +828,8 @@ async function computePlayerRankChanges(
   ratingWindow: RatingWindow,
   /** The generation the board is showing, when the stage cadence pinned one. */
   shownGeneration: Date | null,
+  /** The board's own league. Null only on the pooled board, which the UI never shows. */
+  leagueSlug: string | null,
 ): Promise<BoardRankChanges> {
   const changes = new Map<number, number | null>(ranked.map((p) => [p.id, null]));
   if (ranked.length === 0) return { changes, comparedTo: null };
@@ -856,10 +858,16 @@ async function computePlayerRankChanges(
      LEFT JOIN team_league_memberships tlm ON tlm.team_id = t.id AND tlm.end_date IS NULL
      JOIN player_ratings_history prh ON prh.player_id = p.id
        AND prh.scope = $2 AND prh.rating_window = $3
-       AND ($2 = 'international' OR prh.league_id = tlm.league_id)
+       -- The BOARD's league, not the player's current roster league. Taking it
+       -- from the roster compared a transfer against the wrong pool: Viper sits
+       -- on LCK's all-time board off 229 games and is rostered in the LPL, so
+       -- his LCK caret was computed from his LPL rating history. A player with
+       -- no roster row at all matched nothing and silently lost their caret.
+       AND ($2 = 'international' OR $4::text IS NULL
+            OR prh.league_id = (SELECT id FROM leagues WHERE slug = $4))
      WHERE p.id = ANY($1)
      ORDER BY prh.player_id, prh.computed_at, (prh.role = rm.role) DESC, prh.games_played DESC`,
-    [playerIds, scope, ratingWindow],
+    [playerIds, scope, ratingWindow, leagueSlug],
   );
   if (history.rows.length === 0) return { changes, comparedTo: null };
 
@@ -962,27 +970,82 @@ export async function getPlayers(
     raw_rating: string | null;
     effective_games: string | null;
     secondary_team: string | null;
+    moved_to_team: string | null;
+    moved_to_league: string | null;
+    last_team_name: string | null;
+    last_played_on: string | null;
   }>(
     `
-    WITH ${LEAGUE_LATEST_SPLIT_CTE}
-    SELECT p.id, p.handle, t.id AS team_id, t.slug AS team_slug, t.name AS team_name, l.slug AS league_slug,
-           COALESCE(prh.role, rm.role) AS role,
-           prh.rating, prh.games_played, prh.raw_rating, prh.effective_games, rm.secondary_team
-    FROM players p
-    LEFT JOIN roster_memberships rm ON rm.player_id = p.id AND rm.end_date IS NULL
-    LEFT JOIN teams t ON t.id = rm.team_id
-    LEFT JOIN team_league_memberships tlm ON tlm.team_id = t.id AND tlm.end_date IS NULL
-    LEFT JOIN leagues l ON l.id = tlm.league_id
-    LEFT JOIN team_last_game tlg ON tlg.team_id = t.id
-    LEFT JOIN league_latest_split lls ON lls.canonical_league_id = l.id
-    -- The group must match the board: regional reads the (league, role) group for
-    -- the rostered league (or a transfer is ranked on games they left). Intl is role-only.
+    WITH ${LEAGUE_LATEST_SPLIT_CTE},
+    -- A board is a list of everyone who PLAYED in it over the window, plus the
+    -- current squads. It used to be the squads alone, so a player absent from a
+    -- Liquipedia squad page was computed and then filtered out -- 73 players
+    -- with 1,679 games in 2026, Frog's 15 for Kiwoom DRX among them.
+    board_rostered AS (
+      SELECT rm.player_id, l.id AS league_id
+      FROM roster_memberships rm
+      JOIN teams t ON t.id = rm.team_id
+      JOIN team_league_memberships tlm ON tlm.team_id = t.id AND tlm.end_date IS NULL
+      JOIN leagues l ON l.id = tlm.league_id
+      JOIN team_last_game tlg ON tlg.team_id = t.id
+      JOIN league_latest_split lls ON lls.canonical_league_id = l.id
+      WHERE rm.role IS NOT NULL
+        AND $2 <> 'international'
+        AND tlg.last_game_at >= lls.latest_split_start
+        AND ($1::text IS NULL OR l.slug = $1)
+    ),
+    -- The window decides who belongs, which is what keeps a departed player off
+    -- the current-split board and on 'year'/'all': the model writes a row only
+    -- for a (league, role) group they have games in, so Humanoid has an 'all'
+    -- and a 'year' row for LEC and no 'split' one.
+    board_rated AS (
+      SELECT DISTINCT prh.player_id, prh.league_id
+      FROM player_ratings_history prh
+      LEFT JOIN leagues l2 ON l2.id = prh.league_id
+      WHERE prh.scope = $2
+        AND prh.rating_window = $3
+        AND ($4::timestamptz IS NULL OR prh.computed_at = $4::timestamptz)
+        AND ($2 = 'international' OR $1::text IS NULL OR l2.slug = $1)
+    ),
+    board AS (
+      SELECT player_id, league_id FROM board_rostered
+      UNION
+      SELECT player_id, league_id FROM board_rated
+    )
+    SELECT b.player_id AS id, p.handle,
+           rt.team_id, rt.team_slug, rt.team_name,
+           -- International rows carry no league_id, so the Region column falls
+           -- back to where the player is currently rostered. Regional rows
+           -- always name the board's own league.
+           COALESCE(lg.slug, rt.league_slug) AS league_slug,
+           COALESCE(prh.role, rt.role) AS role,
+           prh.rating, prh.games_played, prh.raw_rating, prh.effective_games, rt.secondary_team,
+           away.team_name AS moved_to_team, away.league_slug AS moved_to_league,
+           played.team_name AS last_team_name, played.last_played_on::text AS last_played_on
+    FROM board b
+    JOIN players p ON p.id = b.player_id
+    LEFT JOIN leagues lg ON lg.id = b.league_id
+    -- Their roster row IN THIS LEAGUE, which is what the Team column may show.
+    -- The international board is not a league's board, so any current team is
+    -- the right one there -- it is where the player is from, not a claim about
+    -- the pool they are ranked in.
+    LEFT JOIN LATERAL (
+      SELECT t.id AS team_id, t.slug AS team_slug, t.name AS team_name, rm.role,
+             rm.secondary_team, l4.slug AS league_slug
+      FROM roster_memberships rm
+      JOIN teams t ON t.id = rm.team_id
+      JOIN team_league_memberships tlm ON tlm.team_id = t.id AND tlm.end_date IS NULL
+      JOIN leagues l4 ON l4.id = tlm.league_id
+      WHERE rm.player_id = b.player_id
+        AND ($2 = 'international' OR tlm.league_id = b.league_id)
+      LIMIT 1
+    ) rt ON true
     LEFT JOIN LATERAL (
       SELECT role, rating, games_played, raw_rating, effective_games FROM player_ratings_history prh_inner
-      WHERE prh_inner.player_id = p.id
+      WHERE prh_inner.player_id = b.player_id
         AND prh_inner.scope = $2
         AND prh_inner.rating_window = $3
-        AND ($2 = 'international' OR prh_inner.league_id = l.id)
+        AND ($2 = 'international' OR prh_inner.league_id = b.league_id)
         -- Pinned to the generation the stage cadence allows, when one applies.
         AND ($4::timestamptz IS NULL OR prh_inner.computed_at = $4::timestamptz)
       -- Role is PREFERRED, not required. Liquipedia's squad role can disagree
@@ -990,14 +1053,37 @@ export async function getPlayers(
       -- away and showed an unrated 50 instead -- Spica is rostered SUP on NRG
       -- and has 60 JNG games rated 49.8. Newest generation first so an unpinned
       -- read still cannot mix generations; most games breaks a two-role tie.
-      ORDER BY prh_inner.computed_at DESC, (prh_inner.role = rm.role) DESC, prh_inner.games_played DESC
+      ORDER BY prh_inner.computed_at DESC, (prh_inner.role = rt.role) DESC, prh_inner.games_played DESC
       LIMIT 1
     ) prh ON true
-    WHERE ($1::text IS NULL OR l.slug = $1)
-      AND (t.id IS NULL OR tlg.last_game_at >= lls.latest_split_start)
-      -- Global tab: no international games, no row. Regional keeps unrated
-      -- signings at the neutral 50 so a roster is never missing anyone.
-      AND ($2 <> 'international' OR prh.rating IS NOT NULL)
+    -- Only for a player with no roster row here: where they are NOW. Without it
+    -- a transfer reads as "no team" -- Viper is on LCK's all-time board off 229
+    -- games and currently plays for Bilibili Gaming in the LPL.
+    LEFT JOIN LATERAL (
+      SELECT t2.name AS team_name, l3.slug AS league_slug
+      FROM roster_memberships rm2
+      JOIN teams t2 ON t2.id = rm2.team_id
+      JOIN team_league_memberships tlm2 ON tlm2.team_id = t2.id AND tlm2.end_date IS NULL
+      JOIN leagues l3 ON l3.id = tlm2.league_id
+      WHERE rt.team_id IS NULL AND rm2.player_id = b.player_id
+      LIMIT 1
+    ) away ON true
+    -- The team they last played for on this board, for the note. Past tense with
+    -- a date is a statement about games; the Team column stays a claim about now.
+    LEFT JOIN LATERAL (
+      SELECT t3.name AS team_name, max(g.datetime_utc)::date AS last_played_on
+      FROM game_lineups gl
+      JOIN games g ON g.id = gl.game_id
+      JOIN teams t3 ON t3.id = gl.team_id
+      JOIN team_league_memberships tlm3 ON tlm3.team_id = t3.id AND tlm3.end_date IS NULL
+      WHERE rt.team_id IS NULL AND gl.player_id = b.player_id
+        AND ($2 = 'international' OR tlm3.league_id = b.league_id)
+      GROUP BY t3.name
+      ORDER BY 2 DESC
+      LIMIT 1
+    ) played ON true
+    -- Global tab: no international games, no row.
+    WHERE ($2 <> 'international' OR prh.rating IS NOT NULL)
     `,
     [leagueSlug ?? null, scope, ratingWindow, generation],
   );
@@ -1025,12 +1111,23 @@ export async function getPlayers(
         gamesPlayed: row.games_played ?? 0,
         // Only on a zero-game row -- the case a second squad actually explains.
         alsoPlaysFor: (row.games_played ?? 0) === 0 ? row.secondary_team : null,
+        movedToTeam: row.moved_to_team,
+        movedToLeague: row.moved_to_league,
+        lastTeamName: row.last_team_name,
+        lastPlayedOn: row.last_played_on,
       };
     });
 
   withRatings.sort((a, b) => b.rating - a.rating);
   const ranked = withRatings.map((row, index) => ({ ...row, rank: index + 1, rankChange: null as number | null }));
-  const { changes, comparedTo } = await computePlayerRankChanges(pool, ranked, scope, ratingWindow, generation);
+  const { changes, comparedTo } = await computePlayerRankChanges(
+    pool,
+    ranked,
+    scope,
+    ratingWindow,
+    generation,
+    leagueSlug ?? null,
+  );
   return ranked.map((row) => {
     const rankChange = changes.get(row.id) ?? null;
     return { ...row, rankChange, comparedTo: rankChange === null ? null : comparedTo };
@@ -1111,12 +1208,27 @@ export async function getPlayerById(
   let leagueSlug: string | undefined;
   let leagueId: number | undefined;
   if (scope === 'regional') {
+    // The roster names the league when there is one, and their ratings name it
+    // when there is not. A board is now a list of who played, so it carries
+    // players with no roster row at all -- Bwipo has 218 LCS games and no squad
+    // page. Without the fallback the panel found no league, counted no games and
+    // reported 0 next to a board row saying 218. One round trip, not two.
     const leagueRow = await pool.query<{ id: number; slug: string }>(
-      `SELECT l.id, l.slug FROM roster_memberships rm
-       JOIN team_league_memberships tlm ON tlm.team_id = rm.team_id AND tlm.end_date IS NULL
-       JOIN leagues l ON l.id = tlm.league_id
-       WHERE rm.player_id = $1 AND rm.end_date IS NULL LIMIT 1`,
-      [playerId],
+      `SELECT id, slug FROM (
+         SELECT l.id, l.slug, 0 AS pref, 0 AS games, NULL::timestamptz AS computed_at
+         FROM roster_memberships rm
+         JOIN team_league_memberships tlm ON tlm.team_id = rm.team_id AND tlm.end_date IS NULL
+         JOIN leagues l ON l.id = tlm.league_id
+         WHERE rm.player_id = $1 AND rm.end_date IS NULL
+         UNION ALL
+         SELECT l.id, l.slug, 1 AS pref, prh.games_played, prh.computed_at
+         FROM player_ratings_history prh
+         JOIN leagues l ON l.id = prh.league_id
+         WHERE prh.player_id = $1 AND prh.scope = 'regional' AND prh.rating_window = $2
+       ) x
+       ORDER BY pref, computed_at DESC NULLS LAST, games DESC
+       LIMIT 1`,
+      [playerId, ratingWindow],
     );
     leagueSlug = leagueRow.rows[0]?.slug;
     leagueId = leagueRow.rows[0]?.id;
