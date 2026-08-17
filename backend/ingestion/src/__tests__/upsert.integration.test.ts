@@ -55,6 +55,7 @@ describe.runIf(process.env.SKIP_DB_TESTS !== 'true')('upsert idempotency (live P
         team2Score: 1,
         winnerTeamId: teamAId,
         isInternational: false,
+        bracketId: '__TestStageW1',
       });
       await upsertGame(pool, {
         seriesId,

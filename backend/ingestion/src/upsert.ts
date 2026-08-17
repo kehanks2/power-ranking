@@ -79,16 +79,21 @@ export async function upsertSeries(
     team2Score: number | null;
     winnerTeamId: number | null;
     isInternational: boolean;
+    /** Liquipedia's match2bracketid -- the stage a board advances on. */
+    bracketId: string | null;
   },
 ): Promise<number> {
   const result = await pool.query<{ id: number }>(
-    `INSERT INTO series (tournament_id, leaguepedia_match_id, team1_id, team2_id, best_of, team1_score, team2_score, winner_team_id, is_international)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO series (tournament_id, leaguepedia_match_id, team1_id, team2_id, best_of, team1_score, team2_score, winner_team_id, is_international, bracket_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      ON CONFLICT (leaguepedia_match_id) DO UPDATE SET
        tournament_id = EXCLUDED.tournament_id,
        team1_score = EXCLUDED.team1_score,
        team2_score = EXCLUDED.team2_score,
-       winner_team_id = EXCLUDED.winner_team_id
+       winner_team_id = EXCLUDED.winner_team_id,
+       -- Never overwrite a known stage with a null: a re-ingest that lost the
+       -- marker would silently strip it from an already-classified series.
+       bracket_id = COALESCE(EXCLUDED.bracket_id, series.bracket_id)
      RETURNING id`,
     [
       params.tournamentId,
@@ -100,6 +105,7 @@ export async function upsertSeries(
       params.team2Score,
       params.winnerTeamId,
       params.isInternational,
+      params.bracketId,
     ],
   );
   return result.rows[0].id;

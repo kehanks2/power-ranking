@@ -240,6 +240,7 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
       team2Score,
       winnerTeamId,
       isInternational: classification.isInternational,
+      bracketId: match.match2bracketid || null,
     });
     result.seriesProcessed += 1;
 

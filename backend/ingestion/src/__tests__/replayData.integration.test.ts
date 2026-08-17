@@ -71,6 +71,7 @@ describe('loadReplayData roster-change decay events (live Postgres, synthetic da
         team2Score: 0,
         winnerTeamId: teamId,
         isInternational: false,
+        bracketId: null,
       });
       const gameId = await upsertGame(pool, {
         seriesId,
