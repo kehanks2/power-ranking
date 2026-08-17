@@ -33,6 +33,7 @@ import {
   playerWindowPredicate,
   resolveBoardAdvance,
   STAGE_STATUS_SQL,
+  stageKind,
   type BoardAdvance,
   type StageStatus,
 } from '@power-ranking/shared';
@@ -704,7 +705,9 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     series_wins: number;
     series_losses: number;
     formats: number[] | null;
-    series: TeamSeriesDto[];
+    // As the JSON aggregate builds it: the stage marker is raw here and becomes
+    // TeamSeriesDto's isPlayoff below.
+    series: (Omit<TeamSeriesDto, 'isPlayoff'> & { bracketId: string | null })[];
     placement: string | null;
   }>(
     `
@@ -725,7 +728,8 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
                WHEN GREATEST(s.team1_score, s.team2_score) <= 0 THEN NULL
                WHEN s.team1_score = s.team2_score THEN 2 * s.team1_score
                ELSE 2 * GREATEST(s.team1_score, s.team2_score) - 1
-             END AS format
+             END AS format,
+             s.bracket_id
       FROM series s
       JOIN teams opp ON opp.id = CASE WHEN s.team1_id = $1 THEN s.team2_id ELSE s.team1_id END
       WHERE $1 IN (s.team1_id, s.team2_id)
@@ -755,7 +759,8 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
                    'ownScore', own_score,
                    'opponentScore', opponent_score,
                    'format', format,
-                   'won', winner_team_id = $1
+                   'won', winner_team_id = $1,
+                   'bracketId', bracket_id
                  )
                  ORDER BY started_at DESC
                ) FILTER (WHERE winner_team_id IS NOT NULL),
@@ -793,7 +798,15 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     seriesWins: row.series_wins,
     seriesLosses: row.series_losses,
     formats: (row.formats ?? []).map(Number).sort((a, b) => a - b),
-    series: row.series ?? [],
+    // null, not false, where Liquipedia gave us no stage marker: `stageKind`
+    // reads a missing one as bracket play, which is the right fail-safe for
+    // advancing a board but would paint every unmarked series as a playoff.
+    // bracket_id arrived with migration 0016, so 2026 is complete and the two
+    // seasons before it have none.
+    series: (row.series ?? []).map(({ bracketId, ...s }) => ({
+      ...s,
+      isPlayoff: bracketId ? stageKind(bracketId) === 'bracket' : null,
+    })),
     placement: row.placement,
     type: row.tournament_type,
   }));
@@ -977,28 +990,23 @@ export async function getPlayers(
   }>(
     `
     WITH ${LEAGUE_LATEST_SPLIT_CTE},
-    -- A board is a list of everyone who PLAYED in it over the window, plus the
-    -- current squads. It used to be the squads alone, so a player absent from a
+    -- A board is a list of everyone who PLAYED in it over the window, and only
+    -- them. It used to be the current squads, so a player absent from a
     -- Liquipedia squad page was computed and then filtered out -- 73 players
     -- with 1,679 games in 2026, Frog's 15 for Kiwoom DRX among them.
-    board_rostered AS (
-      SELECT rm.player_id, l.id AS league_id
-      FROM roster_memberships rm
-      JOIN teams t ON t.id = rm.team_id
-      JOIN team_league_memberships tlm ON tlm.team_id = t.id AND tlm.end_date IS NULL
-      JOIN leagues l ON l.id = tlm.league_id
-      JOIN team_last_game tlg ON tlg.team_id = t.id
-      JOIN league_latest_split lls ON lls.canonical_league_id = l.id
-      WHERE rm.role IS NOT NULL
-        AND $2 <> 'international'
-        AND tlg.last_game_at >= lls.latest_split_start
-        AND ($1::text IS NULL OR l.slug = $1)
-    ),
-    -- The window decides who belongs, which is what keeps a departed player off
-    -- the current-split board and on 'year'/'all': the model writes a row only
-    -- for a (league, role) group they have games in, so Humanoid has an 'all'
-    -- and a 'year' row for LEC and no 'split' one.
-    board_rated AS (
+    --
+    -- Squads are deliberately NOT unioned in. A rostered player with no games in
+    -- the window has no rating, only the neutral 50 standing in for one, and
+    -- sorting that placeholder among real measurements pushed every genuine
+    -- sub-50 player down a rank -- 34 such rows across the six split boards. A
+    -- board ranks by evidence; the team page is the surface whose job is the
+    -- complete squad, and it marks anyone who has not played.
+    --
+    -- The window then decides who belongs with no extra rule, which is what
+    -- keeps a departed player off the current-split board and on 'year'/'all':
+    -- the model writes a row only for a (league, role) group they have games in,
+    -- so Humanoid has an 'all' and a 'year' row for LEC and no 'split' one.
+    board AS (
       SELECT DISTINCT prh.player_id, prh.league_id
       FROM player_ratings_history prh
       LEFT JOIN leagues l2 ON l2.id = prh.league_id
@@ -1006,11 +1014,6 @@ export async function getPlayers(
         AND prh.rating_window = $3
         AND ($4::timestamptz IS NULL OR prh.computed_at = $4::timestamptz)
         AND ($2 = 'international' OR $1::text IS NULL OR l2.slug = $1)
-    ),
-    board AS (
-      SELECT player_id, league_id FROM board_rostered
-      UNION
-      SELECT player_id, league_id FROM board_rated
     )
     SELECT b.player_id AS id, p.handle,
            rt.team_id, rt.team_slug, rt.team_name,
@@ -1109,8 +1112,6 @@ export async function getPlayers(
         scope,
         window: ratingWindow,
         gamesPlayed: row.games_played ?? 0,
-        // Only on a zero-game row -- the case a second squad actually explains.
-        alsoPlaysFor: (row.games_played ?? 0) === 0 ? row.secondary_team : null,
         movedToTeam: row.moved_to_team,
         movedToLeague: row.moved_to_league,
         lastTeamName: row.last_team_name,
@@ -1235,8 +1236,61 @@ export async function getPlayerById(
   }
 
   const summaries = await getPlayers(pool, leagueSlug, scope, ratingWindow);
-  const summary = summaries.find((p) => p.id === playerId);
-  if (!summary) return null;
+  let summary = summaries.find((p) => p.id === playerId);
+  // Only a player with no games can have a second squad worth naming, and only
+  // the team page can reach one, since boards now carry played rows only.
+  let rosterSecondaryTeam: string | null = null;
+  if (!summary) {
+    // Boards rank by evidence, so a rostered player with no games in this window
+    // is not on one. The team page still lists them and opens this panel, so
+    // build the neutral row it needs rather than 404ing a roster member.
+    const solo = await pool.query<{
+      handle: string;
+      team_id: number | null;
+      team_slug: string | null;
+      team_name: string | null;
+      league_slug: string | null;
+      role: PlayerSummaryDto['role'] | null;
+      secondary_team: string | null;
+    }>(
+      `SELECT p.handle, t.id AS team_id, t.slug AS team_slug, t.name AS team_name,
+              l.slug AS league_slug, rm.role, rm.secondary_team
+       FROM players p
+       LEFT JOIN roster_memberships rm ON rm.player_id = p.id AND rm.end_date IS NULL
+       LEFT JOIN teams t ON t.id = rm.team_id
+       LEFT JOIN team_league_memberships tlm ON tlm.team_id = t.id AND tlm.end_date IS NULL
+       LEFT JOIN leagues l ON l.id = tlm.league_id
+       WHERE p.id = $1
+       LIMIT 1`,
+      [playerId],
+    );
+    const row = solo.rows[0];
+    if (!row || row.role === null) return null;
+    rosterSecondaryTeam = row.secondary_team;
+    summary = {
+      id: playerId,
+      handle: row.handle,
+      teamId: row.team_id,
+      teamSlug: row.team_slug,
+      teamName: row.team_name,
+      leagueSlug: row.league_slug,
+      role: row.role,
+      rating: NEUTRAL_SCORE,
+      rawRating: NEUTRAL_SCORE,
+      confidence: 0,
+      scope,
+      window: ratingWindow,
+      gamesPlayed: 0,
+      // Not on a board, so there is no rank and nothing to compare against.
+      rank: 0,
+      rankChange: null,
+      comparedTo: null,
+      movedToTeam: null,
+      movedToLeague: null,
+      lastTeamName: null,
+      lastPlayedOn: null,
+    };
+  }
 
   const peerIds = summaries.filter((p) => p.role === summary.role).map((p) => p.id);
 
@@ -1347,6 +1401,7 @@ export async function getPlayerById(
     // peerIds keeps the board's own order, which is by rating.
     roleRank: peerIds.indexOf(playerId) + 1,
     ratedStats: ratedStatsForRole(summary.role),
+    alsoPlaysFor: rosterSecondaryTeam,
     stats: {
       games,
       wins,

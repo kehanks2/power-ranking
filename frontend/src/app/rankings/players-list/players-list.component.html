@@ -103,7 +103,6 @@
                 (click)="$event.stopPropagation(); toggle(player.id)"
               >
                 <span class="handle">{{ player.handle }}</span>
-                <pr-unplayed-marker [gamesPlayed]="player.gamesPlayed" [alsoPlaysFor]="player.alsoPlaysFor" />
               </button>
             </td>
             <td><span class="role" [class]="'role-' + player.role">{{ player.role }}</span></td>
@@ -182,22 +181,13 @@
       </dd>
     </div>
     <div class="term">
-      <dt><span class="dot dot--unplayed"></span></dt>
-      <dd>
-        No games on this board. The player is on the roster but has not played, so the
-        rating is the neutral 50 rather than anything earned. Hover the mark for the
-        detail.
-      </dd>
-    </div>
-    <div class="term">
       <dt>
         <span class="drive drive--lifting">▲</span>
         <span class="drive drive--dragging">▼</span>
       </dt>
       <dd>
         Places gained or lost beside the rank, measured against the last time this board
-        was rated. A dash means the rank held — or that there is nothing to compare
-        against yet.
+        was rated. A dash means the rank held or there is nothing to compare against yet.
       </dd>
     </div>
   </dl>

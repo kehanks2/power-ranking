@@ -417,6 +417,29 @@ tr.is-open {
   tr.is-won .res {
     color: var(--color-gold);
   }
+
+  // Playoff series are tinted and carry a "PO" tag, so the distinction never
+  // rests on colour alone. The tint sits under the won-row ink above, which
+  // only sets a text colour, so the two compose.
+  tr.is-playoff td {
+    background: color-mix(in srgb, var(--lg-LCP) 12%, transparent);
+  }
+
+  tr.is-playoff td:first-child {
+    box-shadow: inset 2px 0 0 var(--lg-LCP);
+  }
+
+  .playoff-tag {
+    margin-left: 0.4rem;
+    padding: 0 0.25rem;
+    border-radius: 3px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: var(--lg-LCP);
+    border: 1px solid color-mix(in srgb, var(--lg-LCP) 45%, transparent);
+    cursor: help;
+  }
 }
 
 // Label above value, so the pair reads as one line of detail rather than

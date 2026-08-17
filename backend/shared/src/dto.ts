@@ -86,6 +86,10 @@ export interface TeamSeriesDto {
   /** Derived from the scoreline like TeamRecordDto.formats; null if undecided. */
   format: number | null;
   won: boolean;
+  // Bracket play rather than regular season, from Liquipedia's stage marker.
+  // NULL means unknown, not "regular": bracket_id arrived with migration 0016,
+  // so every 2026 series has one and the two seasons before it have none.
+  isPlayoff: boolean | null;
 }
 
 /** A team's record at one tournament. */
@@ -185,10 +189,6 @@ export interface PlayerSummaryDto {
   // derived from gamesPlayed: the shrink runs on a recency-weighted count, and a
   // transferred player is shrunk toward a carryover anchor instead of 50.
   confidence: number;
-  // Another squad Liquipedia lists this player on (usually academy/partner, what
-  // a zero-game tier-1 row means); attributed to Liquipedia since it can't be
-  // told from an unclosed transfer.
-  alsoPlaysFor: string | null;
   // Where a player with NO roster row in this board's league is now, when they
   // hold one elsewhere. Never a claim about this league: Viper is on the LCK
   // all-time board off 229 games and plays for Bilibili Gaming in the LPL, so
@@ -237,6 +237,10 @@ export interface PlayerStatsDto {
 }
 
 export interface PlayerDetailDto extends PlayerSummaryDto {
+  // Lives on the detail rather than the summary: a board carries only players
+  // with games, so it can never have a second squad to explain, but the team
+  // page's roster does list players who have not played and opens this panel.
+  alsoPlaysFor: string | null;
   /** Over exactly the games this scope's rating was computed from. */
   stats: PlayerStatsDto;
   /** The denominator behind every `place`: same-role players on this board. */

@@ -77,8 +77,13 @@
                       </thead>
                       <tbody>
                         @for (s of row.series; track $index) {
-                          <tr [class.is-won]="s.won">
-                            <td class="date">{{ s.date }}</td>
+                          <tr [class.is-won]="s.won" [class.is-playoff]="s.isPlayoff">
+                            <td class="date">
+                              {{ s.date }}
+                              @if (s.isPlayoff) {
+                                <span class="playoff-tag" title="Playoff series">PO</span>
+                              }
+                            </td>
                             <td class="res">{{ s.won ? 'W' : 'L' }}</td>
                             <td class="opp">{{ s.opponent }}</td>
                             <td class="num"><span class="wl">{{ s.ownScore }}–{{ s.opponentScore }}</span></td>
@@ -156,8 +161,13 @@
                       </thead>
                       <tbody>
                         @for (s of row.series; track $index) {
-                          <tr [class.is-won]="s.won">
-                            <td class="date">{{ s.date }}</td>
+                          <tr [class.is-won]="s.won" [class.is-playoff]="s.isPlayoff">
+                            <td class="date">
+                              {{ s.date }}
+                              @if (s.isPlayoff) {
+                                <span class="playoff-tag" title="Playoff series">PO</span>
+                              }
+                            </td>
                             <td class="res">{{ s.won ? 'W' : 'L' }}</td>
                             <td class="opp">{{ s.opponent }}</td>
                             <td class="num"><span class="wl">{{ s.ownScore }}–{{ s.opponentScore }}</span></td>
@@ -231,9 +241,15 @@
                 <pr-unplayed-marker [gamesPlayed]="entry.gamesPlayed" [alsoPlaysFor]="entry.alsoPlaysFor" />
               </button>
             </td>
+            <!-- A player with no games is not on the league board, so they hold
+                 no place in it. Ranking them 0th of 19 would invent one. -->
             <td class="num role-rank">
-              <span class="role-rank__place">{{ ordinal(entry.roleRank) }}</span>
-              <span class="role-rank__of">of {{ entry.rolePeerCount }}</span>
+              @if (entry.roleRank > 0) {
+                <span class="role-rank__place">{{ ordinal(entry.roleRank) }}</span>
+                <span class="role-rank__of">of {{ entry.rolePeerCount }}</span>
+              } @else {
+                <span class="role-rank__place" title="Not ranked — no games on this board">—</span>
+              }
             </td>
             <td class="num player-rating">{{ entry.rating | number: '1.1-1' }}</td>
             <td class="conf"><app-confidence-range [value]="entry" /></td>

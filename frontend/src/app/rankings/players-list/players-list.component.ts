@@ -18,7 +18,6 @@ import { ConfidenceAxisComponent } from '../confidence/confidence-axis.component
 import { ConfidenceRangeComponent } from '../confidence/confidence-range.component';
 import { PlayerPanelComponent } from '../player-panel/player-panel.component';
 import { RankChangeComponent } from '../rank-change/rank-change.component';
-import { UnplayedMarkerComponent } from '../unplayed-marker/unplayed-marker.component';
 import { RATING_WINDOWS, ROLES, type PlayerDetail, type PlayerSummary, type RatingWindow, type Role } from '../models';
 
 @Component({
@@ -30,7 +29,6 @@ import { RATING_WINDOWS, ROLES, type PlayerDetail, type PlayerSummary, type Rati
     ConfidenceRangeComponent,
     PlayerPanelComponent,
     RankChangeComponent,
-    UnplayedMarkerComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './players-list.component.html',

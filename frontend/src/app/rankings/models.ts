@@ -108,6 +108,8 @@ export interface TeamSeries {
   opponentScore: number;
   format: number | null;
   won: boolean;
+  /** Bracket play rather than regular season. Null where we have no stage marker. */
+  isPlayoff: boolean | null;
 }
 
 export interface TeamDetail extends TeamSummary {
@@ -171,12 +173,8 @@ export interface PlayerSummary {
    */
   confidence: number;
   /**
-   * Another squad they are concurrently active on -- almost always an academy
-   * or partner team. Set only when they have no games on this board, which is
-   * the case it explains.
+   * Where they are now, when they hold no roster row in this board's league.
    */
-  alsoPlaysFor: string | null;
-  /** Where they are now, when they hold no roster row in this board's league. */
   movedToTeam: string | null;
   movedToLeague: string | null;
   /** The team they last played for on this board, and the day of that game. */
@@ -216,6 +214,8 @@ export interface PlayerStats {
 }
 
 export interface PlayerDetail extends PlayerSummary {
+  /** Another squad Liquipedia lists them on. Only the team page can reach this. */
+  alsoPlaysFor: string | null;
   /** Measured over exactly the games this scope's rating was computed from. */
   stats: PlayerStats;
   /** The denominator behind every `place`: same-role players on this board. */
