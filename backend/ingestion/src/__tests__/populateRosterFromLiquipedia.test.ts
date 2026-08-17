@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
+  ACADEMY_COHORT_MIN,
   buildSecondaryTeams,
   humanizePagename,
   isStarterFromRole,
   squadMemberFromPlayerRow,
   squadMemberFromSquadRow,
+  withoutAcademyCohorts,
 } from '../populateRosterFromLiquipedia.js';
 import type { LiquipediaPlayer, LiquipediaSquadPlayer } from '../liquipediaApi.js';
 
@@ -186,5 +188,78 @@ describe('squadMemberFromSquadRow (v3/squadplayer primary)', () => {
 
   it('excludes staff positions that are not a starting role', () => {
     expect(squadMemberFromSquadRow(squadRow({ position: 'Head Coach' }))).toBeUndefined();
+  });
+});
+
+describe('withoutAcademyCohorts', () => {
+  const member = (handle: string) => ({ handle });
+
+  it('drops a whole academy squad listed on its parent team page', () => {
+    // Team_Vitality returned ten: the real five plus the five Rising Bees.
+    const members = ['Naak Nako', 'Lyncas', 'FIESTA', 'Carzzy', 'Fleshy', 'owpi', 'Delicate', 'rym', 'Cosmïc', 'Honda']
+      .map(member);
+    const secondary = new Map(
+      ['owpi', 'Delicate', 'rym', 'Cosmïc', 'Honda'].map((h) => [h, 'Rising_Bees'] as const),
+    );
+
+    const { kept, dropped } = withoutAcademyCohorts(members, secondary);
+    expect(kept.map((m) => m.handle)).toEqual(['Naak Nako', 'Lyncas', 'FIESTA', 'Carzzy', 'Fleshy']);
+    expect(dropped).toHaveLength(5);
+    expect(dropped.every((d) => d.squad === 'Rising Bees')).toBe(true);
+  });
+
+  it('keeps a lone player naming another squad -- a signing who has not debuted', () => {
+    // Dardoch on Dignitas, secondary "CCG Esports": real, and the case the rule
+    // must not eat. Ruler's "Ohio State University" is the same shape.
+    const members = ['Dardoch', 'Srtty', 'Tomio'].map(member);
+    const secondary = new Map([['Dardoch', 'CCG_Esports']]);
+
+    const { kept, dropped } = withoutAcademyCohorts(members, secondary);
+    expect(kept).toHaveLength(3);
+    expect(dropped).toEqual([]);
+  });
+
+  it('keeps a cohort one short of the threshold, so a double call-up survives', () => {
+    const members = ['A', 'B', 'C', 'D'].map(member);
+    const secondary = new Map([
+      ['C', 'Some_Academy'],
+      ['D', 'Some_Academy'],
+    ]);
+
+    const { kept } = withoutAcademyCohorts(members, secondary);
+    expect(kept).toHaveLength(4);
+    expect(ACADEMY_COHORT_MIN).toBe(3);
+  });
+
+  it('counts each squad separately, so two small cohorts do not add up to one big one', () => {
+    const members = ['A', 'B', 'C', 'D'].map(member);
+    const secondary = new Map([
+      ['A', 'Academy_One'],
+      ['B', 'Academy_One'],
+      ['C', 'Academy_Two'],
+      ['D', 'Academy_Two'],
+    ]);
+
+    expect(withoutAcademyCohorts(members, secondary).dropped).toEqual([]);
+  });
+
+  it('is scoped to one team: the count comes from the members passed in', () => {
+    // Three players share a squad across the league but only one is on this
+    // team, so this team keeps them.
+    const members = ['A'].map(member);
+    const secondary = new Map([
+      ['A', 'Shared_Academy'],
+      ['B', 'Shared_Academy'],
+      ['C', 'Shared_Academy'],
+    ]);
+
+    expect(withoutAcademyCohorts(members, secondary).kept).toHaveLength(1);
+  });
+
+  it('leaves a roster with no secondary squads untouched', () => {
+    const members = ['A', 'B', 'C', 'D', 'E'].map(member);
+    const { kept, dropped } = withoutAcademyCohorts(members, new Map());
+    expect(kept).toHaveLength(5);
+    expect(dropped).toEqual([]);
   });
 });
