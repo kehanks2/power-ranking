@@ -563,7 +563,22 @@ describe('read API (live Postgres)', () => {
     const { rows } = await pool.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM series s
        WHERE s.winner_team_id IS NOT NULL
-         AND NOT EXISTS (SELECT 1 FROM games g WHERE g.series_id = s.id)`,
+         AND (s.team1_score = -1 OR s.team2_score = -1)`,
+    );
+    expect(rows[0].n).toBe(0);
+  });
+
+  it('a winner with no games is a real result awaiting its stat lines, not an invented one', async () => {
+    // shouldWaitForStats withholds a finished series' GAMES over a publication
+    // lag, so "has a winner but no games" is a legitimate transient state -- it
+    // is what stops team and player ratings drifting apart. The invariant that
+    // still has to hold is that the winner is the side the scoreline names.
+    const { rows } = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM series s
+       WHERE s.winner_team_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM games g WHERE g.series_id = s.id)
+         AND s.winner_team_id IS DISTINCT FROM
+             CASE WHEN s.team1_score > s.team2_score THEN s.team1_id ELSE s.team2_id END`,
     );
     expect(rows[0].n).toBe(0);
   });
