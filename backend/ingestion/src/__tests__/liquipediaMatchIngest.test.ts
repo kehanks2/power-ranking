@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { classifyMatch, goldByRole, isPlayedGame, resolveTournament } from '../liquipediaMatchIngest.js';
+import {
+  classifyMatch,
+  goldByRole,
+  hasCompletePlayerData,
+  shouldWaitForStats,
+  STATS_GRACE_DAYS,
+  isPlayedGame,
+  resolveTournament,
+} from '../liquipediaMatchIngest.js';
 import type { LiquipediaGamePlayer } from '../liquipediaApi.js';
 
 describe('isPlayedGame', () => {
@@ -142,5 +150,58 @@ describe('goldByRole', () => {
     expect(gold.has('BOT')).toBe(true);
     expect(gold.get('BOT')).toBe(0);
     expect(gold.size).toBe(1);
+  });
+});
+
+const roster = (roles: string[]) => ({ players: roles.map((role) => ({ role })) });
+const FULL = ['top', 'jungle', 'mid', 'bot', 'support'];
+
+describe('hasCompletePlayerData', () => {
+  it('accepts a game with all ten stat lines', () => {
+    expect(hasCompletePlayerData({ opponents: [roster(FULL), roster(FULL)] })).toBe(true);
+  });
+
+  it('rejects a result published before its stat lines', () => {
+    // Liquipedia does this: 13 LCS and LPL games on 2026-08-16 arrived with
+    // scores and an empty players list. Ingesting one moves team ratings while
+    // leaving player ratings behind, and team ratings read player ratings back
+    // through the roster prior.
+    expect(hasCompletePlayerData({ opponents: [{ players: [] }, { players: [] }] })).toBe(false);
+    expect(hasCompletePlayerData({ opponents: [roster(FULL), { players: [] }] })).toBe(false);
+    expect(hasCompletePlayerData({ opponents: [{}, {}] })).toBe(false);
+  });
+
+  it('rejects a side missing a role, or naming one twice', () => {
+    expect(hasCompletePlayerData({ opponents: [roster(FULL), roster(FULL.slice(0, 4))] })).toBe(false);
+    expect(hasCompletePlayerData({ opponents: [roster(FULL), roster(['top', 'top', 'mid', 'bot', 'support'])] })).toBe(false);
+  });
+
+  it('rejects unrecognised role names rather than counting them', () => {
+    expect(hasCompletePlayerData({ opponents: [roster(FULL), roster(['top', 'jungle', 'mid', 'bot', 'coach'])] })).toBe(false);
+  });
+});
+
+describe('shouldWaitForStats', () => {
+  const complete = { opponents: [roster(FULL), roster(FULL)] };
+  const bare = { opponents: [{ players: [] }, { players: [] }] };
+  const at = (iso: string) => new Date(iso);
+
+  it('never waits on a game that already has its stat lines', () => {
+    expect(shouldWaitForStats(complete, '2026-08-16 12:00:00', at('2026-08-16T12:01:00Z'))).toBe(false);
+  });
+
+  it('waits while the stat lines may still arrive', () => {
+    expect(shouldWaitForStats(bare, '2026-08-16 23:00:00', at('2026-08-17T02:30:00Z'))).toBe(true);
+  });
+
+  it('gives up rather than discarding a real result', () => {
+    // Liquipedia never published player data for half of LPL 2024. Waiting
+    // indefinitely would drop those games from the team boards too.
+    const past = at(`2026-08-${16 + STATS_GRACE_DAYS}T23:30:00Z`);
+    expect(shouldWaitForStats(bare, '2026-08-16 23:00:00', past)).toBe(false);
+  });
+
+  it('does not wait on an unparseable date', () => {
+    expect(shouldWaitForStats(bare, '', at('2026-08-17T02:30:00Z'))).toBe(false);
   });
 });

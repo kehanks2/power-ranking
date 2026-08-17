@@ -111,6 +111,54 @@ export function isPlayedGame(game: { winner?: string; opponents: { score: number
   return true;
 }
 
+const ROLES_PER_SIDE = 5;
+
+/**
+ * Whether a game carries a full stat line for all ten players.
+ *
+ * Liquipedia publishes the result before the per-player stats on some rows: 13
+ * games across LCS and LPL on 2026-08-16 arrived with scores and an empty
+ * players list. Ingesting one writes a game that moves team ratings while
+ * contributing nothing to player ratings -- and team ratings read player
+ * ratings back through the roster prior, so the two silently drift apart.
+ *
+ * Whether to wait for them is shouldWaitForStats's call, not this one's.
+ */
+export function hasCompletePlayerData(game: { opponents: { players?: { role: string }[] }[] }): boolean {
+  if (game.opponents.length !== 2) return false;
+  return game.opponents.every((side) => {
+    const roles = new Set((side.players ?? []).map((player) => resolvePosition(player.role)).filter(Boolean));
+    return roles.size === ROLES_PER_SIDE;
+  });
+}
+
+/**
+ * How long a played game waits for its stat lines before being ingested anyway.
+ *
+ * Waiting forever is not an option: Liquipedia never published player data for
+ * **51.8% of LPL 2024, 40.6% of 2025 and 12.3% of 2026** (821 of 6,724 games
+ * overall, almost all LPL). Holding those out would discard half a league's
+ * real results to protect a consistency they can never satisfy.
+ *
+ * So the wait covers the case that is actually recoverable -- a result
+ * published minutes before its stat lines -- and then gives up. Two days
+ * matches STAGE_STALL_DAYS, so a board is never held on a game that ingestion
+ * has already stopped waiting for.
+ */
+export const STATS_GRACE_DAYS = 2;
+
+/** True while a played game may still have its stat lines filled in. */
+export function shouldWaitForStats(
+  game: { opponents: { players?: { role: string }[] }[] },
+  matchDate: string,
+  now: Date,
+): boolean {
+  if (hasCompletePlayerData(game)) return false;
+  const playedAt = Date.parse(`${matchDate.replace(' ', 'T')}Z`);
+  if (Number.isNaN(playedAt)) return false;
+  return now.getTime() - playedAt < STATS_GRACE_DAYS * 86_400_000;
+}
+
 /**
  * Gold by role for one side, for the lane differential. A role is omitted when
  * it doesn't resolve to exactly one player -- missing or ambiguous both yield a
@@ -140,6 +188,10 @@ export interface MatchIngestResult {
   gamesProcessed: number;
   /** Unplayed placeholder slots in early-ending series -- see isPlayedGame. */
   gamesSkippedUnplayed: number;
+  /** Played, but the stat lines may still be published -- held for a later run. */
+  gamesSkippedIncomplete: number;
+  /** Ingested past the grace period with stat lines that never came; player ratings will not see them. */
+  gamesIngestedWithoutStats: number;
   /** Games where two players on one side resolved to the same id, so one stat line overwrote another. */
   gamesWithCollidedPlayers: number;
   teamsUnresolved: string[];
@@ -173,9 +225,13 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
     seriesSkipped: 0,
     gamesProcessed: 0,
     gamesSkippedUnplayed: 0,
+    gamesSkippedIncomplete: 0,
+    gamesIngestedWithoutStats: 0,
     gamesWithCollidedPlayers: 0,
     teamsUnresolved: [],
   };
+  // Pinned once so every game in a run is judged against the same clock.
+  const now = new Date();
   const teamsUnresolvedSet = new Set<string>();
   const playerIdCache = new Map<string, number>(); // Liquipedia's disambiguated player key -> our player_id
   const tournamentIdByOverview = new Map<string, number>();
@@ -249,6 +305,14 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
         result.gamesSkippedUnplayed += 1;
         continue;
       }
+      // A result whose stat lines may still arrive waits for them, so team and
+      // player ratings do not drift apart over a publication lag. Past the
+      // grace period the result is taken as-is -- see STATS_GRACE_DAYS.
+      if (shouldWaitForStats(game, match.date, now)) {
+        result.gamesSkippedIncomplete += 1;
+        continue;
+      }
+      if (!hasCompletePlayerData(game)) result.gamesIngestedWithoutStats += 1;
       const [gameOpp1, gameOpp2] = game.opponents;
       const gameWinnerTeamId = gameOpp1.score === 1 ? team1Id : team2Id;
       const gamelengthSeconds = parseLengthToSeconds(game.length);

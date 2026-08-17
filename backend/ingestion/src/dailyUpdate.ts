@@ -50,6 +50,7 @@ async function main() {
   console.log(`[${new Date().toISOString()}] pulling (${startDate}, ${cutoff}), end exclusive, ${FORWARD_DAYS}d ahead`);
 
   let games = 0;
+  let incomplete = 0;
   const failed: string[] = [];
   for (const series of ALL_SERIES) {
     try {
@@ -58,7 +59,11 @@ async function main() {
         `[[series::${series}]] AND [[date::>${startDate}]] AND [[date::<${cutoff}]]`,
       );
       games += result.gamesProcessed;
-      if (result.gamesProcessed > 0) console.log(`  ${series}: ${result.gamesProcessed} games`);
+      incomplete += result.gamesSkippedIncomplete;
+      if (result.gamesProcessed > 0 || result.gamesSkippedIncomplete > 0) {
+        const waiting = result.gamesSkippedIncomplete > 0 ? `, ${result.gamesSkippedIncomplete} awaiting stat lines` : '';
+        console.log(`  ${series}: ${result.gamesProcessed} games${waiting}`);
+      }
       if (result.teamsUnresolved.length > 0) console.log(`  ${series} unresolved: ${result.teamsUnresolved.join(', ')}`);
     } catch (err) {
       // One series failing (rate limit, a page moving) must not cost the rest;
@@ -70,7 +75,11 @@ async function main() {
 
   // Ratings are rebuilt even when nothing new arrived: the carets read the
   // newest generation, and skipping the recompute would leave them a day stale.
-  console.log(`[${new Date().toISOString()}] ${games} games ingested; recomputing`);
+  console.log(
+    `[${new Date().toISOString()}] ${games} games ingested` +
+      (incomplete > 0 ? `, ${incomplete} held back for missing stat lines` : '') +
+      '; recomputing',
+  );
   await computeAllPlayerRatingWindows(pool);
   await computeInternationalPlayerRatings(pool);
   const ratings = await computeRatings(pool);
