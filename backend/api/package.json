@@ -12,9 +12,10 @@
   },
   "dependencies": {
     "@power-ranking/rating-engine": "*",
+    "@power-ranking/shared": "*",
+    "cors": "^2.8.5",
     "express": "^4.21.0",
-    "pg": "^8.13.0",
-    "cors": "^2.8.5"
+    "pg": "^8.13.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
