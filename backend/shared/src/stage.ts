@@ -27,6 +27,35 @@ export function stageKind(bracketId: string | null | undefined): StageKind {
   return REGULAR_SEASON_STAGE_PATTERNS.some((pattern) => pattern.test(bracketId)) ? 'regular' : 'bracket';
 }
 
+/** Stage markers that name a knockout bracket. Every league spells it differently. */
+export const PLAYOFF_STAGE_PATTERNS: readonly RegExp[] = [
+  /PO/, // LCS26SPRPO, LEC26SprPO, LCKCup26PO, LCP26S1POB, LCP26Sp2PO, LCP26SFPO1
+  /Kn|KO/, // LPL26S1KnO, LPL26S1KnR, 26LPLS2KnR, 26LPLS2KOS, FST26KnOut
+  /Brakt/, // MSI26Brakt
+];
+
+/**
+ * Whether a stage is knockout play, for LABELLING a series. Deliberately not
+ * `stageKind`: that answers "may the board advance yet" and reads anything
+ * unrecognised as bracket, which is the right fail-safe there but painted all of
+ * LCS 2026 Lock-In as playoffs -- its group stages (LCS26LIN2H, LIN3M, LINR1)
+ * match no regular-season pattern either.
+ *
+ * Three-valued on purpose. Null means we do not know, and nothing is drawn:
+ * guessing is what produced the false positives, and a Swiss round or a play-in
+ * is neither regular season nor a playoff.
+ *
+ * Format is NOT a substitute, measured across every 2026 series carrying a
+ * marker: 37 Bo5 series sit in non-playoff stages (LCKCup26W3 is a regular
+ * season week of Bo5s) and LEC's playoff bracket contains Bo3s.
+ */
+export function isPlayoffStage(bracketId: string | null | undefined): boolean | null {
+  if (!bracketId) return null;
+  if (PLAYOFF_STAGE_PATTERNS.some((pattern) => pattern.test(bracketId))) return true;
+  if (REGULAR_SEASON_STAGE_PATTERNS.some((pattern) => pattern.test(bracketId))) return false;
+  return null;
+}
+
 /**
  * Days a regular-season stage may go without a new result before the board
  * advances regardless. Guards a postponed or cancelled fixture -- or a schedule

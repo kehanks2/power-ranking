@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { stageKind, resolveBoardAdvance, STAGE_STALL_DAYS, type StageStatus } from '../stage.js';
+import {
+  stageKind,
+  isPlayoffStage,
+  resolveBoardAdvance,
+  STAGE_STALL_DAYS,
+  type StageStatus,
+} from '../stage.js';
 
 // Every distinct stage marker held for 2026, so a pattern change has to face
 // the real vocabulary rather than invented examples.
@@ -29,6 +35,16 @@ describe('stageKind', () => {
 
   it('treats brackets, play-ins, tiebreakers and opaque ids as bracket play', () => {
     for (const id of BRACKET) expect(stageKind(id), id).toBe('bracket');
+  });
+
+  it('is not the same question as isPlayoffStage', () => {
+    // stageKind must keep reading an unknown stage as bracket so a board still
+    // advances; the label must not, or it invents playoffs. LCS Lock-In's group
+    // stages are exactly where the two have to disagree.
+    for (const id of ['LCS26LIN2H', 'LCS26LIN3M', 'LCS26LINR1', 'Tp3f1vvFcF']) {
+      expect(stageKind(id), id).toBe('bracket');
+      expect(isPlayoffStage(id), id).toBeNull();
+    }
   });
 
   it('falls back to bracket play for a missing marker', () => {
@@ -203,5 +219,49 @@ describe('bracket carets', () => {
     );
     expect(advance.reason).toBe('bracket');
     expect(advance.stage).toBe('LCKCup26PO');
+  });
+});
+
+describe('isPlayoffStage', () => {
+  // Every knockout marker held for 2026. LEC26VsPOB and LCP26S1POB carry a
+  // trailing bracket letter; LPL spells it Kn/KO; MSI spells it Brakt.
+  const PLAYOFF = [
+    'LCKCup26PO', 'LEC26SprPO', 'LEC26VsPOB', 'LCS26SPRPO', 'LCS26LINPO',
+    'LCP26S1POB', 'LCP26Sp2PO', 'LCP26SFPO1',
+    'LPL26S1KnO', 'LPL26S1KnR', '26LPLS2KnR', '26LPLS2KOS',
+    'MSI26Brakt', 'FST26KnOut',
+  ];
+
+  it('recognises every knockout marker seen in 2026', () => {
+    for (const id of PLAYOFF) expect(isPlayoffStage(id), id).toBe(true);
+  });
+
+  it('calls every regular-season marker not a playoff', () => {
+    for (const id of REGULAR_SEASON) expect(isPlayoffStage(id), id).toBe(false);
+  });
+
+  it('says "unknown" rather than guessing, which is what the bug was', () => {
+    // LCS 2026 Lock-In's group stages matched no regular-season pattern, so the
+    // old "unrecognised means bracket" rule painted the whole event as playoffs.
+    // Swiss rounds and play-ins are genuinely neither.
+    for (const id of ['LCS26LIN2H', 'LCS26LIN3M', 'LCS26LINR1', 'LCKCup26PI',
+                      'MSI26PlyIn', 'LCP26SFSR1', 'LCP26SFSSe', 'Tp3f1vvFcF']) {
+      expect(isPlayoffStage(id), id).toBeNull();
+    }
+  });
+
+  it('says "unknown" for a missing marker, so nothing is drawn', () => {
+    // 2024 and 2025 predate migration 0016 and carry no marker at all.
+    expect(isPlayoffStage(null)).toBeNull();
+    expect(isPlayoffStage(undefined)).toBeNull();
+    expect(isPlayoffStage('')).toBeNull();
+  });
+
+  it('never disagrees with itself: a marker is at most one of the three', () => {
+    for (const id of [...REGULAR_SEASON, ...PLAYOFF]) {
+      const playoff = isPlayoffStage(id);
+      expect(playoff === null, id).toBe(false);
+      if (playoff) expect(REGULAR_SEASON.includes(id), id).toBe(false);
+    }
   });
 });

@@ -33,7 +33,7 @@ import {
   playerWindowPredicate,
   resolveBoardAdvance,
   STAGE_STATUS_SQL,
-  stageKind,
+  isPlayoffStage,
   type BoardAdvance,
   type StageStatus,
 } from '@power-ranking/shared';
@@ -798,14 +798,11 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     seriesWins: row.series_wins,
     seriesLosses: row.series_losses,
     formats: (row.formats ?? []).map(Number).sort((a, b) => a - b),
-    // null, not false, where Liquipedia gave us no stage marker: `stageKind`
-    // reads a missing one as bracket play, which is the right fail-safe for
-    // advancing a board but would paint every unmarked series as a playoff.
-    // bracket_id arrived with migration 0016, so 2026 is complete and the two
-    // seasons before it have none.
+    // Three-valued: null where the stage is unknown or is neither regular season
+    // nor a bracket, so nothing is drawn rather than guessed. See isPlayoffStage.
     series: (row.series ?? []).map(({ bracketId, ...s }) => ({
       ...s,
-      isPlayoff: bracketId ? stageKind(bracketId) === 'bracket' : null,
+      isPlayoff: isPlayoffStage(bracketId),
     })),
     placement: row.placement,
     type: row.tournament_type,
@@ -1014,6 +1011,23 @@ export async function getPlayers(
         AND prh.rating_window = $3
         AND ($4::timestamptz IS NULL OR prh.computed_at = $4::timestamptz)
         AND ($2 = 'international' OR $1::text IS NULL OR l2.slug = $1)
+        -- Retired players are off the regional boards: no roster row anywhere
+        -- AND nothing played in a year. The all-time board otherwise carried
+        -- everyone who ever appeared -- Peanut, Bwipo, BeryL -- which is 146 of
+        -- the 270 unrostered players on it. A year cannot catch anyone still
+        -- playing, an off-season being two to three months.
+        --
+        -- Measured from the newest game we hold, not the wall clock: on the
+        -- clock a stalled ingest would start retiring active players. The
+        -- international board keeps its own three-year window instead.
+        AND ($2 = 'international' OR EXISTS (
+              SELECT 1 FROM roster_memberships rm WHERE rm.player_id = prh.player_id
+            ) OR EXISTS (
+              SELECT 1 FROM game_lineups gl
+              JOIN games g ON g.id = gl.game_id
+              WHERE gl.player_id = prh.player_id
+                AND g.datetime_utc >= (SELECT max(datetime_utc) FROM games) - INTERVAL '365 days'
+            ))
     )
     SELECT b.player_id AS id, p.handle,
            rt.team_id, rt.team_slug, rt.team_name,
