@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { PoolClient } from 'pg';
-import { bulkInsert } from '../bulkInsert.js';
+import { bulkInsert, dedupeByKey } from '../bulkInsert.js';
 
 interface Captured {
   sql: string;
@@ -78,5 +78,42 @@ describe('bulkInsert', () => {
       'bulkInsert(t): expected 3 values per row, got 2',
     );
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('bulkInsert upserts', () => {
+  it('appends the conflict clause to every chunk', async () => {
+    const { client, calls } = recordingClient();
+    const clause = 'ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.b';
+
+    await bulkInsert(client, 't', COLUMNS, rows(1500), clause);
+
+    expect(calls).toHaveLength(2);
+    for (const call of calls) expect(call.sql.endsWith(clause)).toBe(true);
+  });
+});
+
+describe('dedupeByKey', () => {
+  it('keeps the last row per key, in first-seen order', () => {
+    // Postgres rejects a statement whose ON CONFLICT touches one key twice, and
+    // two Liquipedia handles can resolve to the same player id. Last-wins
+    // matches what a sequence of individual upserts would have left.
+    const deduped = dedupeByKey(
+      [
+        { id: 1, v: 'a' },
+        { id: 2, v: 'b' },
+        { id: 1, v: 'c' },
+      ],
+      (row) => String(row.id),
+    );
+    expect(deduped).toEqual([
+      { id: 1, v: 'c' },
+      { id: 2, v: 'b' },
+    ]);
+  });
+
+  it('leaves an already-unique batch untouched', () => {
+    const input = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    expect(dedupeByKey(input, (row) => String(row.id))).toEqual(input);
   });
 });

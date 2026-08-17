@@ -37,8 +37,10 @@ const result = await pool.query(`
   JOIN lg ON lg.team_id=t.id
   JOIN lls ON lls.canonical_league_id=l.id
   LEFT JOIN intl ON intl.team_id=t.id
-  LEFT JOIN LATERAL (SELECT mu_ctx, phi_ctx FROM team_ratings_history WHERE team_id=t.id ORDER BY as_of_date DESC LIMIT 1) tr ON true
-  LEFT JOIN LATERAL (SELECT mu_meta, phi_meta FROM league_ratings_history WHERE league_id=l.id ORDER BY as_of_date DESC LIMIT 1) lr ON true
+  -- id breaks the as_of_date tie: 464 (team, scope, date) groups hold more
+  -- than one snapshot, so ordering on the date alone reads an arbitrary one.
+  LEFT JOIN LATERAL (SELECT mu_ctx, phi_ctx FROM team_ratings_history WHERE team_id=t.id ORDER BY as_of_date DESC, id DESC LIMIT 1) tr ON true
+  LEFT JOIN LATERAL (SELECT mu_meta, phi_meta FROM league_ratings_history WHERE league_id=l.id ORDER BY as_of_date DESC, id DESC LIMIT 1) lr ON true
   WHERE lg.last_at >= lls.s
 `);
 

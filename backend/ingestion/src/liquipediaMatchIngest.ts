@@ -2,8 +2,9 @@ import type { Pool } from 'pg';
 import type { LiquipediaGamePlayer } from './liquipediaApi.js';
 import { fetchMatches } from './liquipediaApi.js';
 import { resolvePosition, ourNameToLiquipediaName, HISTORICAL_LIQUIPEDIA_NAME_ALIASES } from './liquipediaMappings.js';
-import { upsertPlayer, upsertTournament, upsertSeries, upsertGame, upsertGameLineup, ensureTeamLeagueMembership } from './upsert.js';
-import { upsertPlayerGamePerformance } from './computePlayerRatings.js';
+import { upsertPlayer, upsertTournament, upsertSeries, upsertGame, ensureTeamLeagueMembership } from './upsert.js';
+import type { PlayerGamePerformanceInput } from './computePlayerRatings.js';
+import { bulkInsert, dedupeByKey } from './bulkInsert.js';
 
 // Liquipedia's `series` field identifies each Riot-official regional league.
 // Non-official events (EWC, KeSPA Cup) are excluded just by not appearing here
@@ -232,6 +233,7 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
   };
   // Pinned once so every game in a run is judged against the same clock.
   const now = new Date();
+  const pending: PendingWrites = { lineups: [], performances: [], keep: [] };
   const teamsUnresolvedSet = new Set<string>();
   const playerIdCache = new Map<string, number>(); // Liquipedia's disambiguated player key -> our player_id
   const tournamentIdByOverview = new Map<string, number>();
@@ -361,8 +363,8 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
           playersInGame.add(playerId);
           idsThisSide.add(playerId);
           rolesWritten += 1;
-          await upsertGameLineup(pool, { gameId, teamId, playerId, role });
-          await upsertPlayerGamePerformance(pool, {
+          pending.lineups.push({ gameId, teamId, playerId, role });
+          pending.performances.push({
             gameId,
             playerId,
             teamId,
@@ -386,9 +388,11 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
         if (idsThisSide.size < rolesWritten) result.gamesWithCollidedPlayers += 1;
       }
 
-      await pruneStalePerformance(pool, gameId, playersInGame);
+      for (const playerId of playersInGame) pending.keep.push({ gameId, playerId });
+      if (pending.performances.length >= FLUSH_ROWS) await flushPending(pool, pending);
     }
   }
+  await flushPending(pool, pending);
 
   result.teamsUnresolved = [...teamsUnresolvedSet];
   return result;
@@ -401,9 +405,85 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
  * player), so a replaced player's row otherwise survives -- 180 phantom stat
  * lines fed ratings as real games before this.
  */
-async function pruneStalePerformance(pool: Pool, gameId: number, playerIds: Set<number>): Promise<void> {
-  if (playerIds.size === 0) return;
-  await pool.query(`DELETE FROM player_game_performance WHERE game_id = $1 AND player_id <> ALL($2::int[])`, [gameId, [...playerIds]]);
+/**
+ * Lineup and performance rows waiting to be written, and which (game, player)
+ * pairs should survive the prune.
+ *
+ * Written a batch at a time rather than a row at a time. Per player this was
+ * two statements plus a prune per game -- about 21 round trips a game, and
+ * ~1s each against a hosted database, which made ingestion the slowest part of
+ * the daily job by a distance. The statements were never the cost; the trips
+ * were, exactly as with the rating writes.
+ */
+interface PendingWrites {
+  lineups: { gameId: number; teamId: number; playerId: number; role: 'TOP' | 'JNG' | 'MID' | 'BOT' | 'SUP' }[];
+  performances: PlayerGamePerformanceInput[];
+  keep: { gameId: number; playerId: number }[];
+}
+
+const FLUSH_ROWS = 2000;
+
+async function flushPending(pool: Pool, pending: PendingWrites): Promise<void> {
+  if (pending.performances.length === 0 && pending.lineups.length === 0) return;
+
+  // Deduplicated on the conflict key: one statement may not touch a key twice,
+  // and two handles can resolve to one player id. Last wins, as a sequence of
+  // individual upserts would have left it.
+  const lineups = dedupeByKey(pending.lineups, (row) => `${row.gameId}:${row.teamId}:${row.role}`);
+  const performances = dedupeByKey(pending.performances, (row) => `${row.gameId}:${row.playerId}`);
+
+  await bulkInsert(
+    pool,
+    'game_lineups',
+    ['game_id', 'team_id', 'player_id', 'role'],
+    lineups.map((row) => [row.gameId, row.teamId, row.playerId, row.role]),
+    'ON CONFLICT (game_id, team_id, role) DO UPDATE SET player_id = EXCLUDED.player_id',
+  );
+
+  await bulkInsert(
+    pool,
+    'player_game_performance',
+    [
+      'game_id', 'player_id', 'team_id', 'role', 'kills', 'deaths', 'assists', 'gold',
+      'damage_to_champions', 'gold_share', 'damage_share', 'kill_participation', 'creep_score', 'gold_diff',
+    ],
+    performances.map((row) => [
+      row.gameId, row.playerId, row.teamId, row.role, row.kills, row.deaths, row.assists, row.gold,
+      row.damageToChampions, row.goldShare, row.damageShare, row.killParticipation, row.creepScore, row.goldDiff,
+    ]),
+    `ON CONFLICT (game_id, player_id) DO UPDATE SET
+       kills = EXCLUDED.kills, deaths = EXCLUDED.deaths, assists = EXCLUDED.assists,
+       gold = EXCLUDED.gold, damage_to_champions = EXCLUDED.damage_to_champions,
+       gold_share = EXCLUDED.gold_share, damage_share = EXCLUDED.damage_share,
+       kill_participation = EXCLUDED.kill_participation, creep_score = EXCLUDED.creep_score,
+       gold_diff = EXCLUDED.gold_diff`,
+  );
+
+  await pruneStalePerformance(pool, pending.keep);
+
+  pending.lineups.length = 0;
+  pending.performances.length = 0;
+  pending.keep.length = 0;
+}
+
+/**
+ * Clears performance rows for players no longer listed in a game -- a lineup
+ * correction on Liquipedia's side. One statement for the whole batch: the pairs
+ * that should survive are unnested and anything else in those games goes.
+ */
+async function pruneStalePerformance(pool: Pool, keep: { gameId: number; playerId: number }[]): Promise<void> {
+  if (keep.length === 0) return;
+  const gameIds = keep.map((k) => k.gameId);
+  const playerIds = keep.map((k) => k.playerId);
+  await pool.query(
+    `DELETE FROM player_game_performance p
+      WHERE p.game_id = ANY($1::int[])
+        AND NOT EXISTS (
+          SELECT 1 FROM unnest($1::int[], $2::int[]) AS keep(game_id, player_id)
+          WHERE keep.game_id = p.game_id AND keep.player_id = p.player_id
+        )`,
+    [gameIds, playerIds],
+  );
 }
 
 // Matches existing players by handle; creates new ones keyed by Liquipedia's

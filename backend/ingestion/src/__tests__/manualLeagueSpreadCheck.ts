@@ -44,7 +44,7 @@ for (let iter = 0; iter < 20000; iter += 1) {
 
 const displayed = await pool.query<{ slug: string; offset: string }>(`
   SELECT l.slug, (lr.mu_meta * 173.7178) AS offset
-  FROM (SELECT DISTINCT ON (league_id) * FROM league_ratings_history ORDER BY league_id, as_of_date DESC) lr
+  FROM (SELECT DISTINCT ON (league_id) * FROM league_ratings_history ORDER BY league_id, as_of_date DESC, id DESC) lr
   JOIN leagues l ON l.id = lr.league_id
 `);
 const displayedBySlug = new Map(displayed.rows.map((r) => [r.slug, Number(r.offset)]));

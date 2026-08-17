@@ -35,6 +35,7 @@ import {
   type BoardAdvance,
   type StageStatus,
 } from '@power-ranking/shared';
+import { selectCaretGenerations, type Generation } from './caretBaseline.js';
 
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 // A team with no game in its league's latest split is no longer competing.
@@ -109,8 +110,12 @@ export async function getLeagues(pool: Pool): Promise<LeagueSummaryDto[]> {
     SELECT l.slug, l.name, l.logo_url, lr.mu_meta, lr.phi_meta
     FROM leagues l
     LEFT JOIN LATERAL (
+      -- id breaks the as_of_date tie, as on team_ratings_history. No league
+      -- currently takes two snapshots in a day, so this is latent rather than
+      -- live -- but replay inserts chronologically, so the highest id is the
+      -- day's final state either way.
       SELECT mu_meta, phi_meta FROM league_ratings_history
-      WHERE league_id = l.id ORDER BY as_of_date DESC LIMIT 1
+      WHERE league_id = l.id ORDER BY as_of_date DESC, id DESC LIMIT 1
     ) lr ON true
   `);
 
@@ -754,10 +759,8 @@ async function computePlayerRankChanges(
   // A held board must not read carets past the generation it is showing, or the
   // arrows describe results the ratings beside them do not include.
   const shownAt = shownGeneration?.getTime();
-  const generations = [...new Set(history.rows.map((r) => r.computed_at.getTime()))]
-    .filter((g) => shownAt === undefined || g <= shownAt)
-    .sort((a, b) => a - b);
-  if (generations.length < 2) return changes;
+  if (new Set(history.rows.map((r) => r.computed_at.getTime())).size < 2) return changes;
+
   const intlJoin = international
     ? `JOIN series s ON s.id = g.series_id
        JOIN tournaments tn ON tn.id = s.tournament_id AND tn.tournament_type = 'international'`
@@ -780,30 +783,17 @@ async function computePlayerRankChanges(
   if (!newestDay) return changes;
   if (daysBetween(lastPlayed, newestDay) > RANK_CHANGE_STALE_DAYS) return changes;
 
-  // The newest generation whose DATA stops before the last match day. Keyed on
-  // the frontier, not computed_at: recomputing old games today would otherwise
-  // look newer than a match day it does not contain. Frequency-independent --
-  // every rerun on the same data shares a frontier, so the baseline holds.
-  const frontierOf = new Map<number, string | null>();
-  const methodOf = new Map<number, number>();
+  const byGeneration = new Map<number, Generation>();
   for (const row of history.rows) {
-    frontierOf.set(row.computed_at.getTime(), row.data_frontier);
-    methodOf.set(row.computed_at.getTime(), row.method_version);
+    byGeneration.set(row.computed_at.getTime(), {
+      computedAt: row.computed_at.getTime(),
+      dataFrontier: row.data_frontier,
+      methodVersion: row.method_version,
+    });
   }
-  const shown = generations[generations.length - 1];
-  const shownMethod = methodOf.get(shown);
-  const baseline = generations
-    .filter((g) => {
-      const frontier = frontierOf.get(g);
-      // Same method_version only. Across a retune the two boards are different
-      // models, so the difference is the parameter change rather than anything
-      // a player did -- cutting the win weight 0.5 -> 0.3 "moved" 42 of 57 LCK
-      // players. Dash instead until the new model has two generations.
-      if (methodOf.get(g) !== shownMethod) return false;
-      return g !== shown && frontier !== null && frontier !== undefined && frontier < lastPlayed;
-    })
-    .pop();
-  if (baseline === undefined) return changes;
+  const chosen = selectCaretGenerations([...byGeneration.values()], lastPlayed, shownAt);
+  if (!chosen || chosen.baseline === null) return changes;
+  const baseline = chosen.baseline;
 
   const priorBoard = history.rows
     .filter((row) => row.computed_at.getTime() === baseline)

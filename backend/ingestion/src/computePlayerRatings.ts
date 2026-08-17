@@ -499,30 +499,3 @@ export interface PlayerGamePerformanceInput {
   goldDiff: number | null;
 }
 
-export async function upsertPlayerGamePerformance(pool: Pool, input: PlayerGamePerformanceInput): Promise<void> {
-  await pool.query(
-    `INSERT INTO player_game_performance (game_id, player_id, team_id, role, kills, deaths, assists, gold, damage_to_champions, gold_share, damage_share, kill_participation, creep_score, gold_diff)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-     ON CONFLICT (game_id, player_id) DO UPDATE SET
-       kills = EXCLUDED.kills, deaths = EXCLUDED.deaths, assists = EXCLUDED.assists,
-       gold = EXCLUDED.gold, damage_to_champions = EXCLUDED.damage_to_champions,
-       gold_share = EXCLUDED.gold_share, damage_share = EXCLUDED.damage_share, kill_participation = EXCLUDED.kill_participation,
-       creep_score = EXCLUDED.creep_score, gold_diff = EXCLUDED.gold_diff`,
-    [
-      input.gameId,
-      input.playerId,
-      input.teamId,
-      input.role,
-      input.kills,
-      input.deaths,
-      input.assists,
-      input.gold,
-      input.damageToChampions,
-      input.goldShare,
-      input.damageShare,
-      input.killParticipation,
-      input.creepScore,
-      input.goldDiff,
-    ],
-  );
-}

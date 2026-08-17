@@ -1,4 +1,4 @@
-import type { PoolClient } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 
 // Postgres refuses a statement carrying more than 65535 bound parameters.
 const MAX_BIND_PARAMS = 65535;
@@ -14,10 +14,16 @@ const MAX_ROWS_PER_STATEMENT = 1000;
  * cap and the parameter ceiling binds first.
  */
 export async function bulkInsert(
-  client: PoolClient,
+  client: Pool | PoolClient,
   table: string,
   columns: string[],
   rows: readonly unknown[][],
+  /**
+   * Optional `ON CONFLICT ...` clause, for upserts. Postgres refuses to let one
+   * statement touch the same conflict key twice, so callers passing this must
+   * hand over rows already deduplicated on that key -- see dedupeByKey.
+   */
+  onConflict = '',
 ): Promise<number> {
   if (rows.length === 0) return 0;
 
@@ -40,8 +46,24 @@ export async function bulkInsert(
       });
       return `(${placeholders.join(', ')})`;
     });
-    await client.query(`INSERT INTO ${table} (${columnList}) VALUES ${tuples.join(', ')}`, values);
+    const conflict = onConflict ? ` ${onConflict}` : '';
+    await client.query(`INSERT INTO ${table} (${columnList}) VALUES ${tuples.join(', ')}${conflict}`, values);
   }
 
   return rows.length;
+}
+
+/**
+ * Last row wins per key, preserving first-seen order.
+ *
+ * Batching an upsert needs this: Postgres rejects a statement whose ON CONFLICT
+ * would touch one key twice ("cannot affect row a second time"), and a
+ * duplicate is reachable here -- two Liquipedia handles can resolve to one
+ * player id, which is the collision the ingest already counts. Last-wins
+ * matches what a sequence of individual upserts would have left behind.
+ */
+export function dedupeByKey<T>(rows: readonly T[], key: (row: T) => string): T[] {
+  const byKey = new Map<string, T>();
+  for (const row of rows) byKey.set(key(row), row);
+  return [...byKey.values()];
 }

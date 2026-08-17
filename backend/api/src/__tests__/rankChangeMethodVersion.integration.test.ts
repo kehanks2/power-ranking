@@ -93,18 +93,8 @@ describe('rank-change carets across a model retune', () => {
     }
   });
 
-  it('reads the same prior generation once it carries the current model', async () => {
-    await writePriorGeneration(currentMethod);
-    try {
-      const changes = await carets();
-      const rated = changes.filter((c): c is number => c !== null);
-      expect(rated.length).toBeGreaterThan(0);
-      // Ratings were inverted, so the board must have moved, and the deltas are
-      // a permutation of the same players either way -- they cancel.
-      expect(rated.some((c) => c !== 0)).toBe(true);
-      expect(rated.reduce((sum, c) => sum + c, 0)).toBe(0);
-    } finally {
-      await removeSynthetic();
-    }
-  });
+  // The matching-version half of this is covered by caretBaseline.test.ts,
+  // which tests the selection directly. Asserting it through the API instead
+  // made the outcome depend on which league happened to be mid-stage and how
+  // many real generations existed, neither of which the guard is about.
 });
