@@ -45,6 +45,12 @@ export interface StageStatus {
   bracketId: string | null;
   /** Last day a game in this stage was played, or null if none has been. */
   lastPlayedDay: string | null;
+  /**
+   * The play day before that, within the same stage. Bracket carets measure
+   * from it: every series of a playoff shares one bracket id, so "the previous
+   * stage" can be the end of the regular season for weeks at a time.
+   */
+  previousPlayedDay: string | null;
   /** Series in this stage with no games yet -- Liquipedia's -1 to -1 fixtures. */
   unplayedSeries: number;
 }
@@ -100,9 +106,17 @@ export function resolveBoardAdvance(rows: StageStatus[], today: string): BoardAd
 
   const advances: BoardAdvance[] = [];
   for (const [leagueId, stages] of byLeague) {
+    // localeCompare-style comparator, returning 0 for equal days: a comparator
+    // that never returns 0 is inconsistent, and two stages ending the same day
+    // is routine where a regular season's last game and its first bracket
+    // series share a date -- which of them counted as current was arbitrary.
+    // The tie breaks toward bracket play, which is the later stage in practice.
     const played = stages
       .filter((s): s is StageStatus & { lastPlayedDay: string } => s.lastPlayedDay !== null)
-      .sort((a, b) => (a.lastPlayedDay < b.lastPlayedDay ? -1 : 1));
+      .sort((a, b) => {
+        if (a.lastPlayedDay !== b.lastPlayedDay) return a.lastPlayedDay < b.lastPlayedDay ? -1 : 1;
+        return Number(stageKind(a.bracketId) === 'bracket') - Number(stageKind(b.bracketId) === 'bracket');
+      });
 
     if (played.length === 0) {
       advances.push({
@@ -136,13 +150,19 @@ export function resolveBoardAdvance(rows: StageStatus[], today: string): BoardAd
 
     const shown = shownIndex >= 0 ? played[shownIndex] : undefined;
     const previous = shownIndex >= 1 ? played[shownIndex - 1] : undefined;
+
+    // A bracket advances per series, so its carets must too -- measuring from
+    // the previous stage would compare across the whole playoff run, since all
+    // of it shares one bracket id. Falls back to the previous stage on a
+    // bracket's opening day, when there is no earlier day inside it.
+    const withinStage = shown && reason === 'bracket' ? shown.previousPlayedDay : null;
     advances.push({
       leagueId,
       asOfDate: shown?.lastPlayedDay ?? null,
       stage: shown?.bracketId ?? null,
       reason,
-      previousAsOfDate: previous?.lastPlayedDay ?? null,
-      previousStage: previous?.bracketId ?? null,
+      previousAsOfDate: withinStage ?? previous?.lastPlayedDay ?? null,
+      previousStage: withinStage ? (shown?.bracketId ?? null) : (previous?.bracketId ?? null),
     });
   }
   return advances;
@@ -161,8 +181,12 @@ export function resolveBoardAdvance(rows: StageStatus[], today: string): BoardAd
 export const STAGE_STATUS_SQL = `
   WITH frontier AS (SELECT max(datetime_utc)::date::text AS day FROM games)
   SELECT t.canonical_league_id            AS league_id,
+         l.slug                           AS league_slug,
          s.bracket_id                     AS bracket_id,
          max(g.day)::date::text           AS last_played_day,
+         -- Second-newest day of play inside the stage, for bracket carets.
+         (array_agg(DISTINCT g.day::date ORDER BY g.day::date DESC) FILTER (WHERE g.day IS NOT NULL))[2]::text
+                                          AS previous_played_day,
          count(*) FILTER (WHERE g.day IS NULL) AS unplayed_series,
          (SELECT day FROM frontier)       AS frontier_day
     FROM series s
@@ -173,5 +197,5 @@ export const STAGE_STATUS_SQL = `
     ) g ON true
    WHERE t.tournament_type <> 'international'
      AND ($1::text IS NULL OR l.slug = $1)
-   GROUP BY t.canonical_league_id, s.bracket_id
+   GROUP BY t.canonical_league_id, l.slug, s.bracket_id
 `;

@@ -258,9 +258,15 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
     }
 
     const dateOnly = match.date.slice(0, 10);
+    // A team's league follows games it has PLAYED, never a fixture. The pull
+    // reaches 21 days forward, so acting on a scheduled match would close a
+    // membership with a future end_date and open another before the team had
+    // played a single game there -- and a cancelled or re-seeded fixture leaves
+    // no way back, since team_league_memberships has no rollback path.
+    const played = match.match2games.some((game) => isPlayedGame(game));
     // International passes must NOT touch team_league_memberships -- a
     // team's home region comes exclusively from its regional-split games.
-    if (classification.tournamentType === 'regional_split' && classification.canonicalLeagueId) {
+    if (played && classification.tournamentType === 'regional_split' && classification.canonicalLeagueId) {
       await ensureTeamLeagueMembership(pool, { teamId: team1Id, leagueId: classification.canonicalLeagueId, asOfDate: dateOnly });
       await ensureTeamLeagueMembership(pool, { teamId: team2Id, leagueId: classification.canonicalLeagueId, asOfDate: dateOnly });
     }

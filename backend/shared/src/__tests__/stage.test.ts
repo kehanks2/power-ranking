@@ -54,10 +54,16 @@ describe('stageKind', () => {
 });
 
 const LCK = 1;
-const stage = (bracketId: string | null, lastPlayedDay: string | null, unplayedSeries = 0): StageStatus => ({
+const stage = (
+  bracketId: string | null,
+  lastPlayedDay: string | null,
+  unplayedSeries = 0,
+  previousPlayedDay: string | null = null,
+): StageStatus => ({
   leagueId: LCK,
   bracketId,
   lastPlayedDay,
+  previousPlayedDay,
   unplayedSeries,
 });
 
@@ -107,8 +113,8 @@ describe('resolveBoardAdvance', () => {
     const advances = resolveBoardAdvance(
       [
         stage('LCK26Sp3W3', '2026-08-15', 0),
-        { leagueId: LEC, bracketId: 'LEC26SumW3', lastPlayedDay: '2026-08-10', unplayedSeries: 0 },
-        { leagueId: LEC, bracketId: 'LEC26SumW4', lastPlayedDay: '2026-08-15', unplayedSeries: 4 },
+        { leagueId: LEC, bracketId: 'LEC26SumW3', lastPlayedDay: '2026-08-10', previousPlayedDay: null, unplayedSeries: 0 },
+        { leagueId: LEC, bracketId: 'LEC26SumW4', lastPlayedDay: '2026-08-15', previousPlayedDay: null, unplayedSeries: 4 },
       ],
       '2026-08-16',
     );
@@ -152,5 +158,50 @@ describe('resolveBoardAdvance previous stage', () => {
     const [advance] = resolveBoardAdvance([weeks[0]], '2026-08-03');
     expect(advance.asOfDate).toBe('2026-08-02');
     expect(advance.previousAsOfDate).toBeNull();
+  });
+});
+
+describe('bracket carets', () => {
+  it('measures from the previous day inside the bracket, not the previous stage', () => {
+    // Every series of a playoff shares one bracket id, so taking the previous
+    // stage would compare across the whole run -- LCP's semifinal stage alone
+    // spans three days, and brackets reach 28.
+    const [advance] = resolveBoardAdvance(
+      [stage('LCP26SFSR5', '2026-08-13'), stage('LCP26SFSSe', '2026-08-16', 0, '2026-08-15')],
+      '2026-08-17',
+    );
+    expect(advance.reason).toBe('bracket');
+    expect(advance.asOfDate).toBe('2026-08-16');
+    expect(advance.previousAsOfDate).toBe('2026-08-15');
+    expect(advance.previousStage).toBe('LCP26SFSSe');
+  });
+
+  it('falls back to the previous stage on a bracket opening day', () => {
+    const [advance] = resolveBoardAdvance(
+      [stage('LCP26SFSR5', '2026-08-13'), stage('LCP26SFSSe', '2026-08-14')],
+      '2026-08-15',
+    );
+    expect(advance.previousAsOfDate).toBe('2026-08-13');
+    expect(advance.previousStage).toBe('LCP26SFSR5');
+  });
+
+  it('leaves regular-season carets on the stage boundary', () => {
+    // Only brackets step within a stage; a week must still compare whole.
+    const [advance] = resolveBoardAdvance(
+      [stage('LCK26Sp3W2', '2026-08-09'), stage('LCK26Sp3W3', '2026-08-16', 0, '2026-08-15')],
+      '2026-08-17',
+    );
+    expect(advance.previousAsOfDate).toBe('2026-08-09');
+  });
+
+  it('orders two stages ending the same day toward the bracket', () => {
+    // A regular season's last game and its first bracket series routinely share
+    // a date; which counted as current used to be arbitrary.
+    const [advance] = resolveBoardAdvance(
+      [stage('LCK26Sp3W3', '2026-08-16', 2), stage('LCKCup26PO', '2026-08-16')],
+      '2026-08-17',
+    );
+    expect(advance.reason).toBe('bracket');
+    expect(advance.stage).toBe('LCKCup26PO');
   });
 });

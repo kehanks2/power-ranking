@@ -43,10 +43,18 @@ const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 // stays "current" forever. Keyed per-league, since leagues run on different calendars.
 const LEAGUE_LATEST_SPLIT_CTE = `
   league_latest_split AS (
-    SELECT canonical_league_id, MAX(date_start) AS latest_split_start
-    FROM tournaments
-    WHERE canonical_league_id IS NOT NULL
-    GROUP BY canonical_league_id
+    -- Only splits that have actually been played. The pull reaches 21 days
+    -- forward, so a tournament row exists for the NEXT split before any of it
+    -- has happened; taking MAX(date_start) over those would set the cutoff to a
+    -- future date, no team would have a game at or after it, and the whole
+    -- league board would come back empty.
+    SELECT t.canonical_league_id, MAX(t.date_start) AS latest_split_start
+    FROM tournaments t
+    WHERE t.canonical_league_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM series s JOIN games g ON g.series_id = s.id WHERE s.tournament_id = t.id
+      )
+    GROUP BY t.canonical_league_id
   ),
   team_last_game AS (
     SELECT team_id, MAX(datetime_utc) AS last_game_at FROM (
@@ -80,23 +88,53 @@ function toRatingState(muCol: unknown, phiCol: unknown): RatingState | null {
   return { mu: Number(muCol), phi: Number(phiCol), sigma: DEFAULT_VOLATILITY };
 }
 
-/** Each board's most recent day of play -- the same day the carets measure from. */
+/**
+ * What each board is showing as of -- the same day its carets measure from.
+ *
+ * Regional boards follow the stage cadence, so this is the advance date rather
+ * than the newest match day ingested. Reporting the latter would have the
+ * header claim results the board deliberately excludes: "Updated 2026-08-15"
+ * over a board held at 2026-08-09. International is bracket-shaped throughout
+ * and never held, so it stays the newest day of play.
+ */
 export async function getBoardsLastUpdated(pool: Pool): Promise<BoardUpdatedDto[]> {
+  const stages = await pool.query<{
+    league_id: number;
+    league_slug: string;
+    bracket_id: string | null;
+    last_played_day: string | null;
+    previous_played_day: string | null;
+    unplayed_series: string;
+    frontier_day: string | null;
+  }>(STAGE_STATUS_SQL, [null]);
+
+  const slugOf = new Map(stages.rows.map((row) => [row.league_id, row.league_slug]));
+  const today = stages.rows[0]?.frontier_day ?? null;
+  const statuses: StageStatus[] = stages.rows.map((row) => ({
+    leagueId: row.league_id,
+    bracketId: row.bracket_id,
+    lastPlayedDay: row.last_played_day,
+    previousPlayedDay: row.previous_played_day,
+    unplayedSeries: Number(row.unplayed_series),
+  }));
+
+  const regional = today
+    ? resolveBoardAdvance(statuses, today).map((advance) => ({
+        scope: slugOf.get(advance.leagueId) ?? String(advance.leagueId),
+        lastUpdated: advance.asOfDate,
+      }))
+    : [];
+
   // ::text, not a JS Date: pg parses DATE at local midnight, so serialising it
   // back through toISOString() reports the wrong day either side of UTC.
-  const result = await pool.query<{ scope: string; last_updated: string | null }>(`
-    SELECT l.slug AS scope, max(g.datetime_utc)::date::text AS last_updated
-    FROM leagues l
-    JOIN team_league_memberships tlm ON tlm.league_id = l.id AND tlm.end_date IS NULL
-    JOIN games g ON g.team1_id = tlm.team_id OR g.team2_id = tlm.team_id
-    GROUP BY l.slug
-    UNION ALL
-    SELECT 'international', max(g.datetime_utc)::date::text
+  const international = await pool.query<{ last_updated: string | null }>(`
+    SELECT max(g.datetime_utc)::date::text AS last_updated
     FROM games g
     JOIN series s ON s.id = g.series_id
     JOIN tournaments tn ON tn.id = s.tournament_id AND tn.tournament_type = 'international'
   `);
-  return result.rows.map((row) => ({ scope: row.scope, lastUpdated: row.last_updated }));
+
+  return [...regional, { scope: 'international', lastUpdated: international.rows[0]?.last_updated ?? null }];
 }
 
 export async function getLeagues(pool: Pool): Promise<LeagueSummaryDto[]> {
@@ -137,7 +175,10 @@ const TEAM_CONTEXT_CTE = `
            CASE WHEN name ILIKE '%First Stand%' THEN 'FS'
                 WHEN name ILIKE '%Mid-Season%'  THEN 'MSI'
                 ELSE 'W' END || substring(date_start::text, 3, 2) AS code
-    FROM tournaments WHERE tournament_type = 'international'
+    FROM tournaments t WHERE t.tournament_type = 'international'
+      -- Played only: the forward pull creates a row for the next event before
+      -- any of it has happened, which would take a slot from a real one.
+      AND EXISTS (SELECT 1 FROM series s JOIN games g ON g.series_id = s.id WHERE s.tournament_id = t.id)
     ORDER BY date_start DESC LIMIT 6
   ),
   -- One row per team per event played, with the finish, newest-first.
@@ -256,6 +297,7 @@ async function getBoardAdvance(pool: Pool, leagueSlug: string): Promise<BoardAdv
     league_id: number;
     bracket_id: string | null;
     last_played_day: string | null;
+    previous_played_day: string | null;
     unplayed_series: string;
     frontier_day: string | null;
   }>(STAGE_STATUS_SQL, [leagueSlug]);
@@ -267,6 +309,7 @@ async function getBoardAdvance(pool: Pool, leagueSlug: string): Promise<BoardAdv
     leagueId: row.league_id,
     bracketId: row.bracket_id,
     lastPlayedDay: row.last_played_day,
+    previousPlayedDay: row.previous_played_day,
     unplayedSeries: Number(row.unplayed_series),
   }));
 
@@ -448,6 +491,8 @@ export async function getTeams(pool: Pool, scope: string): Promise<TeamSummaryDt
         FROM tournaments tn
         JOIN leagues l ON l.id = tn.canonical_league_id
         WHERE tn.tournament_type = 'regional_split' AND l.slug = $2
+          -- Played only -- see the international strip above.
+          AND EXISTS (SELECT 1 FROM series s JOIN games g ON g.series_id = s.id WHERE s.tournament_id = tn.id)
         ORDER BY tn.date_start DESC LIMIT 6
       ) e
     ),
@@ -520,9 +565,15 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     [teamId],
   );
   if (leagueRow.rows.length === 0) return null;
-  const teams = await getTeams(pool, leagueRow.rows[0].slug);
+  const leagueSlug = leagueRow.rows[0].slug;
+  const teams = await getTeams(pool, leagueSlug);
   const team = teams.find((t) => t.id === teamId);
   if (!team) return null;
+
+  // The roster must read the generation this league's board is held at, so a
+  // player's rating here matches the board its roleRank comes from.
+  const rosterAdvance = await getBoardAdvance(pool, leagueSlug);
+  const rosterGeneration = await resolvePlayerGeneration(pool, 'regional', 'all', rosterAdvance?.asOfDate ?? null);
 
   const rosterResult = await pool.query<{
     player_id: number;
@@ -555,13 +606,17 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
         AND prh_inner.rating_window = 'all'
         AND prh_inner.role = rm.role
         AND prh_inner.league_id = tlm.league_id
+        -- Same generation the league's player board is pinned to. Reading the
+        -- newest instead let a held board show one rating here and another on
+        -- /players, with a roleRank taken off the other one.
+        AND ($2::timestamptz IS NULL OR prh_inner.computed_at = $2::timestamptz)
       ORDER BY computed_at DESC LIMIT 1
     ) prh ON true
     WHERE rm.team_id = $1 AND rm.end_date IS NULL
     -- In-game order (TOP/JNG/MID/BOT/SUP), not alphabetical; starters lead within a role.
     ORDER BY array_position(ARRAY['TOP','JNG','MID','BOT','SUP']::text[], rm.role), rm.is_starter DESC, p.handle
     `,
-    [teamId],
+    [teamId, rosterGeneration],
   );
 
   // The league's board, so a roster rank is the same number that board shows
