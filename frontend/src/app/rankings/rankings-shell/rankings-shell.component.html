@@ -38,10 +38,9 @@
             genuinely played each other, <strong>these numbers do compare across regions</strong>.
             Five international games to appear.
           } @else {
-            Players scored against <strong>others in the same role in {{ filter.selectedScope() }}</strong>
-            — 50 is an average {{ filter.selectedScope() }} player at that position, not an average
-            player everywhere. <strong>The scale restarts on every regional board</strong>, so a 78
-            here and a 78 elsewhere say nothing about each other.
+            Players scored against <strong>others in the same role within {{ filter.selectedScope() }}</strong>,
+            with 50 being the average. <strong>The scale is per board, and boards are not
+            comparable.</strong>
           }
         } @else if (filter.selectedScope() === 'international') {
           Built from the <strong>last six international events</strong> — two years of First Stand,

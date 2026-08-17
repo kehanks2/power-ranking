@@ -129,17 +129,10 @@ export class PlayerPanelComponent {
     ];
   });
 
-  /** Names the dimmed stats, which differ by role -- listing them beats "some stats are dimmed". */
-  protected readonly contextStats = computed(() => {
-    const context = this.statGroups()
-      .flatMap((group) => group.stats)
-      .filter((stat) => !stat.feeds);
-    if (context.length === 0) return null;
-    // Left as written: these are the grid's own labels, and "cs / min"
-    // lowercased stops reading as the stat it names.
-    const labels = context.map((stat) => stat.label);
-    return labels.length === 1 ? labels[0] : `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
-  });
+  /** Whether this role has any dimmed stat, so the note is shown only where it applies. */
+  protected readonly contextStats = computed(() =>
+    this.statGroups().some((group) => group.stats.some((stat) => !stat.feeds)),
+  );
 }
 
 /** 1st, 2nd, 3rd, 4th -- and 11th/12th/13th, which break the pattern. */

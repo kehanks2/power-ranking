@@ -110,8 +110,8 @@
       <span class="drive drive--lifting">▲</span> and
       <span class="drive drive--dragging">▼</span> mark the stats lifting or dragging the
       rating, against the {{ d.role }} median.
-      @if (contextStats(); as context) {
-        Dimmed stats — {{ context }} — are shown for detail and carry no weight at {{ d.role }}.
+      @if (contextStats()) {
+        Dimmed stats are shown for detail and carry no weight at {{ d.role }}.
       }
     </p>
   }
