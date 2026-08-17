@@ -1,16 +1,27 @@
 /**
- * Scheduled daily update: pull complete Liquipedia dates, then recompute.
+ * Scheduled daily update: pull, then recompute.
  *
- * Runs at 14:00 UTC. Liquipedia dates a series by its start, so the cutoff is
- * simply "today, exclusive" -- whole dates only. Anything still being played
- * carries today's date, is skipped, and arrives on the next run.
+ * The pull deliberately reaches PAST today. It used to stop at "today,
+ * exclusive" so a board could not be built on a part-played day, but boards no
+ * longer advance on days at all -- a regional board waits for its whole stage
+ * (see resolveBoardAdvance), which is the same protection at the granularity
+ * that actually matters. That makes the old cutoff redundant, and reaching
+ * forward is what makes stage completion knowable: "does this week still owe
+ * fixtures" cannot be answered without the fixtures.
  *
- * Why 14:00: a date's last series finishes at most 02:15 UTC the next day
- * (measured over 138 play days), and results were observed appearing 3-6 hours
- * after a match ends. 14:00 clears the worst case by ~12 hours.
+ * Unplayed series arrive as Liquipedia's -1 to -1 rows, are stored with no
+ * games, and move no rating. They exist so the cadence logic can see what is
+ * still outstanding.
  *
- * Safe to re-run: ingestion upserts, unplayed games are skipped rather than
- * stored, and every rating table is rebuilt from the games that result.
+ * The forward window is bounded rather than open-ended: opponents far out are
+ * often placeholders that resolve to nothing, and every one of those is logged
+ * as an unresolved team. Three weeks covers any real gap to a league's next
+ * fixture without dragging in a whole split of TBDs.
+ *
+ * Safe to re-run, and safe to run early: ingestion upserts, unplayed games are
+ * skipped rather than stored, and every rating table is rebuilt from the games
+ * that result. Running before a day's play has finished now costs nothing --
+ * the board holds until the stage does.
  */
 import { createPool } from './db.js';
 import {
@@ -24,16 +35,19 @@ import { computeAllPlayerRatingWindows, computeInternationalPlayerRatings } from
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const ALL_SERIES = [...Object.keys(REGIONAL_SERIES_TO_LEAGUE_SLUG), AMERICAS_SERIES, ...INTERNATIONAL_SERIES];
+const FORWARD_DAYS = 21;
 
 async function main() {
   const pool = createPool(DATABASE_URL);
-  const cutoff = new Date().toISOString().slice(0, 10);
+  // UTC throughout: Liquipedia dates are UTC, and building this from a local
+  // date reports the wrong day west of Greenwich.
+  const cutoff = new Date(Date.now() + FORWARD_DAYS * 86_400_000).toISOString().slice(0, 10);
 
   const before = await pool.query<{ day: string | null }>(`SELECT max(datetime_utc)::date::text AS day FROM games`);
   const startDate = before.rows[0]?.day;
   if (!startDate) throw new Error('No games held; run a backfill before scheduling daily updates.');
 
-  console.log(`[${new Date().toISOString()}] pulling (${startDate}, ${cutoff}), end exclusive`);
+  console.log(`[${new Date().toISOString()}] pulling (${startDate}, ${cutoff}), end exclusive, ${FORWARD_DAYS}d ahead`);
 
   let games = 0;
   const failed: string[] = [];
