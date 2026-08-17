@@ -34,7 +34,12 @@ $slot-width: 56px;
   overflow: clip;
 }
 
-@media (max-width: 1000px) {
+// 1250px, not 1000: the widest board (International, with its extra Region
+// column) cannot shrink below ~1215px, so between 1000 and 1250 the table was
+// clipping with no way to scroll to what was cut -- and Games, being last, was
+// what disappeared. Scrolling costs the sticky header, which is the trade the
+// breakpoint already accepted; clipping the data silently is worse.
+@media (max-width: 1250px) {
   .table-scroll {
     overflow: auto;
   }
@@ -185,6 +190,23 @@ pr-rank-change {
   font-weight: 600;
   white-space: nowrap;
   font-size: 0.93rem;
+  // Long names must not widen the column: the wrapper clips rather than
+  // scrolls (see .table-scroll), so any overflow is taken off the last column
+  // and the Games figure disappears. LCP's "Fukuoka SoftBank HAWKS gaming"
+  // pushed the table 45px past the wrapper; International went 29px over on
+  // its extra Region column.
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.team-cell {
+  max-width: 100%;
+}
+
+.teams-table th.team-h,
+.teams-table td.team-col {
+  max-width: 210px;
 }
 
 // Placeholder crest: logo_url is empty for every team, so initials stand in.
@@ -275,10 +297,11 @@ pr-rank-change {
   letter-spacing: 0;
 }
 
-// Wide enough for eight tick labels without crowding.
+// Wide enough for eight tick labels without crowding, but allowed to give way
+// before the Games column does -- it is a meter, and loses least by narrowing.
 td.interval {
   width: 278px;
-  min-width: 258px;
+  min-width: 228px;
 }
 
 // The rightmost tick label overhangs the track's edge; reserved by insetting the

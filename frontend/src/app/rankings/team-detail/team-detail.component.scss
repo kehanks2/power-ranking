@@ -300,15 +300,6 @@ tr.is-open {
   }
 }
 
-.row-toggle {
-  cursor: pointer;
-
-  &:hover,
-  &.is-open {
-    background: var(--color-surface);
-  }
-}
-
 // The series name doubles as the control that opens the row. A button, not a
 // click handler on the <tr>: it is focusable, it announces its expanded state,
 // and it works from the keyboard without re-implementing any of that.
@@ -325,9 +316,9 @@ tr.is-open {
   text-align: left;
   cursor: pointer;
 
-  &:hover {
-    background: var(--color-surface);
-  }
+  // No hover background of its own: the row paints --color-surface-hover across
+  // its whole width, and an opaque button on top of one cell read as a second
+  // colour in the event column.
 
   // Inset, because an outline on a table cell is clipped by the cell beside it.
   &:focus-visible {
