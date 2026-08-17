@@ -626,7 +626,7 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     has_international: boolean;
   }>(
     `
-    SELECT p.id AS player_id, p.handle, rm.role, rm.is_starter,
+    SELECT p.id AS player_id, p.handle, COALESCE(prh.role, rm.role) AS role, rm.is_starter,
            prh.rating, prh.games_played, prh.raw_rating, prh.effective_games,
            EXISTS (
              SELECT 1 FROM player_ratings_history intl
@@ -636,24 +636,28 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     JOIN players p ON p.id = rm.player_id
     JOIN team_league_memberships tlm ON tlm.team_id = rm.team_id AND tlm.end_date IS NULL
     -- Must name the same group the player board does, or the roster shows a
-    -- rating earned in a league this player has left.
+    -- rating earned in a league this player has left. Role preference matches
+    -- getPlayers exactly for the same reason -- see the note there.
     LEFT JOIN LATERAL (
-      SELECT rating, games_played, raw_rating, effective_games
+      SELECT role, rating, games_played, raw_rating, effective_games
       FROM player_ratings_history prh_inner
       WHERE prh_inner.player_id = p.id
         AND prh_inner.scope = 'regional'
         AND prh_inner.rating_window = 'all'
-        AND prh_inner.role = rm.role
         AND prh_inner.league_id = tlm.league_id
         -- Same generation the league's player board is pinned to. Reading the
         -- newest instead let a held board show one rating here and another on
         -- /players, with a roleRank taken off the other one.
         AND ($2::timestamptz IS NULL OR prh_inner.computed_at = $2::timestamptz)
-      ORDER BY computed_at DESC LIMIT 1
+      ORDER BY prh_inner.computed_at DESC, (prh_inner.role = rm.role) DESC, prh_inner.games_played DESC
+      LIMIT 1
     ) prh ON true
     WHERE rm.team_id = $1 AND rm.end_date IS NULL
     -- In-game order (TOP/JNG/MID/BOT/SUP), not alphabetical; starters lead within a role.
-    ORDER BY array_position(ARRAY['TOP','JNG','MID','BOT','SUP']::text[], rm.role), rm.is_starter DESC, p.handle
+    -- Sorted on the role shown, or a player whose rated role differs from the
+    -- squad page's would sit under a heading he is not labelled with.
+    ORDER BY array_position(ARRAY['TOP','JNG','MID','BOT','SUP']::text[], COALESCE(prh.role, rm.role)),
+             rm.is_starter DESC, p.handle
     `,
     [teamId, rosterGeneration],
   );
@@ -836,16 +840,22 @@ async function computePlayerRankChanges(
     data_frontier: string | null;
     method_version: number;
   }>(
-    `SELECT prh.player_id, prh.computed_at, prh.rating, prh.data_frontier::text, prh.method_version
+    // One row per (player, generation): role is preferred rather than required,
+    // matching getPlayers, so a player rated in two roles in one league would
+    // otherwise appear twice per generation and rank against himself. Callers
+    // key on computed_at and re-sort by rating, so this ORDER BY is free to
+    // lead with the DISTINCT ON columns.
+    `SELECT DISTINCT ON (prh.player_id, prh.computed_at)
+            prh.player_id, prh.computed_at, prh.rating, prh.data_frontier::text, prh.method_version
      FROM players p
      LEFT JOIN roster_memberships rm ON rm.player_id = p.id AND rm.end_date IS NULL
      LEFT JOIN teams t ON t.id = rm.team_id
      LEFT JOIN team_league_memberships tlm ON tlm.team_id = t.id AND tlm.end_date IS NULL
      JOIN player_ratings_history prh ON prh.player_id = p.id
-       AND prh.scope = $2 AND prh.rating_window = $3 AND prh.role = rm.role
+       AND prh.scope = $2 AND prh.rating_window = $3
        AND ($2 = 'international' OR prh.league_id = tlm.league_id)
      WHERE p.id = ANY($1)
-     ORDER BY prh.computed_at`,
+     ORDER BY prh.player_id, prh.computed_at, (prh.role = rm.role) DESC, prh.games_played DESC`,
     [playerIds, scope, ratingWindow],
   );
   if (history.rows.length === 0) return { changes, comparedTo: null };
@@ -952,7 +962,8 @@ export async function getPlayers(
   }>(
     `
     WITH ${LEAGUE_LATEST_SPLIT_CTE}
-    SELECT p.id, p.handle, t.id AS team_id, t.slug AS team_slug, t.name AS team_name, l.slug AS league_slug, rm.role,
+    SELECT p.id, p.handle, t.id AS team_id, t.slug AS team_slug, t.name AS team_name, l.slug AS league_slug,
+           COALESCE(prh.role, rm.role) AS role,
            prh.rating, prh.games_played, prh.raw_rating, prh.effective_games, rm.secondary_team
     FROM players p
     LEFT JOIN roster_memberships rm ON rm.player_id = p.id AND rm.end_date IS NULL
@@ -964,15 +975,20 @@ export async function getPlayers(
     -- The group must match the board: regional reads the (league, role) group for
     -- the rostered league (or a transfer is ranked on games they left). Intl is role-only.
     LEFT JOIN LATERAL (
-      SELECT rating, games_played, raw_rating, effective_games FROM player_ratings_history prh_inner
+      SELECT role, rating, games_played, raw_rating, effective_games FROM player_ratings_history prh_inner
       WHERE prh_inner.player_id = p.id
         AND prh_inner.scope = $2
         AND prh_inner.rating_window = $3
-        AND prh_inner.role = rm.role
         AND ($2 = 'international' OR prh_inner.league_id = l.id)
         -- Pinned to the generation the stage cadence allows, when one applies.
         AND ($4::timestamptz IS NULL OR prh_inner.computed_at = $4::timestamptz)
-      ORDER BY computed_at DESC LIMIT 1
+      -- Role is PREFERRED, not required. Liquipedia's squad role can disagree
+      -- with the role actually played, and requiring equality threw the rating
+      -- away and showed an unrated 50 instead -- Spica is rostered SUP on NRG
+      -- and has 60 JNG games rated 49.8. Newest generation first so an unpinned
+      -- read still cannot mix generations; most games breaks a two-role tie.
+      ORDER BY prh_inner.computed_at DESC, (prh_inner.role = rm.role) DESC, prh_inner.games_played DESC
+      LIMIT 1
     ) prh ON true
     WHERE ($1::text IS NULL OR l.slug = $1)
       AND (t.id IS NULL OR tlg.last_game_at >= lls.latest_split_start)
