@@ -2,13 +2,23 @@ name: Daily update
 
 on:
   schedule:
-    # 14:00 UTC. Liquipedia dates a series by its start, so the job's cutoff is
+    # ~14:00 UTC. Liquipedia dates a series by its start, so the job's cutoff is
     # whole dates only: a date's last series finishes at most 02:15 UTC the next
     # day, and results appear 3-6h after a match ends, so this clears the worst
     # case by ~12 hours. GitHub starts scheduled runs late under load, which the
     # same margin absorbs. Note GitHub disables schedules on a repository with
     # no activity for 60 days.
-    - cron: '0 14 * * *'
+    #
+    # Deliberately NOT on the hour. Actions runners share egress IPs, Liquipedia
+    # throttles on them, and '0 14' put us in the most contended minute of the
+    # scheduler alongside every other cron hitting the same APIs -- the
+    # 2026-08-17 run took a 429 on its first call.
+    - cron: '37 14 * * *'
+    # Second attempt, a different hour so it draws a fresh rate-limit budget. A
+    # 429 from a shared IP is transient, and a re-run after a good one is close
+    # to free: ingestion upserts, and only the newest run per data frontier is
+    # retained, so the carets see one generation either way.
+    - cron: '23 17 * * *'
   workflow_dispatch:
 
 # Two runs at once would have two recomputes writing the rating tables
