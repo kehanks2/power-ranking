@@ -1042,7 +1042,8 @@ export async function getPlayers(
         -- clock a stalled ingest would start retiring active players. The
         -- international board keeps its own three-year window instead.
         AND ($2 = 'international' OR EXISTS (
-              SELECT 1 FROM roster_memberships rm WHERE rm.player_id = prh.player_id
+              SELECT 1 FROM roster_memberships rm
+              WHERE rm.player_id = prh.player_id AND rm.end_date IS NULL
             ) OR EXISTS (
               SELECT 1 FROM game_lineups gl
               JOIN games g ON g.id = gl.game_id
@@ -1074,7 +1075,7 @@ export async function getPlayers(
       JOIN teams t ON t.id = rm.team_id
       JOIN team_league_memberships tlm ON tlm.team_id = t.id AND tlm.end_date IS NULL
       JOIN leagues l4 ON l4.id = tlm.league_id
-      WHERE rm.player_id = b.player_id
+      WHERE rm.player_id = b.player_id AND rm.end_date IS NULL
         AND ($2 = 'international' OR tlm.league_id = b.league_id)
       LIMIT 1
     ) rt ON true
@@ -1103,7 +1104,7 @@ export async function getPlayers(
       JOIN teams t2 ON t2.id = rm2.team_id
       JOIN team_league_memberships tlm2 ON tlm2.team_id = t2.id AND tlm2.end_date IS NULL
       JOIN leagues l3 ON l3.id = tlm2.league_id
-      WHERE rt.team_id IS NULL AND rm2.player_id = b.player_id
+      WHERE rt.team_id IS NULL AND rm2.player_id = b.player_id AND rm2.end_date IS NULL
       LIMIT 1
     ) away ON true
     -- The team they last played for on this board, for the note. Past tense with

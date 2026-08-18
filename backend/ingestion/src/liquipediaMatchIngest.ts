@@ -355,6 +355,9 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
       // Everyone written this run; rows for anyone no longer listed are cleared
       // afterwards -- see pruneStalePerformance.
       const playersInGame = new Set<number>();
+      // Roles written per side, so the prune can tell a lineup CORRECTION from a
+      // partial fetch. Only a game we saw whole may have rows deleted from it.
+      const rolesPerSide: number[] = [];
 
       for (const [opponentIndex, gameOpponent] of [gameOpp1, gameOpp2].entries()) {
         const teamId = opponentIndex === 0 ? team1Id : team2Id;
@@ -395,9 +398,16 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
         // past resolvePlayerId -- one stat line overwrote another. Rare, but
         // reported rather than swallowed.
         if (idsThisSide.size < rolesWritten) result.gamesWithCollidedPlayers += 1;
+        rolesPerSide.push(rolesWritten);
       }
 
-      for (const playerId of playersInGame) pending.keep.push({ gameId, playerId });
+      // Offer this game to the prune ONLY if both sides came back whole. A
+      // partial fetch -- one side populated, the other empty, which Liquipedia
+      // does return -- would otherwise delete the complete side's existing rows
+      // as "no longer listed". Re-ingesting must never narrow what we hold.
+      if (rolesPerSide.length === 2 && rolesPerSide.every((n) => n === ROLES_PER_SIDE)) {
+        for (const playerId of playersInGame) pending.keep.push({ gameId, playerId });
+      }
       if (pending.performances.length >= FLUSH_ROWS) await flushPending(pool, pending);
     }
   }

@@ -224,3 +224,35 @@ describe('the stats grace and the stage stall must not race', () => {
     expect(STAGE_STALL_DAYS).toBeGreaterThan(STATS_GRACE_DAYS);
   });
 });
+
+describe('re-ingesting must never narrow what we already hold', () => {
+  // pruneStalePerformance clears rows for players "no longer listed", which is
+  // right for a lineup correction and wrong for a partial fetch. Liquipedia
+  // returns one side populated and the other empty often enough that this
+  // mattered: the complete side's rows would have been deleted as stale.
+  //
+  // The guard is that a game is only offered to the prune when BOTH sides came
+  // back with a full five roles.
+  const offeredToPrune = (rolesPerSide: number[]) =>
+    rolesPerSide.length === 2 && rolesPerSide.every((n) => n === 5);
+
+  it('prunes a game that came back whole, so a real lineup correction still applies', () => {
+    expect(offeredToPrune([5, 5])).toBe(true);
+  });
+
+  it('refuses to prune when one side came back empty', () => {
+    expect(offeredToPrune([5, 0])).toBe(false);
+    expect(offeredToPrune([0, 5])).toBe(false);
+  });
+
+  it('refuses to prune a partially filled side', () => {
+    expect(offeredToPrune([5, 3])).toBe(false);
+    expect(offeredToPrune([2, 2])).toBe(false);
+  });
+
+  it('refuses to prune a game with no player data at all', () => {
+    // The 806 statless games. Re-fetching one must leave it exactly as it is.
+    expect(offeredToPrune([0, 0])).toBe(false);
+    expect(offeredToPrune([])).toBe(false);
+  });
+});

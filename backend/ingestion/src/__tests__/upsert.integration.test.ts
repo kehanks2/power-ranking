@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
 import { createPool } from '../db.js';
-import { upsertTeam, upsertTournament, upsertSeries, upsertGame } from '../upsert.js';
+import { upsertTeam, upsertTournament, upsertSeries, upsertGame, ensureTeamLeagueMembership } from '../upsert.js';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 
@@ -99,5 +99,70 @@ describe.runIf(process.env.SKIP_DB_TESTS !== 'true')('upsert idempotency (live P
     await pool.query(`DELETE FROM series WHERE leaguepedia_match_id = '__Test_Match_1'`);
     await pool.query(`DELETE FROM tournaments WHERE overview_page = '__Test_Tournament_2026'`);
     await pool.query(`DELETE FROM teams WHERE leaguepedia_page IN ('__Test_Team_A', '__Test_Team_B')`);
+  });
+});
+
+describe.runIf(process.env.SKIP_DB_TESTS !== 'true')('ensureTeamLeagueMembership is monotonic', () => {
+  let pool: pg.Pool;
+  let teamId: number;
+  let leagueA: number;
+  let leagueB: number;
+
+  const openRows = async () =>
+    (
+      await pool.query<{ league_id: number; start_date: Date; end_date: Date | null }>(
+        `SELECT league_id, start_date, end_date FROM team_league_memberships
+         WHERE team_id = $1 ORDER BY start_date`,
+        [teamId],
+      )
+    ).rows;
+
+  beforeAll(async () => {
+    pool = createPool(DATABASE_URL);
+    teamId = await upsertTeam(pool, { leaguepediaPage: '__Test_Mono_Team', slug: '__test-mono', name: 'Test Mono' });
+    const leagues = await pool.query<{ id: number }>(`SELECT id FROM leagues ORDER BY id LIMIT 2`);
+    [leagueA, leagueB] = leagues.rows.map((r) => r.id);
+    await pool.query(`DELETE FROM team_league_memberships WHERE team_id = $1`, [teamId]);
+  });
+
+  afterAll(async () => {
+    await pool.query(`DELETE FROM team_league_memberships WHERE team_id = $1`, [teamId]);
+    await pool.query(`DELETE FROM teams WHERE leaguepedia_page = '__Test_Mono_Team'`);
+    await pool.end();
+  });
+
+  it('opens a membership from the first match seen', async () => {
+    await ensureTeamLeagueMembership(pool, { teamId, leagueId: leagueA, asOfDate: '2026-01-10' });
+    const rows = await openRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].league_id).toBe(leagueA);
+    expect(rows[0].end_date).toBeNull();
+  });
+
+  it('moves the team when a LATER match names a different league', async () => {
+    await ensureTeamLeagueMembership(pool, { teamId, leagueId: leagueB, asOfDate: '2026-06-01' });
+    const rows = await openRows();
+    expect(rows).toHaveLength(2);
+    expect(rows[0].league_id).toBe(leagueA);
+    expect(rows[0].end_date).not.toBeNull(); // closed
+    expect(rows[1].league_id).toBe(leagueB);
+    expect(rows[1].end_date).toBeNull();
+  });
+
+  it('IGNORES an older match, rather than rewriting the history backwards', async () => {
+    // The hazard that made re-ingesting any old match unsafe: replaying the
+    // January game after the team had moved would close the current membership
+    // with a January end date and reopen the one they had left.
+    const before = await openRows();
+    await ensureTeamLeagueMembership(pool, { teamId, leagueId: leagueA, asOfDate: '2026-01-10' });
+    await ensureTeamLeagueMembership(pool, { teamId, leagueId: leagueA, asOfDate: '2026-02-14' });
+    expect(await openRows()).toEqual(before);
+  });
+
+  it('is a no-op when the same match is replayed', async () => {
+    const before = await openRows();
+    await ensureTeamLeagueMembership(pool, { teamId, leagueId: leagueB, asOfDate: '2026-06-01' });
+    await ensureTeamLeagueMembership(pool, { teamId, leagueId: leagueB, asOfDate: '2026-06-02' });
+    expect(await openRows()).toEqual(before);
   });
 });

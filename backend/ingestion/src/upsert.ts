@@ -176,10 +176,22 @@ export async function upsertGame(
 }
 
 /**
- * Ensures a team's team_league_memberships row reflects `leagueId` as of `asOfDate`:
- * closes any open membership in a *different* league, and opens one for this
- * league if none is already open. Idempotent -- safe to call on every ingested
- * tournament a team appears in.
+ * Ensures a team's team_league_memberships row reflects `leagueId` as of
+ * `asOfDate`: closes any open membership in a *different* league, and opens one
+ * for this league if none is already open.
+ *
+ * MONOTONIC. Evidence older than what is already recorded is ignored outright,
+ * because this table has no rollback path and the rest of ingestion does not
+ * work this way -- every other write is an upsert keyed on a stable Liquipedia
+ * id, so re-running it changes nothing. Without the guard, re-ingesting a
+ * January match for a team that has since changed leagues would close their
+ * current membership with a January end date and reopen the old one, silently
+ * rewriting their league history backwards. That made re-fetching any old match
+ * unsafe, which is the opposite of what an idempotent ingest should be.
+ *
+ * A match older than the team's current open membership is therefore a complete
+ * no-op: the close is bounded by `start_date <= asOfDate`, and the insert
+ * refuses while a newer open membership exists.
  */
 export async function ensureTeamLeagueMembership(
   pool: Pool,
@@ -188,14 +200,17 @@ export async function ensureTeamLeagueMembership(
   await pool.query(
     `UPDATE team_league_memberships
      SET end_date = $3
-     WHERE team_id = $1 AND league_id <> $2 AND end_date IS NULL`,
+     WHERE team_id = $1 AND league_id <> $2 AND end_date IS NULL
+       AND start_date <= $3`,
     [params.teamId, params.leagueId, params.asOfDate],
   );
   await pool.query(
     `INSERT INTO team_league_memberships (team_id, league_id, start_date)
      SELECT $1, $2, $3
      WHERE NOT EXISTS (
-       SELECT 1 FROM team_league_memberships WHERE team_id = $1 AND league_id = $2 AND end_date IS NULL
+       SELECT 1 FROM team_league_memberships
+       WHERE team_id = $1 AND end_date IS NULL
+         AND (league_id = $2 OR start_date > $3)
      )`,
     [params.teamId, params.leagueId, params.asOfDate],
   );

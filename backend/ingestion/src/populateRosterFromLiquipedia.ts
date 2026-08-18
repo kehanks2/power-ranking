@@ -21,6 +21,8 @@ export interface RosterImportResult {
   teamsWithNoRoster: string[];
   /** Academy squads dropped from a parent team's page -- see withoutAcademyCohorts. */
   academyCohortsDropped: { team: string; squad: string; handles: string[] }[];
+  /** Memberships closed because the squad page no longer lists them. */
+  membershipsClosed: number;
 }
 
 // Blank role = starter; any label ("Substitute", "Loan") = not. Testing for a
@@ -146,9 +148,10 @@ export function squadMemberFromSquadRow(row: LiquipediaSquadPlayer): ResolvedSqu
 }
 
 /**
- * The SOLE writer of roster_memberships, replacing the table wholesale with
- * Liquipedia's current squad data. If a second writer is ever added, scope its
- * DELETE -- an unscoped one here regressed the LCS rosters twice. Two players
+ * The SOLE writer of roster_memberships. Reconciles the table against
+ * Liquipedia's current squad data: standing rows are refreshed in place, new
+ * ones opened, and anything the squad pages no longer list is CLOSED rather
+ * than deleted, so the history survives and a re-run changes nothing. Two players
  * can share a position (Cloud9's APA/Loki at MID); both show is_starter=true.
  * Teams are matched by name (tracked teams only) and players by handle, creating
  * a new `liquipedia:player:<id>` row for anyone not already known from OE.
@@ -204,12 +207,15 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
 
   const client = await pool.connect();
   let membershipsInserted = 0;
+  let membershipsClosed = 0;
   let playersCreated = 0;
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM roster_memberships');
 
     const today = new Date().toISOString().slice(0, 10);
+    // Every (team, player, role) this import saw. What is missing from it gets
+    // CLOSED, not deleted -- see the close below.
+    const seen: { teamId: number; playerId: number; role: Role }[] = [];
 
     for (const { teamId, pagename } of matchedTeams) {
       const squad = squadByPagename.get(pagename) ?? [];
@@ -252,21 +258,49 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
         }
 
         const secondaryPagename = secondaryTeamByHandle.get(member.handle);
-        await client.query(
-          `INSERT INTO roster_memberships (team_id, player_id, role, is_starter, start_date, end_date, secondary_team)
-           VALUES ($1, $2, $3, $4, $5, NULL, $6)`,
-          [
-            teamId,
-            playerId,
-            member.role,
-            member.isStarter,
-            member.startDate ?? today,
-            secondaryPagename ? humanizePagename(secondaryPagename) : null,
-          ],
+        const secondaryTeam = secondaryPagename ? humanizePagename(secondaryPagename) : null;
+        seen.push({ teamId, playerId, role: member.role });
+
+        // Refresh what can change on a standing membership, leaving start_date
+        // alone: it records when they joined, not when we last looked.
+        const updated = await client.query(
+          `UPDATE roster_memberships
+           SET is_starter = $4, secondary_team = $5
+           WHERE team_id = $1 AND player_id = $2 AND role = $3 AND end_date IS NULL`,
+          [teamId, playerId, member.role, member.isStarter, secondaryTeam],
         );
-        membershipsInserted += 1;
+        if (updated.rowCount === 0) {
+          await client.query(
+            `INSERT INTO roster_memberships (team_id, player_id, role, is_starter, start_date, end_date, secondary_team)
+             VALUES ($1, $2, $3, $4, $5, NULL, $6)`,
+            [teamId, playerId, member.role, member.isStarter, member.startDate ?? today, secondaryTeam],
+          );
+          membershipsInserted += 1;
+        }
       }
     }
+
+    // A squad page this run did not list is a departure: close the row, keep the
+    // history. Deleting it was why a departed player ceased to exist, why
+    // `end_date IS NULL` was a dead predicate everywhere, and why the UI could
+    // only ever say "not on a roster we track".
+    //
+    // Refuses to close anything when the import produced no rows at all, which
+    // means Liquipedia failed rather than every team disbanding.
+    if (seen.length === 0) {
+      throw new Error('Roster import produced no memberships; refusing to close every existing one.');
+    }
+    const closed = await client.query(
+      `UPDATE roster_memberships m
+       SET end_date = $1
+       WHERE m.end_date IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM unnest($2::int[], $3::int[], $4::text[]) AS k(team_id, player_id, role)
+           WHERE k.team_id = m.team_id AND k.player_id = m.player_id AND k.role = m.role
+         )`,
+      [today, seen.map((x) => x.teamId), seen.map((x) => x.playerId), seen.map((x) => x.role)],
+    );
+    membershipsClosed = closed.rowCount ?? 0;
 
     await client.query('COMMIT');
   } catch (err) {
@@ -284,5 +318,6 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
     teamsFromPlayerFallback: teamsFromFallback,
     teamsWithNoRoster: teamsStillEmpty,
     academyCohortsDropped,
+    membershipsClosed,
   };
 }

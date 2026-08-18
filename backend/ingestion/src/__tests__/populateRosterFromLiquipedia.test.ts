@@ -263,3 +263,50 @@ describe('withoutAcademyCohorts', () => {
     expect(dropped).toEqual([]);
   });
 });
+
+describe('roster membership lifecycle', () => {
+  // The import used to DELETE the whole table and re-insert, so a departed
+  // player ceased to exist: no history, `end_date IS NULL` was a dead predicate
+  // everywhere, and the UI could only ever say "not on a roster we track".
+  //
+  // These assert the shape the SQL implements, against the set the import
+  // builds. The SQL itself is exercised by the live-database suites.
+  const closeMissing = (
+    existing: { key: string; endDate: string | null }[],
+    seen: string[],
+    today: string,
+  ) =>
+    existing.map((row) =>
+      row.endDate === null && !seen.includes(row.key) ? { ...row, endDate: today } : row,
+    );
+
+  it('closes a member the squad page no longer lists, rather than deleting them', () => {
+    const existing = [
+      { key: 'T1|Faker|MID', endDate: null },
+      { key: 'T1|Departed|TOP', endDate: null },
+    ];
+    const after = closeMissing(existing, ['T1|Faker|MID'], '2026-08-18');
+
+    expect(after).toHaveLength(2); // nothing vanishes
+    expect(after.find((r) => r.key === 'T1|Faker|MID')!.endDate).toBeNull();
+    expect(after.find((r) => r.key === 'T1|Departed|TOP')!.endDate).toBe('2026-08-18');
+  });
+
+  it('leaves a standing membership untouched, so a re-run changes nothing', () => {
+    const existing = [{ key: 'T1|Faker|MID', endDate: null }];
+    expect(closeMissing(existing, ['T1|Faker|MID'], '2026-08-18')).toEqual(existing);
+  });
+
+  it('does not reopen a membership that is already closed', () => {
+    const existing = [{ key: 'T1|Departed|TOP', endDate: '2026-07-01' }];
+    expect(closeMissing(existing, [], '2026-08-18')).toEqual(existing);
+  });
+
+  it('treats a role change as a departure and an arrival', () => {
+    // Closing the old row and opening a new one is what keeps the history
+    // honest -- the player did stop playing that position.
+    const existing = [{ key: 'T1|Guma|BOT', endDate: null }];
+    const after = closeMissing(existing, ['T1|Guma|SUP'], '2026-08-18');
+    expect(after[0].endDate).toBe('2026-08-18');
+  });
+});
