@@ -23,6 +23,7 @@
  * that result. Running before a day's play has finished now costs nothing --
  * the board holds until the stage does.
  */
+import { pathToFileURL } from 'node:url';
 import { createPool } from './db.js';
 import {
   ingestLiquipediaMatches,
@@ -36,6 +37,36 @@ import { computeAllPlayerRatingWindows, computeInternationalPlayerRatings } from
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const ALL_SERIES = [...Object.keys(REGIONAL_SERIES_TO_LEAGUE_SLUG), AMERICAS_SERIES, ...INTERNATIONAL_SERIES];
 const FORWARD_DAYS = 21;
+const MAX_LOOKBACK_DAYS = 14;
+
+const shiftDays = (day: string, delta: number) =>
+  new Date(Date.parse(`${day}T00:00:00Z`) + delta * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * Where the pull starts.
+ *
+ * Not simply the newest game held. A game held back for its stat lines does not
+ * advance that frontier, but ANOTHER league playing the same day does -- so the
+ * held-back game falls out of the window before its grace expires, and nothing
+ * ever asks for it again. That stranded 13 games across five LCS and LPL series
+ * on 2026-08-16: LEC played the 17th, the frontier moved past them, and both of
+ * the 18th's runs queried `date::>2026-08-17`.
+ *
+ * So the window also covers the oldest decided series still missing its games.
+ * That set is self-clearing -- past STATS_GRACE_DAYS a result is ingested with
+ * or without stat lines -- but a series whose games Liquipedia later withdraws
+ * would pin the window open forever, hence the floor.
+ *
+ * The extra day is for the boundary: `[[date::>S]]` matches times after
+ * midnight on S, so a match timed exactly 00:00:00 needs the day before it.
+ */
+export function resolvePullStart(frontier: string, oldestPending: string | null): string {
+  const floor = shiftDays(frontier, -MAX_LOOKBACK_DAYS);
+  let start = frontier;
+  if (oldestPending && oldestPending < start) start = oldestPending;
+  if (start < floor) start = floor;
+  return shiftDays(start, -1);
+}
 
 async function main() {
   const pool = createPool(DATABASE_URL);
@@ -43,11 +74,24 @@ async function main() {
   // date reports the wrong day west of Greenwich.
   const cutoff = new Date(Date.now() + FORWARD_DAYS * 86_400_000).toISOString().slice(0, 10);
 
-  const before = await pool.query<{ day: string | null }>(`SELECT max(datetime_utc)::date::text AS day FROM games`);
-  const startDate = before.rows[0]?.day;
-  if (!startDate) throw new Error('No games held; run a backfill before scheduling daily updates.');
+  const before = await pool.query<{ frontier: string | null; pending: string | null; pendingCount: string }>(
+    `WITH pending AS (
+       SELECT s.date_utc::date::text AS day
+         FROM series s
+        WHERE s.winner_team_id IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM games g WHERE g.series_id = s.id)
+     )
+     SELECT (SELECT max(datetime_utc)::date::text FROM games) AS frontier,
+            (SELECT min(day) FROM pending) AS pending,
+            (SELECT count(*)::text FROM pending) AS "pendingCount"`,
+  );
+  const frontier = before.rows[0]?.frontier;
+  if (!frontier) throw new Error('No games held; run a backfill before scheduling daily updates.');
+  const { pending, pendingCount } = before.rows[0];
+  const startDate = resolvePullStart(frontier, pending);
 
   console.log(`[${new Date().toISOString()}] pulling (${startDate}, ${cutoff}), end exclusive, ${FORWARD_DAYS}d ahead`);
+  if (pending) console.log(`  reaching back to ${pending}: ${pendingCount} decided series still missing their games`);
 
   let games = 0;
   let incomplete = 0;
@@ -104,7 +148,10 @@ async function main() {
   if (failed.length > 0) process.exitCode = 1;
 }
 
-main().catch((err) => {
-  console.error('Daily update failed:', err);
-  process.exit(1);
-});
+// Guarded so importing resolvePullStart does not run a pull.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error('Daily update failed:', err);
+    process.exit(1);
+  });
+}
