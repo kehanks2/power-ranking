@@ -133,9 +133,10 @@ async function main() {
   try {
     const refreshed = await refreshStatlessGames(pool);
     if (refreshed.candidates > 0) {
+      const plural = refreshed.requests === 1 ? 'request' : 'requests';
       console.log(
-        `  re-asked for ${refreshed.candidates} statless games in ${refreshed.requests} requests: ` +
-          `${refreshed.gamesGainedStats} gained stat lines`,
+        `  re-asked ${refreshed.candidates} series holding statless games in ${refreshed.requests} ${plural}: ` +
+          `${refreshed.gamesGainedStats} games gained stat lines`,
       );
     }
   } catch (err) {

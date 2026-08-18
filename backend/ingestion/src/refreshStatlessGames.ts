@@ -39,6 +39,7 @@ export function matchIdConditions(ids: string[]): string {
 }
 
 export interface StatlessRefreshResult {
+  /** Series re-asked for, not games -- a series carries several statless games. */
   candidates: number;
   requests: number;
   gamesGainedStats: number;
