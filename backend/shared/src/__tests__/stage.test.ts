@@ -215,6 +215,54 @@ describe('bracket carets', () => {
     );
     expect(advance.reason).toBe('bracket');
     expect(advance.stage).toBe('LCKCup26PO');
+    // Never the day it is already showing -- "since 16 August" on a board last
+    // updated 16 August is not a comparison.
+    expect(advance.previousAsOfDate).not.toBe(advance.asOfDate);
+  });
+});
+
+describe('a stage sharing the shown stage’s last day is not a baseline', () => {
+  // Real LEC rows, 2024 Summer: the tiebreakers were played on the day week 4
+  // ended, so both stages report last_played_day 2024-06-30. The tiebreaker is
+  // a one-day bracket with no earlier day of its own, so the baseline fell
+  // through to week 4 -- the same date the board was showing.
+  const lec2024 = [
+    stage('LEC24SumW2', '2024-06-16'),
+    stage('LEC24SumW3', '2024-06-23'),
+    stage('LEC24SumW4', '2024-06-30'),
+    stage('LEC24SumTB', '2024-06-30'),
+  ];
+
+  it('skips back to a genuinely earlier boundary', () => {
+    const [advance] = resolveBoardAdvance(lec2024, '2024-07-01');
+    expect(advance.asOfDate).toBe('2024-06-30');
+    expect(advance.previousAsOfDate).toBe('2024-06-23');
+    expect(advance.previousStage).toBe('LEC24SumW3');
+  });
+
+  it('skips back over any number of stages sharing the day', () => {
+    // LCS 2026-02-08 had three, all named "Round 3" under different ids.
+    const [advance] = resolveBoardAdvance(
+      [
+        stage('LCS26LINR2', '2026-02-01'),
+        stage('LCS26LINR1', '2026-02-08'),
+        stage('LCS26LIN2H', '2026-02-08'),
+        stage('LCS26LIN3M', '2026-02-08'),
+      ],
+      '2026-02-09',
+    );
+    expect(advance.asOfDate).toBe('2026-02-08');
+    expect(advance.previousAsOfDate).toBe('2026-02-01');
+  });
+
+  it('reports no baseline rather than the same day when nothing earlier exists', () => {
+    const [advance] = resolveBoardAdvance(
+      [stage('LEC24SumW4', '2024-06-30'), stage('LEC24SumTB', '2024-06-30')],
+      '2024-07-01',
+    );
+    expect(advance.asOfDate).toBe('2024-06-30');
+    expect(advance.previousAsOfDate).toBeNull();
+    expect(advance.previousStage).toBeNull();
   });
 });
 

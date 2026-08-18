@@ -283,7 +283,16 @@ export function resolveBoardAdvance(rows: StageStatus[], today: string): BoardAd
     }
 
     const shown = shownIndex >= 0 ? played[shownIndex] : undefined;
-    const previous = shownIndex >= 1 ? played[shownIndex - 1] : undefined;
+    // Step back past any stage ending the SAME day as the one shown, or the
+    // caret compares a date with itself. A tiebreaker played on the day its
+    // week ended does exactly that: it is a one-day bracket, so it has no
+    // earlier day of its own to fall back to. Real case: LEC 2024-06-30, where
+    // Tiebreakers and Week 4 both end that day.
+    let previousIndex = shownIndex - 1;
+    while (previousIndex >= 0 && shown && played[previousIndex].lastPlayedDay === shown.lastPlayedDay) {
+      previousIndex -= 1;
+    }
+    const previous = previousIndex >= 0 ? played[previousIndex] : undefined;
 
     // A bracket advances per series, so its carets must too -- measuring from
     // the previous stage would compare across the whole playoff run, since all
