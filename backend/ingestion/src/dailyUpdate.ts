@@ -51,6 +51,7 @@ async function main() {
 
   let games = 0;
   let incomplete = 0;
+  let withoutStats = 0;
   const failed: string[] = [];
   for (const series of ALL_SERIES) {
     try {
@@ -60,6 +61,7 @@ async function main() {
       );
       games += result.gamesProcessed;
       incomplete += result.gamesSkippedIncomplete;
+      withoutStats += result.gamesIngestedWithoutStats;
       if (result.gamesProcessed > 0 || result.gamesSkippedIncomplete > 0) {
         const waiting = result.gamesSkippedIncomplete > 0 ? `, ${result.gamesSkippedIncomplete} awaiting stat lines` : '';
         console.log(`  ${series}: ${result.gamesProcessed} games${waiting}`);
@@ -75,8 +77,14 @@ async function main() {
 
   // Ratings are rebuilt even when nothing new arrived: the carets read the
   // newest generation, and skipping the recompute would leave them a day stale.
+  // Report the ones taken WITHOUT stats, not just the ones held back. Past
+  // STATS_GRACE_DAYS a result is ingested regardless, counting toward team
+  // ratings and contributing nothing to player ratings -- and nothing re-fetches
+  // it, so the stat lines Liquipedia publishes later are never picked up. That
+  // was happening silently.
   console.log(
     `[${new Date().toISOString()}] ${games} games ingested` +
+      (withoutStats > 0 ? `, ${withoutStats} WITHOUT stat lines (player ratings miss these)` : '') +
       (incomplete > 0 ? `, ${incomplete} held back for missing stat lines` : '') +
       '; recomputing',
   );

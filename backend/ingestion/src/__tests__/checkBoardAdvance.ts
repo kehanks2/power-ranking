@@ -18,6 +18,7 @@ const pool = createPool(DATABASE_URL);
 const { rows } = await pool.query<{
   league_id: number;
   bracket_id: string | null;
+  stage_name: string | null;
   last_played_day: string | null;
   previous_played_day: string | null;
   unplayed_series: string;
@@ -30,6 +31,7 @@ const slugOf = new Map(leagues.rows.map((l) => [l.id, l.slug]));
 const statuses: StageStatus[] = rows.map((r) => ({
   leagueId: r.league_id,
   bracketId: r.bracket_id,
+  stageName: r.stage_name,
   lastPlayedDay: r.last_played_day,
   previousPlayedDay: r.previous_played_day,
   unplayedSeries: Number(r.unplayed_series),
