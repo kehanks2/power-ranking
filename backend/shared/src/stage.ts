@@ -148,12 +148,25 @@ export function isPlayoffSeries(
  * advances regardless. Guards a postponed or cancelled fixture -- or a schedule
  * we have wrong -- freezing a board indefinitely.
  *
- * 2 is safe by measurement, not by feel: across 82 regular-season stages in all
- * six leagues in 2026, the worst gap between consecutive play days inside a
- * stage is 1 day, with no exceptions. Brackets reach 11, which is why this
- * applies only to regular season.
+ * Safe by measurement, not by feel: across 82 regular-season stages in all six
+ * leagues in 2026, the worst gap between consecutive play days inside a stage is
+ * 1 day, with no exceptions. Brackets reach 11, which is why this applies only
+ * to regular season.
+ *
+ * MUST EXCEED `STATS_GRACE_DAYS`, and that is why it is 3 rather than 2. A
+ * series whose result is published before its stat lines has no games yet, so it
+ * reads here as an outstanding fixture. At 2 the two windows expired together
+ * and the stall won the race: LCS week 4 was released as of 15 Aug while the two
+ * biggest results of the week -- LYON/Sentinels and FlyQuest/Cloud9, both played
+ * on the 16th -- were still held for stats. The board showed a settled week with
+ * its decisive games missing, and Sentinels appeared to fall for beating the
+ * first-placed team.
+ *
+ * With the stall outlasting the grace, ingestion always resolves a stats delay
+ * first: the games land, the stage completes honestly, and the stall is left to
+ * do its actual job, which is releasing a fixture that may never be played.
  */
-export const STAGE_STALL_DAYS = 2;
+export const STAGE_STALL_DAYS = 3;
 
 /** One row per (league, stage): when it last produced a result, and what it still owes. */
 export interface StageStatus {

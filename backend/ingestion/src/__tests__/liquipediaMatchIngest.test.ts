@@ -8,6 +8,7 @@ import {
   isPlayedGame,
   resolveTournament,
 } from '../liquipediaMatchIngest.js';
+import { STAGE_STALL_DAYS } from '@power-ranking/shared';
 import type { LiquipediaGamePlayer } from '../liquipediaApi.js';
 
 describe('isPlayedGame', () => {
@@ -203,5 +204,23 @@ describe('shouldWaitForStats', () => {
 
   it('does not wait on an unparseable date', () => {
     expect(shouldWaitForStats(bare, '', at('2026-08-17T02:30:00Z'))).toBe(false);
+  });
+});
+
+describe('the stats grace and the stage stall must not race', () => {
+  it('releases a stalled week only after ingestion has given up waiting for stats', () => {
+    // These two windows live in different packages and measure different things,
+    // but they overlap on one case: a series whose result is published before
+    // its stat lines has no games, so the board reads it as an outstanding
+    // fixture. Whichever window expires first decides what happens.
+    //
+    // At equal values the stall won, and LCS week 4 was published as of 15 Aug
+    // with LYON/Sentinels and FlyQuest/Cloud9 -- both played on the 16th, both
+    // still held for stats -- missing. Sentinels appeared to fall for beating
+    // the first-placed team.
+    //
+    // The stall must lose that race, so ingestion resolves the delay first and
+    // the stage completes with its real results.
+    expect(STAGE_STALL_DAYS).toBeGreaterThan(STATS_GRACE_DAYS);
   });
 });
