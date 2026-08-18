@@ -47,9 +47,30 @@ jobs:
       - run: npm run build --workspace=@power-ranking/shared
       - run: npm run build --workspace=@power-ranking/rating-engine
 
+      # The limiter keeps its sliding window and any hard block in a file, which
+      # the runner discards with itself -- so unattended runs were the only ones
+      # with no memory of a 429. Restore/save rather than the combined action:
+      # the state most worth carrying is a hard block, and a run that hard-blocks
+      # is a run that FAILED, which the combined action's post step skips.
+      - name: Restore the Liquipedia rate-limit budget
+        uses: actions/cache/restore@v4
+        with:
+          path: .liquipedia-rate-limit.json
+          # Unique per run because cache entries are immutable; the prefix is
+          # what actually finds the previous run's file.
+          key: liquipedia-rate-limit-${{ github.run_id }}
+          restore-keys: liquipedia-rate-limit-
+
       # Exits non-zero on a partial pull, naming the series for the next run.
       - name: Pull and recompute
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           LIQUIPEDIA_API_KEY: ${{ secrets.LIQUIPEDIA_API_KEY }}
         run: npm run daily --workspace=@power-ranking/ingestion
+
+      - name: Save the Liquipedia rate-limit budget
+        if: always() && hashFiles('.liquipedia-rate-limit.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .liquipedia-rate-limit.json
+          key: liquipedia-rate-limit-${{ github.run_id }}
