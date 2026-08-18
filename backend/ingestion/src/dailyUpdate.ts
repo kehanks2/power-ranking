@@ -32,6 +32,7 @@ import {
   AMERICAS_SERIES,
 } from './liquipediaMatchIngest.js';
 import { computeRatings } from './computeRatings.js';
+import { refreshStatlessGames } from './refreshStatlessGames.js';
 import { computeAllPlayerRatingWindows, computeInternationalPlayerRatings } from './computePlayerRatings.js';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
@@ -119,19 +120,32 @@ async function main() {
     }
   }
 
-  // Ratings are rebuilt even when nothing new arrived: the carets read the
-  // newest generation, and skipping the recompute would leave them a day stale.
   // Report the ones taken WITHOUT stats, not just the ones held back. Past
   // STATS_GRACE_DAYS a result is ingested regardless, counting toward team
-  // ratings and contributing nothing to player ratings -- and nothing re-fetches
-  // it, so the stat lines Liquipedia publishes later are never picked up. That
-  // was happening silently.
+  // ratings and contributing nothing to player ratings.
   console.log(
     `[${new Date().toISOString()}] ${games} games ingested` +
       (withoutStats > 0 ? `, ${withoutStats} WITHOUT stat lines (player ratings miss these)` : '') +
-      (incomplete > 0 ? `, ${incomplete} held back for missing stat lines` : '') +
-      '; recomputing',
+      (incomplete > 0 ? `, ${incomplete} held back for missing stat lines` : ''),
   );
+
+  // Before the recompute, so anything recovered lands in this run's ratings.
+  try {
+    const refreshed = await refreshStatlessGames(pool);
+    if (refreshed.candidates > 0) {
+      console.log(
+        `  re-asked for ${refreshed.candidates} statless games in ${refreshed.requests} requests: ` +
+          `${refreshed.gamesGainedStats} gained stat lines`,
+      );
+    }
+  } catch (err) {
+    // A best-effort catch-up must never cost the run its recompute.
+    console.error(`  statless refresh FAILED: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Ratings are rebuilt even when nothing new arrived: the carets read the
+  // newest generation, and skipping the recompute would leave them a day stale.
+  console.log(`[${new Date().toISOString()}] recomputing`);
   await computeAllPlayerRatingWindows(pool);
   await computeInternationalPlayerRatings(pool);
   const ratings = await computeRatings(pool);
