@@ -13,12 +13,13 @@ on:
     # throttles on them, and '0 14' put us in the most contended minute of the
     # scheduler alongside every other cron hitting the same APIs -- the
     # 2026-08-17 run took a 429 on its first call.
+    #
+    # ONE run a day. A 429 is retried in-process on a bounded backoff, and a
+    # lost day costs freshness, not data: the window starts from the newest game
+    # HELD, not from today, so the next run asks for everything the failed one
+    # missed. A second daily cron was neither of those things -- it re-pulled an
+    # identical window whether or not the first run needed help.
     - cron: '37 14 * * *'
-    # Second attempt, a different hour so it draws a fresh rate-limit budget. A
-    # 429 from a shared IP is transient, and a re-run after a good one is close
-    # to free: ingestion upserts, and only the newest run per data frontier is
-    # retained, so the carets see one generation either way.
-    - cron: '23 17 * * *'
   workflow_dispatch:
 
 # Two runs at once would have two recomputes writing the rating tables
