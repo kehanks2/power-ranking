@@ -161,8 +161,23 @@ export function squadMemberFromSquadRow(row: LiquipediaSquadPlayer): ResolvedSqu
  * move a rating. Only a rostered player who HAS a player rating contributes,
  * which is why dropping the five zero-game Rising Bees moved nothing.
  */
+/** Matches the API's TEAM_INACTIVE_DAYS: a team quiet this long is not current. */
+const TEAM_INACTIVE_DAYS = 180;
+
 export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterImportResult> {
-  const ourTeams = await pool.query<{ id: number; name: string }>('SELECT id, name FROM teams');
+  // Teams still playing only. Liquipedia keeps a squad page for a folded org, so
+  // scraping every team we have ever recorded writes a current-dated roster for
+  // one that stopped playing years ago -- and a roster row is one of the two
+  // things keeping a player on a board, so it quietly resurrects retired
+  // players. Measured from the newest game held, not the wall clock.
+  const ourTeams = await pool.query<{ id: number; name: string }>(
+    `SELECT t.id, t.name FROM teams t
+      WHERE EXISTS (
+        SELECT 1 FROM games g
+        WHERE (g.team1_id = t.id OR g.team2_id = t.id)
+          AND g.datetime_utc >= (SELECT max(datetime_utc) FROM games) - INTERVAL '${TEAM_INACTIVE_DAYS} days'
+      )`,
+  );
   // Two broad paginated requests (teams + all squad players), not one per team --
   // see liquipediaApi.ts on the 60/hour limit.
   const liquipediaTeams = await fetchActiveTeams();

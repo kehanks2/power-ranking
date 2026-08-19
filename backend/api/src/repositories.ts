@@ -293,6 +293,30 @@ function toTeamSummaries(rows: TeamRow[]): TeamSummaryDto[] {
 export const RANK_CHANGE_STALE_DAYS = 10;
 
 /**
+ * How long a team may go without a game before it stops counting as current.
+ *
+ * `team_league_memberships` and `roster_memberships` are current-state tables
+ * whose `end_date` is never set, so a folded team keeps its league and its
+ * squad forever. That is not cosmetic: a roster row is one of the two things
+ * keeping a player on a board, so a defunct team's roster resurrects retired
+ * players -- Kisno last played 2026-02-01 for Disguised, and an NRG roster row
+ * scraped on 2026-02-20 kept them on the LCS board months later, labelled with
+ * a team whose last game was 2024-08-23.
+ *
+ * Six months, matching the player rule below, and measured from the newest game
+ * held rather than the wall clock so a stalled ingest cannot retire live teams.
+ * An off-season runs two to three months, well clear of it.
+ */
+export const TEAM_INACTIVE_DAYS = 180;
+
+/** SQL: has the team in `teamColumn` played recently enough to count as current? */
+const teamStillPlaying = (teamColumn: string) => `EXISTS (
+      SELECT 1 FROM games tsp
+      WHERE (tsp.team1_id = ${teamColumn} OR tsp.team2_id = ${teamColumn})
+        AND tsp.datetime_utc >= (SELECT max(datetime_utc) FROM games) - INTERVAL '${TEAM_INACTIVE_DAYS} days'
+    )`;
+
+/**
  * Places gained per row, and the day the prior board they are measured against
  * was taken. Carried together so the board can name its own baseline without a
  * second derivation of which one it used -- `comparedTo` is null on exactly the
@@ -1044,6 +1068,7 @@ export async function getPlayers(
         AND ($2 = 'international' OR EXISTS (
               SELECT 1 FROM roster_memberships rm
               WHERE rm.player_id = prh.player_id AND rm.end_date IS NULL
+                AND ${teamStillPlaying('rm.team_id')}
             ) OR EXISTS (
               SELECT 1 FROM game_lineups gl
               JOIN games g ON g.id = gl.game_id
@@ -1077,6 +1102,7 @@ export async function getPlayers(
       JOIN leagues l4 ON l4.id = tlm.league_id
       WHERE rm.player_id = b.player_id AND rm.end_date IS NULL
         AND ($2 = 'international' OR tlm.league_id = b.league_id)
+        AND ${teamStillPlaying('t.id')}
       LIMIT 1
     ) rt ON true
     LEFT JOIN LATERAL (
@@ -1105,6 +1131,7 @@ export async function getPlayers(
       JOIN team_league_memberships tlm2 ON tlm2.team_id = t2.id AND tlm2.end_date IS NULL
       JOIN leagues l3 ON l3.id = tlm2.league_id
       WHERE rt.team_id IS NULL AND rm2.player_id = b.player_id AND rm2.end_date IS NULL
+        AND ${teamStillPlaying('t2.id')}
       LIMIT 1
     ) away ON true
     -- The team they last played for on this board, for the note. Past tense with
