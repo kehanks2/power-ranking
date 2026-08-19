@@ -246,6 +246,48 @@ Two consequences worth knowing:
   reported as player movement — the 0.5 → 0.3 step "moved" 42 of 57 LCK players
   before it existed.
 
+### Transfer carry-over — the test held-out accuracy cannot do
+
+Held-out accuracy rises monotonically to a win weight of 1.0, so it cannot pick
+the parameter. A transfer can: split the record at a cutoff, rate each player
+either side, and see how much of the rating survives a change of team.
+
+The diagnostic is not the movers' correlation alone — a noisy metric scores
+badly for everyone — but the GAP against players who STAYED. A metric that is
+team strength restated should carry well for a stayer and badly for a mover; a
+metric that is individual should carry about equally.
+
+Five quarterly cutoffs, 580 mover and 779 stayer observations, minimum 10 games
+each side (`manualTransferCarryover.ts`):
+
+| config | stayers | movers | gap |
+|---|---|---|---|
+| winRate only | 0.576 | 0.272 | **0.304** |
+| win 0.60 | 0.577 | 0.294 | 0.283 |
+| **shipped (win 0.40)** | **0.557** | **0.313** | **0.245** |
+| dpm 0.20 | 0.569 | **0.349** | 0.221 |
+| win 0.30 | 0.540 | 0.323 | 0.217 |
+| no winRate | 0.469 | 0.344 | **0.125** |
+
+`winRate only` — where the rating IS the team's record — has the widest gap and
+the worst carry-over of any config, which is what makes the diagnostic
+trustworthy: it fails hardest exactly where it should. The gap then falls
+monotonically with the win weight, which is the objective evidence that a lower
+weight is better on its merits rather than as a judgement call about `teamCorr`.
+
+**But `no winRate` reaches the smallest gap by getting worse at everything.** Its
+stayer correlation collapses from 0.557 to 0.469; it narrows the gap by losing
+signal, not by gaining portability. `dpm 0.20` does the opposite — it has the
+highest mover carry-over of any config (0.349, above even dropping `winRate`)
+while holding stayers roughly flat (0.569). That is the shape a genuinely more
+individual metric should have, and it agrees with the DPM sweep below, which
+found the same thing from an unrelated direction.
+
+Read with three caveats: carry-over is weak in absolute terms for every config
+(0.27-0.35), so a rating predicts post-transfer form only loosely; players recur
+across cutoffs, so the observations are not independent and these are indicative
+rather than a significance test; and quarterly cutoffs make "moved" approximate.
+
 ### DPM — measured, not shipped
 
 Damage per minute is derivable with no re-ingest (`damage_to_champions` and
