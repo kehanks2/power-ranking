@@ -19,5 +19,8 @@ export default defineConfig({
     // destroys real ratings when this points at dev, which is how an ingested
     // generation of player_ratings_history was lost.
     env: { DATABASE_URL: testDatabaseUrl() },
+
+    // Starts in-process PGlite unless TEST_DATABASE_URL opts out.
+    globalSetup: ['../pgliteGlobalSetup.mjs'],
   },
 });

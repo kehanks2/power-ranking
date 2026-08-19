@@ -9,10 +9,13 @@ export default defineConfig({
     // is how a real ingested generation of player_ratings_history was lost.
     env: { DATABASE_URL: testDatabaseUrl() },
 
-    // The test database is hosted, so every query pays a network round trip
-    // where a local socket paid none. Tests walking a board team by team run
-    // ~12 requests deep and pass 5s on latency alone, having nothing to do
-    // with what they assert.
+    // Starts in-process PGlite unless TEST_DATABASE_URL opts out.
+    globalSetup: ['../pgliteGlobalSetup.mjs'],
+
+    // Generous for the opt-out path, where the database is hosted and every
+    // query pays a network round trip: tests walking a board team by team run
+    // ~12 requests deep and pass 5s on latency alone. Against PGlite the same
+    // tests pay nothing, so this only ever costs a slow failure.
     testTimeout: 30_000,
   },
 });

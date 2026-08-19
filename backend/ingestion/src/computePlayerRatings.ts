@@ -278,11 +278,17 @@ function applyTransferAnchors(ratings: PlayerGroupRating[]): void {
   }
 }
 
-/** One row per player-game, with everything the composite needs. */
 /**
+ * One row per player-game, with everything the composite needs.
+ *
  * `asOf` defines "now" for the recency weighting, and excludes everything played
  * after it. Passing a past date reconstructs the board as it stood then, which
  * is what backfilled caret baselines are built from.
+ *
+ * The computed columns are ROUNDed for the WIRE, not the model: an unrounded
+ * numeric division serialises as 20+ digits, and this returns ~59k rows per
+ * call, three calls per recompute. The kept precision is orders of magnitude
+ * below anything the composite resolves.
  */
 export async function fetchPlayerGameRows(
   pool: Pool,
@@ -296,17 +302,17 @@ export async function fetchPlayerGameRows(
       pgp.player_id,
       pgp.role,
       tlm.league_id,
-      (pgp.kills + pgp.assists)::numeric / GREATEST(pgp.deaths, 1) AS kda,
-      pgp.gold_share,
-      pgp.damage_share,
-      pgp.kill_participation,
-      pgp.creep_score * 60.0 / NULLIF(g.gamelength_seconds, 0) AS cs_min,
+      ROUND((pgp.kills + pgp.assists)::numeric / GREATEST(pgp.deaths, 1), 4) AS kda,
+      ROUND(pgp.gold_share, 4) AS gold_share,
+      ROUND(pgp.damage_share, 4) AS damage_share,
+      ROUND(pgp.kill_participation, 4) AS kill_participation,
+      ROUND(pgp.creep_score * 60.0 / NULLIF(g.gamelength_seconds, 0), 3) AS cs_min,
       pgp.gold_diff::numeric AS gold_diff,
-      (CASE WHEN pgp.team_id = g.team1_id THEN g.team1_neutral_objectives ELSE g.team2_neutral_objectives END)::numeric
-        / NULLIF(g.team1_neutral_objectives + g.team2_neutral_objectives, 0) AS obj_control,
-      pgp.damage_to_champions * 60.0 / NULLIF(g.gamelength_seconds, 0) AS dpm,
+      ROUND((CASE WHEN pgp.team_id = g.team1_id THEN g.team1_neutral_objectives ELSE g.team2_neutral_objectives END)::numeric
+        / NULLIF(g.team1_neutral_objectives + g.team2_neutral_objectives, 0), 4) AS obj_control,
+      ROUND(pgp.damage_to_champions * 60.0 / NULLIF(g.gamelength_seconds, 0), 2) AS dpm,
       (g.winner_team_id = pgp.team_id) AS won,
-      EXTRACT(EPOCH FROM ($1::timestamptz - g.datetime_utc)) / 86400 AS age_days
+      ROUND(EXTRACT(EPOCH FROM ($1::timestamptz - g.datetime_utc)) / 86400, 4) AS age_days
     FROM player_game_performance pgp
     JOIN games g ON g.id = pgp.game_id
     JOIN team_league_memberships tlm ON tlm.team_id = pgp.team_id AND tlm.end_date IS NULL
@@ -381,17 +387,17 @@ export async function computeInternationalPlayerRatings(
       pgp.player_id,
       pgp.role,
       0 AS league_id,
-      (pgp.kills + pgp.assists)::numeric / GREATEST(pgp.deaths, 1) AS kda,
-      pgp.gold_share,
-      pgp.damage_share,
-      pgp.kill_participation,
-      pgp.creep_score * 60.0 / NULLIF(g.gamelength_seconds, 0) AS cs_min,
+      ROUND((pgp.kills + pgp.assists)::numeric / GREATEST(pgp.deaths, 1), 4) AS kda,
+      ROUND(pgp.gold_share, 4) AS gold_share,
+      ROUND(pgp.damage_share, 4) AS damage_share,
+      ROUND(pgp.kill_participation, 4) AS kill_participation,
+      ROUND(pgp.creep_score * 60.0 / NULLIF(g.gamelength_seconds, 0), 3) AS cs_min,
       pgp.gold_diff::numeric AS gold_diff,
-      (CASE WHEN pgp.team_id = g.team1_id THEN g.team1_neutral_objectives ELSE g.team2_neutral_objectives END)::numeric
-        / NULLIF(g.team1_neutral_objectives + g.team2_neutral_objectives, 0) AS obj_control,
-      pgp.damage_to_champions * 60.0 / NULLIF(g.gamelength_seconds, 0) AS dpm,
+      ROUND((CASE WHEN pgp.team_id = g.team1_id THEN g.team1_neutral_objectives ELSE g.team2_neutral_objectives END)::numeric
+        / NULLIF(g.team1_neutral_objectives + g.team2_neutral_objectives, 0), 4) AS obj_control,
+      ROUND(pgp.damage_to_champions * 60.0 / NULLIF(g.gamelength_seconds, 0), 2) AS dpm,
       (g.winner_team_id = pgp.team_id) AS won,
-      EXTRACT(EPOCH FROM ($1::timestamptz - g.datetime_utc)) / 86400 AS age_days
+      ROUND(EXTRACT(EPOCH FROM ($1::timestamptz - g.datetime_utc)) / 86400, 4) AS age_days
     FROM player_game_performance pgp
     JOIN games g ON g.id = pgp.game_id
     JOIN series s ON s.id = g.series_id
