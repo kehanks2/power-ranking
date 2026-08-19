@@ -246,6 +246,47 @@ Two consequences worth knowing:
   reported as player movement — the 0.5 → 0.3 step "moved" 42 of 57 LCK players
   before it existed.
 
+### DPM — measured, not shipped
+
+Damage per minute is derivable with no re-ingest (`damage_to_champions` and
+`games.gamelength_seconds`), and covers 99.93% of rows (59,146 of 59,186, mean
+663). Its correlation with winning is **+0.055 to +0.096 by role** — near zero
+beside `goldDiff`'s 0.79-0.92, which is what makes it interesting. (An earlier
+note put it at -0.21 to -0.01; re-measured, the sign is positive and the
+magnitude smaller.)
+
+Swept 2026-08-18, taking DPM's share out of the box score and leaving `winRate`
+untouched, so it tests DPM against the other stats rather than changing outcome
+exposure at the same time:
+
+| config | teamCorr | held-out AUC | Faker | Chovy | Knight |
+|---|---|---|---|---|---|
+| shipped | 0.652 | 0.6778 | 156 | 4 | 5 |
+| dpm 0.10 | 0.615 | 0.6769 | 150 | 3 | 5 |
+| dpm 0.20 | 0.542 | 0.6754 | 142 | 3 | 4 |
+| dpm 0.20, win 0.30 | 0.487 | 0.6709 | 376 | 6 | 8 |
+| dpm replaces goldDiff | 0.575 | 0.6713 | 266 | 12 | 13 |
+
+**DPM decontaminates far more cheaply than cutting the win weight.** Reaching
+teamCorr ~0.61 by win weight costs AUC 0.6740 and drops Faker to 213; DPM
+reaches 0.615 at AUC 0.6769 with Faker at 150. At 0.20 it takes teamCorr to
+0.542 — below anything the win weight can reach without collapsing — for 0.0024
+of AUC, which the paired bootstrap above puts inside sampling noise.
+
+The face-validity anchors *improve* rather than degrade (Faker 156 → 142, Chovy
+4 → 3, Knight 5 → 4), which is the opposite of what happens when teamCorr is cut
+by deleting win-correlated terms (Faker 550, 591, 601). That is the evidence DPM
+is individual signal rather than noise: it is the only lever found so far that
+lowers team correlation without making the board less recognisable.
+
+Two negative results worth keeping: stacking DPM on a lower win weight
+overshoots (Faker 376), and DPM is not a substitute for `goldDiff` (Faker 266,
+Chovy 12) — it should come out of the box score as a whole.
+
+Not shipped. Adopting it changes `PLAYER_RATING_METHOD_VERSION` and moves the
+team boards through the roster-decay prior and international seeds, so it is a
+decision rather than a sweep result.
+
 ### Margin of victory — deliberately disabled
 
 `MARGIN_SCALE` is set to 1e9, which makes the MOV weight ~1 for every game.

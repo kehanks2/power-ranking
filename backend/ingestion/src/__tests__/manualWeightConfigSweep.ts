@@ -26,6 +26,29 @@ const NOTABLE = ['Faker', 'Chovy', 'Zeus', 'Keria', 'Oner', 'Ruler', 'Caps', 'Kn
 
 type Weights = ReturnType<typeof componentWeightsForRole>;
 
+/**
+ * Gives `dpm` a share and rescales the existing box-score terms to fit, leaving
+ * winRate untouched -- the point is to test DPM against the other stats, not to
+ * change outcome exposure at the same time.
+ */
+function withDpm(base: Weights, share: number): Weights {
+  const win = base.winRate ?? 0;
+  const boxTotal = 1 - win;
+  if (boxTotal <= 0 || share >= boxTotal) return base;
+  const box = without({ ...base, winRate: undefined } as Weights, ['winRate']);
+  return { ...rescaleTo(box, boxTotal - share, { dpm: share }), winRate: win };
+}
+
+/** Rescales `weights` to sum to `total`, then merges `extra` in unscaled. */
+function rescaleTo(weights: Weights, total: number, extra: Weights): Weights {
+  const sum = Object.values(weights).reduce<number>((acc, w) => acc + (w ?? 0), 0);
+  const out: Weights = {};
+  for (const [component, weight] of Object.entries(weights)) {
+    out[component as keyof Weights] = sum === 0 ? 0 : ((weight ?? 0) / sum) * total;
+  }
+  return { ...out, ...extra };
+}
+
 /** Drops the named components and rescales what is left back to 1. */
 function without(base: Weights, drop: (keyof Weights)[]): Weights {
   const kept = Object.entries(base).filter(([component]) => !drop.includes(component as keyof Weights));
@@ -50,6 +73,26 @@ const CONFIGS: { label: string; weightsFor: (role: string) => Weights }[] = [
   {
     label: 'no winRate/goldDiff/kda',
     weightsFor: (r) => without(componentWeightsForRole(r), ['winRate', 'goldDiff', 'kda']),
+  },
+  // DPM measures ~0 correlation with winning (-0.21 to -0.01 by role), so it is
+  // nearly pure non-outcome signal -- either what a less team-dependent board
+  // wants, or noise. It has to take weight from somewhere, so test it both as an
+  // addition to the box score and as a replacement for the terms that carry the
+  // most outcome exposure.
+  { label: 'dpm 0.10 (from box score)', weightsFor: (r) => withDpm(componentWeightsForRole(r), 0.1) },
+  { label: 'dpm 0.20 (from box score)', weightsFor: (r) => withDpm(componentWeightsForRole(r), 0.2) },
+  {
+    label: 'dpm 0.20, win 0.30',
+    weightsFor: (r) => withDpm(componentWeightsForRoleAtWinWeight(r, 0.3), 0.2),
+  },
+  {
+    label: 'dpm replaces goldDiff',
+    weightsFor: (r) => {
+      const base = componentWeightsForRole(r);
+      const freed = base.goldDiff ?? 0;
+      const rest = without(base, ['goldDiff']);
+      return freed === 0 ? rest : rescaleTo(rest, 1 - freed, { dpm: freed });
+    },
   },
 ];
 

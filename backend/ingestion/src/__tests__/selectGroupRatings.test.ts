@@ -23,6 +23,7 @@ const winner = {
   csMin: 5,
   goldDiff: -1000,
   objControl: 0.1,
+  dpm: null,
   gamesPlayed: 100,
   effectiveGames: 100,
 };

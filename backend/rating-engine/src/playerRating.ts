@@ -111,7 +111,7 @@ export function transferAnchor(
 
 export type PlayerComponent =
   | 'kda' | 'goldShare' | 'damageShare' | 'killParticipation'
-  | 'csMin' | 'goldDiff' | 'objControl' | 'winRate';
+  | 'csMin' | 'goldDiff' | 'objControl' | 'dpm' | 'winRate';
 
 // Weight on "did your team win," the box-score stats splitting the rest.
 //

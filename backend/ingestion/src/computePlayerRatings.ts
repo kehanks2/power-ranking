@@ -42,6 +42,7 @@ interface PlayerGroupStats {
   csMin: number | null;
   goldDiff: number | null;
   objControl: number | null;
+  dpm: number | null;
   gamesPlayed: number;
   /** Recency-weighted game count -- what shrinkage keys off. */
   effectiveGames: number;
@@ -58,6 +59,7 @@ export interface PlayerGameRow {
   cs_min: string | null;
   gold_diff: string | null;
   obj_control: string | null;
+  dpm: string | null;
   won: boolean;
   age_days: string;
 }
@@ -84,6 +86,8 @@ export function buildPlayerGroupStats(
     goldDiffW: number[];
     objControl: number[];
     objControlW: number[];
+    dpm: number[];
+    dpmW: number[];
   }
 
   const accumulators = new Map<string, Accumulator>();
@@ -97,6 +101,7 @@ export function buildPlayerGroupStats(
         leagueId: row.league_id,
         kda: [], goldShare: [], damageShare: [], killParticipation: [], won: [], weights: [],
         csMin: [], csMinW: [], goldDiff: [], goldDiffW: [], objControl: [], objControlW: [],
+        dpm: [], dpmW: [],
       };
       accumulators.set(key, acc);
     }
@@ -111,6 +116,7 @@ export function buildPlayerGroupStats(
     if (row.cs_min !== null) { acc.csMin.push(Number(row.cs_min)); acc.csMinW.push(w); }
     if (row.gold_diff !== null) { acc.goldDiff.push(Number(row.gold_diff)); acc.goldDiffW.push(w); }
     if (row.obj_control !== null) { acc.objControl.push(Number(row.obj_control)); acc.objControlW.push(w); }
+    if (row.dpm !== null) { acc.dpm.push(Number(row.dpm)); acc.dpmW.push(w); }
   }
 
   const meanOrNull = (values: number[], weights: number[]): number | null =>
@@ -128,6 +134,7 @@ export function buildPlayerGroupStats(
     csMin: meanOrNull(acc.csMin, acc.csMinW),
     goldDiff: meanOrNull(acc.goldDiff, acc.goldDiffW),
     objControl: meanOrNull(acc.objControl, acc.objControlW),
+    dpm: meanOrNull(acc.dpm, acc.dpmW),
     gamesPlayed: acc.weights.length,
     effectiveGames: acc.weights.reduce((sum, w) => sum + w, 0),
   }));
@@ -180,6 +187,7 @@ export function selectGroupRatings(
     const csPeers = peers.map((p) => p.csMin).filter((v): v is number => v !== null);
     const goldDiffPeers = peers.map((p) => p.goldDiff).filter((v): v is number => v !== null);
     const objPeers = peers.map((p) => p.objControl).filter((v): v is number => v !== null);
+    const dpmPeers = peers.map((p) => p.dpm).filter((v): v is number => v !== null);
     const pct = (value: number | null, peerValues: number[]) => (value === null ? NEUTRAL_SCORE : percentile(value, peerValues));
 
     for (const player of peers) {
@@ -193,6 +201,7 @@ export function selectGroupRatings(
           csMin: pct(player.csMin, csPeers),
           goldDiff: pct(player.goldDiff, goldDiffPeers),
           objControl: pct(player.objControl, objPeers),
+          dpm: pct(player.dpm, dpmPeers),
         },
         weightsFor(player.role),
       );
@@ -292,6 +301,7 @@ export async function fetchPlayerGameRows(
       pgp.gold_diff::numeric AS gold_diff,
       (CASE WHEN pgp.team_id = g.team1_id THEN g.team1_neutral_objectives ELSE g.team2_neutral_objectives END)::numeric
         / NULLIF(g.team1_neutral_objectives + g.team2_neutral_objectives, 0) AS obj_control,
+      pgp.damage_to_champions * 60.0 / NULLIF(g.gamelength_seconds, 0) AS dpm,
       (g.winner_team_id = pgp.team_id) AS won,
       EXTRACT(EPOCH FROM ($1::timestamptz - g.datetime_utc)) / 86400 AS age_days
     FROM player_game_performance pgp
@@ -376,6 +386,7 @@ export async function computeInternationalPlayerRatings(
       pgp.gold_diff::numeric AS gold_diff,
       (CASE WHEN pgp.team_id = g.team1_id THEN g.team1_neutral_objectives ELSE g.team2_neutral_objectives END)::numeric
         / NULLIF(g.team1_neutral_objectives + g.team2_neutral_objectives, 0) AS obj_control,
+      pgp.damage_to_champions * 60.0 / NULLIF(g.gamelength_seconds, 0) AS dpm,
       (g.winner_team_id = pgp.team_id) AS won,
       EXTRACT(EPOCH FROM ($1::timestamptz - g.datetime_utc)) / 86400 AS age_days
     FROM player_game_performance pgp
