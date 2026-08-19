@@ -61,10 +61,15 @@ interface StatRow extends PlayerGameRow {
 }
 
 const stats = await pool.query<StatRow>(`
-  WITH current_league AS (
-    SELECT team_id, league_id FROM team_league_memberships WHERE end_date IS NULL
+  -- The league a game was PLAYED in, from its tournament, never from the team's
+  -- membership row: membership is current-state, so reading it inside a
+  -- walk-forward fold is future information. International events have no
+  -- regional league of their own, so those fall back to the team's -- the one
+  -- place no per-game answer exists.
+  WITH team_league AS (
+    SELECT team_id, league_id FROM team_league_memberships
   )
-  SELECT pgp.player_id, pgp.role, cl.league_id,
+  SELECT pgp.player_id, pgp.role, COALESCE(t.canonical_league_id, cl.league_id) AS league_id,
     (pgp.kills + pgp.assists)::numeric / GREATEST(pgp.deaths, 1) AS kda,
     pgp.gold_share, pgp.damage_share, pgp.kill_participation,
     pgp.creep_score * 60.0 / NULLIF(g.gamelength_seconds, 0) AS cs_min,
@@ -76,7 +81,9 @@ const stats = await pool.query<StatRow>(`
     g.datetime_utc::text AS datetime_utc
   FROM player_game_performance pgp
   JOIN games g ON g.id = pgp.game_id
-  JOIN current_league cl ON cl.team_id = pgp.team_id
+  JOIN series sr ON sr.id = g.series_id
+  JOIN tournaments t ON t.id = sr.tournament_id
+  JOIN team_league cl ON cl.team_id = pgp.team_id
 `);
 
 const games = await pool.query<{
