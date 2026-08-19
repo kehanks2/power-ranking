@@ -1052,28 +1052,47 @@ export async function getPlayers(
         AND prh.rating_window = $3
         AND ($4::timestamptz IS NULL OR prh.computed_at = $4::timestamptz)
         AND ($2 = 'international' OR $1::text IS NULL OR l2.slug = $1)
-        -- Retired players are off the regional boards: no roster row anywhere
-        -- AND nothing played in 180 days. The all-time board otherwise carried
-        -- everyone who ever appeared -- Peanut, Bwipo, BeryL -- 270 unrostered
-        -- players, of whom 217 clear this line. An off-season runs two to three
-        -- months, so 180 days cannot catch anyone between splits.
+        -- A regional board answers "who is in this league NOW", so membership is
+        -- current standing in THIS league, not an all-time appearance: rostered
+        -- to a team still playing here, or having played here since the split
+        -- began. Everything unwanted falls out of that one condition -- a player
+        -- who moved region drops off the old board rather than confusing a
+        -- comparison of the players actually in it, a retired player drops off
+        -- once his last split ends, and rows that survived only on 'year'/'all'
+        -- with no team stop appearing at all.
         --
-        -- Nothing is stored, so this is self-correcting: the check runs against
-        -- game data on every read, and a player who returns reappears on their
-        -- next game with no intervention.
+        -- A substitute is deliberately kept for the whole split: Painter's three
+        -- games for T1 are real LCK games, and dropping him the moment he is
+        -- benched would hide them. He leaves when the split does, unless he
+        -- plays again or joins a tracked team.
         --
-        -- Measured from the newest game we hold, not the wall clock: on the
-        -- clock a stalled ingest would start retiring active players. The
-        -- international board keeps its own three-year window instead.
+        -- game_lineups, not player_game_performance: a game whose stat lines
+        -- Liquipedia never published still proves he played.
+        --
+        -- Nothing is stored, so this is self-correcting: it runs against game
+        -- data on every read, and a returning player reappears on his next game.
+        -- Split start and team activity are both measured from the newest game
+        -- HELD, not the wall clock -- on the clock a stalled ingest would start
+        -- retiring active players, and a split row lands up to 21 days before
+        -- its first game because the pull reaches ahead.
         AND ($2 = 'international' OR EXISTS (
               SELECT 1 FROM roster_memberships rm
+              JOIN team_league_memberships tlm ON tlm.team_id = rm.team_id
               WHERE rm.player_id = prh.player_id AND rm.end_date IS NULL
+                AND tlm.league_id = prh.league_id
                 AND ${teamStillPlaying('rm.team_id')}
             ) OR EXISTS (
               SELECT 1 FROM game_lineups gl
               JOIN games g ON g.id = gl.game_id
+              JOIN series sb ON sb.id = g.series_id
+              JOIN tournaments tb ON tb.id = sb.tournament_id
               WHERE gl.player_id = prh.player_id
-                AND g.datetime_utc >= (SELECT max(datetime_utc) FROM games) - INTERVAL '180 days'
+                AND tb.canonical_league_id = prh.league_id
+                AND g.datetime_utc >= (
+                  SELECT max(ts.date_start) FROM tournaments ts
+                  WHERE ts.canonical_league_id = prh.league_id
+                    AND ts.date_start <= (SELECT max(datetime_utc)::date FROM games)
+                )
             ))
     )
     SELECT b.player_id AS id, p.handle,

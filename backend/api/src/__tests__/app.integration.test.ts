@@ -494,13 +494,18 @@ describe('read API (live Postgres)', () => {
     expect(year.size).toBeGreaterThan(split.size);
   });
 
-  it('never shows a team for a player who is not on that board league roster', async () => {
-    // kward's rule: a Team column is a claim about NOW. A player who left still
-    // belongs on the all-time board off their games, but must not be labelled
-    // with the team they used to play for.
+  it('carries only players currently in the league, and never labels them with another team', async () => {
+    // kward's rule: a regional board answers "who is in this league NOW", so a
+    // player who moved region leaves the old board entirely rather than
+    // lingering on it with a note -- ranking him against the players actually
+    // there was confusing and answered nothing.
+    //
+    // This asserted a departed player was PRESENT and merely unlabelled, which
+    // was the rule before that call. A substitute is still kept for the split
+    // his games are in, so the teamless rows below are current contributors and
+    // every one of them must be able to say when he last played.
     const res = await request(app).get('/players').query({ league: 'LCK', window: 'all' });
     let teamless = 0;
-    let moved = 0;
     for (const p of res.body) {
       if (p.teamName) {
         // A rostered player has nowhere else to be and no past to report.
@@ -509,17 +514,13 @@ describe('read API (live Postgres)', () => {
         continue;
       }
       teamless += 1;
-      if (p.movedToTeam) {
-        moved += 1;
-        expect(p.movedToLeague).not.toBeNull();
-      }
-      // Either way the row says something about them rather than nothing.
-      expect(p.movedToTeam !== null || p.lastTeamName !== null).toBe(true);
-      if (p.lastTeamName) expect(p.lastPlayedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      if (p.movedToTeam) expect(p.movedToLeague).not.toBeNull();
+      // He is here because he played here this split, so the row can always name
+      // the side he played for and the day he did it.
+      expect(p.lastTeamName).not.toBeNull();
+      expect(p.lastPlayedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
     expect(teamless).toBeGreaterThan(0);
-    // Transfers are the case that makes "no team" a lie, so one must be present.
-    expect(moved).toBeGreaterThan(0);
   });
 
   it('GET /players/:id places against exactly the same-role rows on that board', async () => {
