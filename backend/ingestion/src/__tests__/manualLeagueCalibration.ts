@@ -33,11 +33,10 @@ const MODES: { label: string; metaWeight: number; factor: (d: number | null, g: 
     factor: (d, g) => internationalParticipationFactor(d) * internationalEvidenceShrink(g),
   },
 ];
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 const META_WEIGHT = 0.8;
 
-const pool = createPool(DATABASE_URL);
+const pool = createPool();
 const { teamIds, leagueIds, games, decayEvents } = await loadReplayData(pool);
 
 // Cross-league games only happen at internationals here, so

@@ -15,7 +15,6 @@ import {
   type ReplayResult,
 } from '@power-ranking/rating-engine';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const GLICKO2_SCALE = 173.7178;
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 
@@ -117,7 +116,7 @@ function evaluateAccuracy(
 }
 
 async function main() {
-  const pool = createPool(DATABASE_URL);
+  const pool = createPool();
 
   console.log('Loading real replay data (games + roster + seasonal decay events)...');
   const { teamIds, leagueIds, games, decayEvents } = await loadReplayData(pool);

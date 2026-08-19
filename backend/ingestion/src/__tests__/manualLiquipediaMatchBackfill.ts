@@ -2,10 +2,8 @@
 import { createPool } from '../db.js';
 import { ingestLiquipediaMatches } from '../liquipediaMatchIngest.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
-
 async function main() {
-  const pool = createPool(DATABASE_URL);
+  const pool = createPool();
   // LPL Split 3 games from 2026-06-14 (where the OE CSV stopped) onward.
   const result = await ingestLiquipediaMatches(pool, '[[series::LoL Pro League]] AND [[date::>2026-06-14]]');
   console.log('Result:', JSON.stringify(result, null, 2));

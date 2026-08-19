@@ -18,7 +18,6 @@
 import { createPool } from '../db.js';
 import { buildPlayerGroupStats, selectGroupRatings, type PlayerGameRow } from '../computePlayerRatings.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const WIN_WEIGHTS = [0, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.85, 1];
 const CUTOFFS = ['2026-03-01', '2026-04-01', '2026-05-01', '2026-06-01', '2026-07-01', '2026-08-01'];
 const MIN_RATED_PER_TEAM = 4;
@@ -36,7 +35,7 @@ interface Game {
   won1: number;
 }
 
-const pool = createPool(DATABASE_URL);
+const pool = createPool();
 
 const stats = await pool.query<StatRow>(`
   -- The league a game was PLAYED in, from its tournament, never from the team's

@@ -8,8 +8,6 @@ import pg from 'pg';
 import { createPool } from '../db.js';
 import { computeRatings } from '../computeRatings.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
-
 describe('computeRatings (live Postgres, synthetic data)', () => {
   let pool: pg.Pool;
   let teamAId: number;
@@ -17,7 +15,7 @@ describe('computeRatings (live Postgres, synthetic data)', () => {
   let lcsLeagueId: number;
 
   beforeAll(async () => {
-    pool = createPool(DATABASE_URL);
+    pool = createPool();
 
     const league = await pool.query<{ id: number }>(`SELECT id FROM leagues WHERE slug = 'LCS'`);
     lcsLeagueId = league.rows[0].id;

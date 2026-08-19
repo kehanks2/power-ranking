@@ -9,7 +9,6 @@ import { createPool } from '../db.js';
 import { loadReplayData } from '../replayData.js';
 import { runReplay, combineContextualAndMeta, E, type ReplayGame } from '@power-ranking/rating-engine';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const GLICKO2_SCALE = 173.7178;
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 const META_WEIGHT = 0.65;
@@ -39,7 +38,7 @@ function snapshotBefore(snaps: { asOfDate: string; mu: number; phi: number }[] |
 }
 
 async function main() {
-  const pool = createPool(DATABASE_URL);
+  const pool = createPool();
   const { teamIds, leagueIds, games, decayEvents } = await loadReplayData(pool);
 
   // Same ORDER BY as loadReplayData so index i lines up with games[i].

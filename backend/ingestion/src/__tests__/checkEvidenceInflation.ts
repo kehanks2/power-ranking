@@ -6,7 +6,6 @@
  */
 import { createPool } from '../db.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const BACKTEST_MARGIN_SCALE = 15; // what manualBacktest.ts sweeps with
 const MOV_CAP = 1.5;
 
@@ -17,7 +16,7 @@ function movWeight(goldDiff: number, seconds: number, marginScale: number): numb
 }
 
 async function main() {
-  const pool = createPool(DATABASE_URL);
+  const pool = createPool();
 
   const rows = await pool.query<{ team1_gold: number | null; team2_gold: number | null; gamelength_seconds: number | null }>(
     `SELECT team1_gold, team2_gold, gamelength_seconds FROM games`,

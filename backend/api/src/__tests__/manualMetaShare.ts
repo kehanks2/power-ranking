@@ -7,11 +7,10 @@ import {
   DEFAULT_VOLATILITY,
 } from '@power-ranking/rating-engine';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 const META_WEIGHT = 0.8;
 
-const pool = createPool(DATABASE_URL);
+const pool = createPool();
 const result = await pool.query(`
   WITH lg AS (
     SELECT team_id, MAX(datetime_utc) AS last_at FROM (

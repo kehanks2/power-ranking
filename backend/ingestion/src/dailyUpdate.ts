@@ -35,7 +35,6 @@ import { computeRatings } from './computeRatings.js';
 import { refreshStatlessGames } from './refreshStatlessGames.js';
 import { computeAllPlayerRatingWindows, computeInternationalPlayerRatings } from './computePlayerRatings.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const ALL_SERIES = [...Object.keys(REGIONAL_SERIES_TO_LEAGUE_SLUG), AMERICAS_SERIES, ...INTERNATIONAL_SERIES];
 const FORWARD_DAYS = 21;
 const MAX_LOOKBACK_DAYS = 14;
@@ -70,7 +69,7 @@ export function resolvePullStart(frontier: string, oldestPending: string | null)
 }
 
 async function main() {
-  const pool = createPool(DATABASE_URL);
+  const pool = createPool();
   // UTC throughout: Liquipedia dates are UTC, and building this from a local
   // date reports the wrong day west of Greenwich.
   const cutoff = new Date(Date.now() + FORWARD_DAYS * 86_400_000).toISOString().slice(0, 10);

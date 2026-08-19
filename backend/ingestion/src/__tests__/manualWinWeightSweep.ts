@@ -6,12 +6,11 @@
 import { createPool } from '../db.js';
 import { fetchPlayerGameRows, buildPlayerGroupStats, selectGroupRatings } from '../computePlayerRatings.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const WIN_WEIGHTS = [0, 0.3, 0.4, 0.5, 0.6, 0.7];
 const NOTABLE = ['Faker', 'Chovy', 'Zeus', 'Keria', 'Oner', 'Ruler', 'Caps', 'Knight', 'Tarzan', 'Peyz'];
 
 async function main() {
-  const pool = createPool(DATABASE_URL);
+  const pool = createPool();
 
   const rows = await fetchPlayerGameRows(pool);
   const groupStats = buildPlayerGroupStats(rows);

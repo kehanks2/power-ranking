@@ -13,8 +13,6 @@ import { upsertTeam, upsertPlayer, upsertGameLineup, upsertTournament, upsertSer
 import { loadReplayData } from '../replayData.js';
 import type { RosterDecayEvent } from '@power-ranking/rating-engine';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
-
 describe('loadReplayData roster-change decay events (live Postgres, synthetic data)', () => {
   let pool: pg.Pool;
   let teamId: number;
@@ -28,7 +26,7 @@ describe('loadReplayData roster-change decay events (live Postgres, synthetic da
   let newPlayerId: number;
 
   beforeAll(async () => {
-    pool = createPool(DATABASE_URL);
+    pool = createPool();
     const league = await pool.query<{ id: number }>(`SELECT id FROM leagues WHERE slug = 'LCS'`);
     lcsLeagueId = league.rows[0].id;
 

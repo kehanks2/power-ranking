@@ -12,8 +12,7 @@
 import { createPool } from '../db.js';
 import { resolveBoardAdvance, stageKind, STAGE_STATUS_SQL, type StageStatus } from '@power-ranking/shared';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
-const pool = createPool(DATABASE_URL);
+const pool = createPool();
 
 const { rows } = await pool.query<{
   league_id: number;

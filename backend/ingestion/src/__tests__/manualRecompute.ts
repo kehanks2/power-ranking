@@ -8,10 +8,8 @@ import { createPool } from '../db.js';
 import { computeRatings } from '../computeRatings.js';
 import { computeAllPlayerRatingWindows, computeInternationalPlayerRatings } from '../computePlayerRatings.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
-
 async function main() {
-  const pool = createPool(DATABASE_URL);
+  const pool = createPool();
 
   // All three regional windows: all-time, this calendar year, this split.
   console.log('Computing player ratings (regional, all windows)...');

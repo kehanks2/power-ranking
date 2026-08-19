@@ -20,7 +20,6 @@ import {
   AMERICAS_SERIES,
 } from '../liquipediaMatchIngest.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const [endDate, startArg] = process.argv.slice(2);
 
 if (!endDate || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
@@ -31,7 +30,7 @@ if (!endDate || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
 const ALL_SERIES = [...Object.keys(REGIONAL_SERIES_TO_LEAGUE_SLUG), AMERICAS_SERIES, ...INTERNATIONAL_SERIES];
 
 async function main() {
-  const pool = createPool(DATABASE_URL);
+  const pool = createPool();
   const completed: string[] = [];
 
   const frontier = await pool.query<{ day: string | null }>(

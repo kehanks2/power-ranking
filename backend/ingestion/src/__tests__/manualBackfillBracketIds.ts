@@ -16,13 +16,12 @@ import {
   AMERICAS_SERIES,
 } from '../liquipediaMatchIngest.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const START = process.argv[2] ?? '2026-01-01';
 const END = process.argv[3] ?? new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
 const ALL_SERIES = [...Object.keys(REGIONAL_SERIES_TO_LEAGUE_SLUG), AMERICAS_SERIES, ...INTERNATIONAL_SERIES];
 const CHUNK = 500;
 
-const pool = createPool(DATABASE_URL);
+const pool = createPool();
 
 const byMatchId = new Map<string, { bracketId: string; section: string }>();
 for (const series of ALL_SERIES) {

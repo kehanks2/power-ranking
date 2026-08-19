@@ -11,14 +11,12 @@ import { DEFAULT_TRANSFER_CARRYOVER, NEUTRAL_SCORE } from '@power-ranking/rating
 import { createApp } from '../app.js';
 import { createPool } from '../db.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
-
 describe('read API (live Postgres)', () => {
   let pool: pg.Pool;
   let app: ReturnType<typeof createApp>;
 
   beforeAll(() => {
-    pool = createPool(DATABASE_URL);
+    pool = createPool();
     app = createApp(pool);
   });
 

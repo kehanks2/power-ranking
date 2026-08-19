@@ -20,11 +20,10 @@ import {
   type ReplayInput,
 } from '@power-ranking/rating-engine';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 const RELIEFS = [0, 0.3, 0.6, 0.8, 1.0];
 
-const pool = createPool(DATABASE_URL);
+const pool = createPool();
 const { teamIds, leagueIds, games, decayEvents } = await loadReplayData(pool);
 console.log(`${games.length} games, ${decayEvents.length} decay events\n`);
 

@@ -25,9 +25,9 @@ that were measured and rejected.
    TEST_DATABASE_URL=postgresql://... # a clone the suites wipe; must be named *_test
    LIQUIPEDIA_API_KEY=...
    ```
-   The hosted database is [Neon](https://neon.tech). `docker-compose.yml` is kept as an
-   offline fallback, but nothing routine needs it; `psql` and `pg_dump` come from a
-   native PostgreSQL install.
+   The database is [Neon](https://neon.tech); `psql` and `pg_dump` come from a native
+   PostgreSQL install. Both variables are required — nothing falls back to a local
+   database, so an unset `DATABASE_URL` fails immediately and says so.
 2. Apply schema + seed data (first time only, against an empty database):
    ```
    psql "$DATABASE_URL" -f db/migrations/0001_init.sql

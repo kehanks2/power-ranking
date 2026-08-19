@@ -20,7 +20,6 @@ import {
   componentWeightsForRoleAtWinWeight,
 } from '@power-ranking/rating-engine';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const CUTOFFS = ['2026-03-01', '2026-04-01', '2026-05-01', '2026-06-01', '2026-07-01', '2026-08-01'];
 const MIN_RATED_PER_TEAM = 4;
 const NOTABLE = ['Faker', 'Chovy', 'Zeus', 'Keria', 'Oner', 'Ruler', 'Caps', 'Knight', 'Peyz'];
@@ -54,7 +53,7 @@ const CONFIGS: { label: string; weightsFor: (role: string) => Weights }[] = [
   },
 ];
 
-const pool = createPool(DATABASE_URL);
+const pool = createPool();
 
 interface StatRow extends PlayerGameRow {
   datetime_utc: string;

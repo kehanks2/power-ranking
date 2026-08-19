@@ -7,10 +7,9 @@
  */
 import { createPool } from '../db.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const ELO_SCALE = 400 / Math.LN10; // logistic scale so ratings read as Elo points
 
-const pool = createPool(DATABASE_URL);
+const pool = createPool();
 const rows = await pool.query<{ lg1: string; lg2: string; lg1_won: boolean }>(`
   SELECT l1.slug AS lg1, l2.slug AS lg2, (g.winner_team_id = g.team1_id) AS lg1_won
   FROM games g

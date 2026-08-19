@@ -10,10 +10,8 @@
 import { createPool } from '../db.js';
 import { backfillPlayerGenerations } from '../backfillPlayerGenerations.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
-
 async function main() {
-  const pool = createPool(DATABASE_URL);
+  const pool = createPool();
   const started = Date.now();
 
   const result = await backfillPlayerGenerations(pool);

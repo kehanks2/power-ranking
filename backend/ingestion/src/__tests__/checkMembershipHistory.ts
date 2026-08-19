@@ -16,10 +16,8 @@
  */
 import { createPool } from '../db.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
-
 async function main() {
-  const pool = createPool(DATABASE_URL);
+  const pool = createPool();
 
   const shape = await pool.query<{ table: string; rows: string; closed: string; subjects: string; multi: string }>(`
     SELECT 'team_league_memberships' AS table,

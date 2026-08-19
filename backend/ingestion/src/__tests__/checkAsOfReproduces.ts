@@ -15,8 +15,6 @@ import { createPool } from '../db.js';
 import { DEFAULT_WIN_WEIGHT } from '@power-ranking/rating-engine';
 import { buildPlayerGroupStats, fetchPlayerGameRows, selectGroupRatings } from '../computePlayerRatings.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
-
 interface StoredRow {
   playerId: number;
   leagueId: number;
@@ -26,7 +24,7 @@ interface StoredRow {
 }
 
 async function main() {
-  const pool = createPool(DATABASE_URL);
+  const pool = createPool();
 
   const generation = await pool.query<{ computedAt: Date; frontier: string; rows: string }>(
     `SELECT computed_at AS "computedAt", data_frontier::text AS frontier, count(*)::text AS rows

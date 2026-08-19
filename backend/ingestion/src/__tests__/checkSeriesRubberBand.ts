@@ -7,8 +7,6 @@
  */
 import { createPool } from '../db.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
-
 interface GameRow {
   series_id: number;
   game_number: number;
@@ -29,7 +27,7 @@ function report(label: string, wins: number, n: number): void {
 }
 
 async function main() {
-  const pool = createPool(DATABASE_URL);
+  const pool = createPool();
   const rows = await pool.query<GameRow>(`
     SELECT g.series_id, g.game_number, g.team1_id, g.team2_id, g.winner_team_id,
            EXTRACT(YEAR FROM g.datetime_utc)::int AS yr

@@ -16,8 +16,6 @@ import pg from 'pg';
 import { createApp } from '../app.js';
 import { createPool } from '../db.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
-
 const SYNTHETIC_AT = new Date('2000-01-01T00:00:00Z');
 
 describe('rank-change carets across a model retune', () => {
@@ -55,7 +53,7 @@ describe('rank-change carets across a model retune', () => {
   };
 
   beforeAll(async () => {
-    pool = createPool(DATABASE_URL);
+    pool = createPool();
     app = createApp(pool);
     await removeSynthetic();
 

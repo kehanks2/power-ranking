@@ -19,7 +19,6 @@ import {
   type ReplayGame,
 } from '@power-ranking/rating-engine';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 // Override so a knob sweeps through this same evaluation, not a drifting copy.
 const RELIEF_OVERRIDE = process.argv.includes('--relief')
   ? Number(process.argv[process.argv.indexOf('--relief') + 1])
@@ -64,7 +63,7 @@ function snapshotBefore(snaps: { asOfDate: string; mu: number; phi: number }[] |
 }
 
 async function main() {
-  const pool = createPool(DATABASE_URL);
+  const pool = createPool();
   const { teamIds, leagueIds, games: allGames, decayEvents } = await loadReplayData(pool);
   const latest = allGames.reduce((max, g) => (g.datetimeUtc > max ? g.datetimeUtc : max), allGames[0].datetimeUtc);
   const windowStart =

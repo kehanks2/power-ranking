@@ -8,13 +8,12 @@ import { createPool } from '../db.js';
 import { loadReplayData } from '../replayData.js';
 import { runReplay, GLICKO2_SCALE, DEFAULT_VOLATILITY, type ReplayInput } from '@power-ranking/rating-engine';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 const MIN_INTL_GAMES = Number(process.env.MIN_G ?? 5);
 const ORDER_CONSERVATIVE = process.env.CONSERVATIVE !== '0';
 const HALF_LIVES = [Infinity, 730, 550, 365, 180];
 
-const pool = createPool(DATABASE_URL);
+const pool = createPool();
 const { teamIds, leagueIds, games, decayEvents } = await loadReplayData(pool);
 
 const meta = await pool.query<{ id: string; name: string; slug: string; in_split: boolean }>(`

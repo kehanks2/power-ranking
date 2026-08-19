@@ -1,22 +1,19 @@
 /**
- * Integration test against a real Postgres instance (docker-compose.yml at
- * repo root). Uses synthetic data rather than a live Leaguepedia pull -- this
- * validates the idempotent-upsert SQL itself (plan's "Ingestion idempotency
- * test: run the pull twice ... assert no duplicate games/series rows"),
- * independent of network access to Leaguepedia.
+ * Integration test against `TEST_DATABASE_URL`. Synthetic data rather than a
+ * live Liquipedia pull, so it validates the idempotent-upsert SQL itself --
+ * run the pull twice, assert no duplicate games or series rows -- without
+ * needing network access.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
 import { createPool } from '../db.js';
 import { upsertTeam, upsertTournament, upsertSeries, upsertGame, ensureTeamLeagueMembership } from '../upsert.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
-
 describe.runIf(process.env.SKIP_DB_TESTS !== 'true')('upsert idempotency (live Postgres)', () => {
   let pool: pg.Pool;
 
   beforeAll(() => {
-    pool = createPool(DATABASE_URL);
+    pool = createPool();
   });
 
   afterAll(async () => {
@@ -118,7 +115,7 @@ describe.runIf(process.env.SKIP_DB_TESTS !== 'true')('ensureTeamLeagueMembership
     ).rows;
 
   beforeAll(async () => {
-    pool = createPool(DATABASE_URL);
+    pool = createPool();
     teamId = await upsertTeam(pool, { leaguepediaPage: '__Test_Mono_Team', slug: '__test-mono', name: 'Test Mono' });
     const leagues = await pool.query<{ id: number }>(`SELECT id FROM leagues ORDER BY id LIMIT 2`);
     [leagueA, leagueB] = leagues.rows.map((r) => r.id);

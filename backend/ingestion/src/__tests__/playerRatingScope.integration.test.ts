@@ -22,8 +22,6 @@ import {
 import { DEFAULT_WIN_WEIGHT } from '@power-ranking/rating-engine';
 import { RATING_WINDOWS, type RatingWindow } from '@power-ranking/shared';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
-
 // Rows are kept per recompute, so these invariants hold within a generation
 // rather than across the table. Join this to read only the newest one.
 const CURRENT_GENERATION = `
@@ -80,7 +78,7 @@ describe('player rating scopes (live Postgres)', () => {
   let pool: pg.Pool;
 
   beforeAll(() => {
-    pool = createPool(DATABASE_URL);
+    pool = createPool();
   });
 
   afterAll(async () => {

@@ -23,7 +23,6 @@ import {
   type ReplayInput,
 } from '@power-ranking/rating-engine';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://powerranking:powerranking@localhost:5433/powerranking';
 const PHI_INIT_MAX = 350 / GLICKO2_SCALE;
 /** Bradley-Terry fitted league spread, from manualLeagueSpreadCheck. The yardstick. */
 const FITTED_LEAGUE_SPREAD = 332;
@@ -46,7 +45,7 @@ function metaCredit(effectiveIntlGames: number, priorHalfLifeGames: number): num
   return priorHalfLifeGames / (priorHalfLifeGames + Math.max(0, effectiveIntlGames));
 }
 
-const pool = createPool(DATABASE_URL);
+const pool = createPool();
 const { teamIds, leagueIds, games, decayEvents } = await loadReplayData(pool);
 const leagueRows = await pool.query<{ id: string; slug: string }>('SELECT id::text, slug FROM leagues');
 const slugByLeagueId = new Map(leagueRows.rows.map((r) => [r.id, r.slug]));
