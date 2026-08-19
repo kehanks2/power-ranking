@@ -102,6 +102,21 @@ describe('selectCaretGenerations against a stage boundary', () => {
     expect(selectCaretGenerations(generations, '2026-08-09', undefined)).toEqual({ shown: 3, baseline: 2 });
   });
 
+  it('accepts a baseline reconstructed after the board it measures', () => {
+    // Backfilled generations hold old games but carry today's computed_at, so
+    // ordering on the run filed them as newer than the board and dashed it.
+    // Frontiers 08-02 and 08-09 rebuilt today; 08-16 is the real run.
+    const generations = [gen(500, '2026-08-16'), gen(900, '2026-08-02'), gen(901, '2026-08-09')];
+    expect(selectCaretGenerations(generations, '2026-08-09', 500)).toEqual({ shown: 500, baseline: 901 });
+  });
+
+  it('does not let a reconstruction become the board itself', () => {
+    // The same rows, with no explicit shown generation: the newest DATA is the
+    // real 08-16 run, not the reconstruction computed most recently.
+    const generations = [gen(500, '2026-08-16'), gen(900, '2026-08-02'), gen(901, '2026-08-09')];
+    expect(selectCaretGenerations(generations, '2026-08-09', undefined)).toEqual({ shown: 500, baseline: 901 });
+  });
+
   it('still refuses a baseline holding the same data as the board', () => {
     // A stage boundary equal to the shown frontier must not licence comparing
     // the board against itself, which would render a board of zeros.

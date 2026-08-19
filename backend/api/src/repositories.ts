@@ -29,7 +29,7 @@ import type {
   BoardUpdatedDto,
 } from '@power-ranking/shared';
 import {
-  LEAGUE_SPLIT_START_CTE,
+  leagueSplitStartCte,
   playerWindowPredicate,
   resolveBoardAdvance,
   STAGE_STATUS_SQL,
@@ -1346,7 +1346,7 @@ export async function getPlayerById(
        LEFT JOIN league_split_start lss ON lss.canonical_league_id = tlm.league_id`;
 
   // Same predicate the ratings used, so a split rating isn't shown over a career stat line.
-  const windowCte = isInternational ? '' : `${LEAGUE_SPLIT_START_CTE},`;
+  const windowCte = isInternational ? '' : `${leagueSplitStartCte()},`;
   const windowFilter = isInternational
     ? ''
     : ` AND ${playerWindowPredicate(ratingWindow, 'g.datetime_utc', 'lss.latest_split_start')}`;

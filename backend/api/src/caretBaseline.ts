@@ -36,6 +36,11 @@ export interface CaretGenerations {
  *   boards are different models, so the difference is the retune rather than
  *   anything a player did: cutting the win weight once "moved" 42 of 57 LCK
  *   players. Dash until the new model has two generations of its own.
+ * - Order generations by DATA, never by run order, including when deciding what
+ *   counts as "past the board". A reconstructed baseline (see
+ *   backfillPlayerGenerations) holds old games but is computed today, so an
+ *   ordering keyed on `computed_at` filed every one of them as newer than the
+ *   board and dashed four regional boards that had a perfectly good baseline.
  */
 export function selectCaretGenerations(
   generations: Generation[],
@@ -48,13 +53,22 @@ export function selectCaretGenerations(
   baselineOnOrBefore: string,
   shownAt: number | undefined,
 ): CaretGenerations | null {
-  const visible = generations
-    .filter((g) => shownAt === undefined || g.computedAt <= shownAt)
-    .sort((a, b) => a.computedAt - b.computedAt);
-  if (visible.length === 0) return null;
+  if (generations.length === 0) return null;
 
-  const shown = visible[visible.length - 1];
-  const baseline = visible
+  // Order on DATA, breaking ties on the run: two generations at one frontier
+  // are reruns of the same games, and the later run is the current one.
+  const byData = [...generations].sort((a, b) => {
+    if (a.dataFrontier !== b.dataFrontier) {
+      if (a.dataFrontier === null) return -1;
+      if (b.dataFrontier === null) return 1;
+      return a.dataFrontier < b.dataFrontier ? -1 : 1;
+    }
+    return a.computedAt - b.computedAt;
+  });
+
+  const shown = (shownAt !== undefined && generations.find((g) => g.computedAt === shownAt)) || byData[byData.length - 1];
+
+  const baseline = byData
     .filter(
       (g) =>
         g.computedAt !== shown.computedAt &&

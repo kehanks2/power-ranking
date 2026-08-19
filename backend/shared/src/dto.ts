@@ -137,14 +137,22 @@ export function isRatingWindow(value: unknown): value is RatingWindow {
 }
 
 /** Each league's current split start, which both bounded windows key off. */
-export const LEAGUE_SPLIT_START_CTE = `
+/**
+ * Latest split per league. `asOfExpr` bounds it to splits that had already
+ * started, which an as-of computation needs: the pull stores tournaments up to
+ * 21 days ahead, so unbounded this adopts a split that has not begun yet and
+ * the 'split' window silently empties.
+ */
+export function leagueSplitStartCte(asOfExpr?: string): string {
+  return `
   league_split_start AS (
     SELECT canonical_league_id, MAX(date_start) AS latest_split_start
     FROM tournaments
-    WHERE canonical_league_id IS NOT NULL
+    WHERE canonical_league_id IS NOT NULL${asOfExpr ? `\n      AND date_start <= ${asOfExpr}` : ''}
     GROUP BY canonical_league_id
   )
 `;
+}
 
 // SQL keeping only games inside a window. Shared so ingestion (which computes the
 // rating) and the API (which draws the panel) can't drift apart.

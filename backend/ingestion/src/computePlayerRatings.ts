@@ -14,7 +14,7 @@ import {
   NEUTRAL_SCORE,
 } from '@power-ranking/rating-engine';
 import {
-  LEAGUE_SPLIT_START_CTE,
+  leagueSplitStartCte,
   playerWindowPredicate,
   RATING_WINDOWS,
   type RatingWindow,
@@ -267,9 +267,19 @@ function applyTransferAnchors(ratings: PlayerGroupRating[]): void {
 }
 
 /** One row per player-game, with everything the composite needs. */
-export async function fetchPlayerGameRows(pool: Pool, window: RatingWindow = 'all'): Promise<PlayerGameRow[]> {
-  const result = await pool.query<PlayerGameRow>(`
-    WITH ${LEAGUE_SPLIT_START_CTE}
+/**
+ * `asOf` defines "now" for the recency weighting, and excludes everything played
+ * after it. Passing a past date reconstructs the board as it stood then, which
+ * is what backfilled caret baselines are built from.
+ */
+export async function fetchPlayerGameRows(
+  pool: Pool,
+  window: RatingWindow = 'all',
+  asOf: Date = new Date(),
+): Promise<PlayerGameRow[]> {
+  const result = await pool.query<PlayerGameRow>(
+    `
+    WITH ${leagueSplitStartCte('$1::timestamptz')}
     SELECT
       pgp.player_id,
       pgp.role,
@@ -283,13 +293,16 @@ export async function fetchPlayerGameRows(pool: Pool, window: RatingWindow = 'al
       (CASE WHEN pgp.team_id = g.team1_id THEN g.team1_neutral_objectives ELSE g.team2_neutral_objectives END)::numeric
         / NULLIF(g.team1_neutral_objectives + g.team2_neutral_objectives, 0) AS obj_control,
       (g.winner_team_id = pgp.team_id) AS won,
-      EXTRACT(EPOCH FROM (NOW() - g.datetime_utc)) / 86400 AS age_days
+      EXTRACT(EPOCH FROM ($1::timestamptz - g.datetime_utc)) / 86400 AS age_days
     FROM player_game_performance pgp
     JOIN games g ON g.id = pgp.game_id
     JOIN team_league_memberships tlm ON tlm.team_id = pgp.team_id AND tlm.end_date IS NULL
     LEFT JOIN league_split_start lss ON lss.canonical_league_id = tlm.league_id
-    WHERE ${playerWindowPredicate(window, 'g.datetime_utc', 'lss.latest_split_start')}
-  `);
+    WHERE g.datetime_utc <= $1::timestamptz
+      AND ${playerWindowPredicate(window, 'g.datetime_utc', 'lss.latest_split_start')}
+  `,
+    [asOf],
+  );
   return result.rows;
 }
 
@@ -304,17 +317,22 @@ export async function computePlayerRatings(
   pool: Pool,
   winWeight = DEFAULT_WIN_WEIGHT,
   window: RatingWindow = 'all',
+  asOf: Date = new Date(),
 ): Promise<number> {
-  const rows = await fetchPlayerGameRows(pool, window);
+  const rows = await fetchPlayerGameRows(pool, window, asOf);
   const ratings = selectGroupRatings(buildPlayerGroupStats(rows), winWeight);
-  return writeRatings(pool, ratings, 'regional', window);
+  return writeRatings(pool, ratings, 'regional', window, asOf);
 }
 
 /** All three regional windows -- the same method over fewer games, not a separate formula. */
-export async function computeAllPlayerRatingWindows(pool: Pool, winWeight = DEFAULT_WIN_WEIGHT): Promise<number> {
+export async function computeAllPlayerRatingWindows(
+  pool: Pool,
+  winWeight = DEFAULT_WIN_WEIGHT,
+  asOf: Date = new Date(),
+): Promise<number> {
   let total = 0;
   for (const window of RATING_WINDOWS) {
-    total += await computePlayerRatings(pool, winWeight, window);
+    total += await computePlayerRatings(pool, winWeight, window, asOf);
   }
   return total;
 }
@@ -341,9 +359,11 @@ const MIN_INTERNATIONAL_GAMES = 10;
 export async function computeInternationalPlayerRatings(
   pool: Pool,
   winWeight = DEFAULT_WIN_WEIGHT,
+  asOf: Date = new Date(),
 ): Promise<number> {
   // league_id pinned to 0 so the (league, role) grouping collapses to role-only.
-  const result = await pool.query<PlayerGameRow>(`
+  const result = await pool.query<PlayerGameRow>(
+    `
     SELECT
       pgp.player_id,
       pgp.role,
@@ -357,19 +377,22 @@ export async function computeInternationalPlayerRatings(
       (CASE WHEN pgp.team_id = g.team1_id THEN g.team1_neutral_objectives ELSE g.team2_neutral_objectives END)::numeric
         / NULLIF(g.team1_neutral_objectives + g.team2_neutral_objectives, 0) AS obj_control,
       (g.winner_team_id = pgp.team_id) AS won,
-      EXTRACT(EPOCH FROM (NOW() - g.datetime_utc)) / 86400 AS age_days
+      EXTRACT(EPOCH FROM ($1::timestamptz - g.datetime_utc)) / 86400 AS age_days
     FROM player_game_performance pgp
     JOIN games g ON g.id = pgp.game_id
     JOIN series s ON s.id = g.series_id
     JOIN tournaments tn ON tn.id = s.tournament_id
     WHERE tn.tournament_type = 'international'
-      AND g.datetime_utc > NOW() - INTERVAL '${INTERNATIONAL_WINDOW_MONTHS} months'
-  `);
+      AND g.datetime_utc <= $1::timestamptz
+      AND g.datetime_utc > $1::timestamptz - INTERVAL '${INTERNATIONAL_WINDOW_MONTHS} months'
+  `,
+    [asOf],
+  );
 
   const groupStats = buildPlayerGroupStats(result.rows, INTERNATIONAL_HALF_LIFE_DAYS)
     .filter((g) => g.gamesPlayed >= MIN_INTERNATIONAL_GAMES);
   const ratings = selectGroupRatings(groupStats, winWeight);
-  return writeRatings(pool, ratings, 'international');
+  return writeRatings(pool, ratings, 'international', 'all', asOf);
 }
 
 // Distinct data frontiers kept per (scope, window) -- days of play, not runs.
@@ -387,17 +410,23 @@ async function writeRatings(
   ratings: PlayerGroupRating[],
   scope: 'regional' | 'international',
   window: RatingWindow = 'all',
+  asOf: Date = new Date(),
 ): Promise<number> {
   // Pin the transaction to one client, not pool.query() (which can hop connections).
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     // computed_at is the generation key, so every row of this pass shares it.
+    // Real wall clock even when backfilling, because the retention below breaks
+    // ties on it and a backdated stamp would lose to the row it replaces.
     const computedAt = new Date();
-    const today = computedAt.toISOString().slice(0, 10);
-    // What the carets pick a baseline on -- see migration 0015.
+    // The day this generation SPEAKS FOR, which is asOf -- not the day it ran.
+    const asOfDate = asOf.toISOString().slice(0, 10);
+    // What the carets pick a baseline on -- see migration 0015. Bounded by asOf
+    // so a backfilled generation records the frontier as it stood then.
     const frontier = await client.query<{ day: string | null }>(
-      `SELECT max(datetime_utc)::date::text AS day FROM games`,
+      `SELECT max(datetime_utc)::date::text AS day FROM games WHERE datetime_utc <= $1::timestamptz`,
+      [asOf],
     );
     const dataFrontier = frontier.rows[0]?.day ?? null;
 
@@ -422,7 +451,7 @@ async function writeRatings(
       ],
       ratings.map((rating) => [
         rating.playerId,
-        today,
+        asOfDate,
         rating.rating,
         rating.gamesPlayed,
         PLAYER_RATING_METHOD_VERSION,
