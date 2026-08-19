@@ -61,8 +61,28 @@ if (!targetUrl || !dumpPath) {
 }
 const force = flags.includes('--force');
 
-const psql = (args, opts = {}) =>
-  execFileSync('psql', [targetUrl, '-v', 'ON_ERROR_STOP=1', ...args], { encoding: 'utf8', ...opts });
+// The password goes in the ENVIRONMENT, never in argv. execFileSync puts the
+// whole command line into the message of any error it throws, so a URI passed
+// as an argument ends up in logs and transcripts the moment psql fails -- which
+// is exactly when someone pastes the output somewhere.
+const parsed = new URL(targetUrl);
+const secret = decodeURIComponent(parsed.password);
+parsed.password = '';
+const safeUrl = parsed.toString();
+
+const psql = (args, opts = {}) => {
+  try {
+    return execFileSync('psql', [safeUrl, '-v', 'ON_ERROR_STOP=1', ...args], {
+      encoding: 'utf8',
+      ...opts,
+      env: { ...process.env, PGPASSWORD: secret },
+    });
+  } catch (cause) {
+    // Belt and braces: scrub anything that still carries the secret.
+    const scrub = (t) => (typeof t === 'string' && secret ? t.split(secret).join('****') : t);
+    throw new Error(`psql failed: ${scrub(cause.stderr) || scrub(cause.message)}`);
+  }
+};
 
 const scalar = (sql) => psql(['-At', '-c', sql]).trim();
 
