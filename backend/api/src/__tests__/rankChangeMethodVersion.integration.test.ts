@@ -47,10 +47,20 @@ describe('rank-change carets across a model retune', () => {
   const removeSynthetic = () =>
     pool.query(`DELETE FROM player_ratings_history WHERE computed_at = $1`, [SYNTHETIC_AT]);
 
-  const carets = async (): Promise<(number | null)[]> => {
+  const baselines = async (): Promise<(string | null)[]> => {
     const res = await request(app).get('/players').query({ league, window: 'all' });
-    return res.body.map((p: { rankChange: number | null }) => p.rankChange);
+    return res.body.map((p: { comparedTo: string | null }) => p.comparedTo);
   };
+
+  /** The frontier writePriorGeneration plants the synthetic rows on. */
+  async function syntheticFrontier(): Promise<string> {
+    const { rows } = await pool.query<{ day: string }>(
+      `SELECT (min(data_frontier) - 1)::text AS day FROM player_ratings_history
+        WHERE scope = 'regional' AND computed_at <> $1`,
+      [SYNTHETIC_AT],
+    );
+    return rows[0].day;
+  }
 
   beforeAll(async () => {
     pool = createPool();
@@ -80,19 +90,28 @@ describe('rank-change carets across a model retune', () => {
     await pool.end();
   });
 
-  it('dashes every row when the only prior generation is a different model', async () => {
+  it('never measures from a generation computed by a different model', async () => {
+    // Asserted "every row dashes" until 2026-08-18. That held only while the
+    // boards had no usable baseline at all -- the state issue #38 described --
+    // so the test passed without the guard doing anything. Once the baselines
+    // were backfilled the boards correctly measured from a real same-version
+    // generation and the assertion broke, having never tested the guard.
+    //
+    // What the guard actually promises is narrower and does not depend on how
+    // many real generations exist: the different-model one is never CHOSEN.
+    const planted = await syntheticFrontier();
     await writePriorGeneration(currentMethod + 1);
     try {
-      const changes = await carets();
-      expect(changes.length).toBeGreaterThan(0);
-      expect(changes.every((c) => c === null)).toBe(true);
+      const chosen = await baselines();
+      expect(chosen.length).toBeGreaterThan(0);
+      expect(chosen).not.toContain(planted);
     } finally {
       await removeSynthetic();
     }
   });
 
-  // The matching-version half of this is covered by caretBaseline.test.ts,
-  // which tests the selection directly. Asserting it through the API instead
-  // made the outcome depend on which league happened to be mid-stage and how
-  // many real generations existed, neither of which the guard is about.
+  // The matching-version half is covered by caretBaseline.test.ts, which tests
+  // the selection directly. Asserting it through the API made the outcome
+  // depend on which league happened to be mid-stage and how many real
+  // generations existed, neither of which the guard is about.
 });
