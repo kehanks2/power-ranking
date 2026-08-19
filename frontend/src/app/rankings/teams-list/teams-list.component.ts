@@ -8,13 +8,9 @@ import type { TeamDetail, TeamRecord, TeamSummary } from '../models';
 import { RankChangeComponent } from '../rank-change/rank-change.component';
 
 /**
- * The six most recent international events, OLDEST first. Column order on the
- * board, and the same window the international rating is built from -- showing
- * four while rating on six had the evidence column disagree with the number
- * beside it. At three events a year this is exactly two years.
- *
- * Oldest-left so it runs the same direction as the confidence range beside it;
- * two adjacent columns reading in opposite directions is a needless stumble.
+ * OLDEST first, and the same window the international rating is built from --
+ * rating on six while showing four had the evidence disagree with the number
+ * beside it.
  */
 const RECENT_EVENTS = ['W24', 'FS25', 'MSI25', 'W25', 'FS26', 'MSI26'] as const;
 
@@ -47,10 +43,8 @@ export class TeamsListComponent {
   protected readonly isInternational = computed(() => this.filterService.selectedScope() === 'international');
 
   /**
-   * Column order for the placement grid. International is the fixed window;
-   * regional is the league's last six splits, read from the data (codes like
-   * Spr26/Cup26/S126). The fullest team defines the order -- results arrive
-   * newest-first, so reverse for oldest-left.
+   * Regional order is read from the data, since the codes are per-league
+   * (Spr26/Cup26/S126). Results arrive newest-first, so reverse for oldest-left.
    */
   protected readonly events = computed<readonly string[]>(() => {
     if (this.isInternational()) return RECENT_EVENTS;
@@ -61,7 +55,6 @@ export class TeamsListComponent {
     return fullest.map((r) => r.event).reverse();
   });
 
-  /** The row whose panel is open. One at a time -- a board of open panels scrolls badly. */
   protected readonly openTeamId = signal<number | null>(null);
   protected readonly detail = signal<TeamDetail | null>(null);
   protected readonly detailLoading = signal(false);
@@ -69,11 +62,7 @@ export class TeamsListComponent {
   /** Panel spans the whole row, so the count has to track the conditional Region column. */
   protected readonly columnCount = computed(() => (this.isInternational() ? 9 : 8));
 
-  /**
-   * The records that belong to the board being read. An international board
-   * showing a team's domestic splits would be answering a question nobody
-   * asked of it, and the totals would not reconcile with the Games column.
-   */
+  /** Must match the board being read, or the totals will not reconcile with the Games column. */
   protected readonly panelRecords = computed<TeamRecord[]>(() => {
     const detail = this.detail();
     if (!detail) return [];
@@ -93,9 +82,8 @@ export class TeamsListComponent {
     );
     const games = sum.wins + sum.losses;
     const series = sum.seriesWins + sum.seriesLosses;
-    // Both rates, because they answer different questions and routinely
-    // disagree: a team that keeps winning 3-2 is far better by series than by
-    // games, and series are what decide placement.
+    // Both rates: a team that keeps winning 3-2 is far better by series than
+    // by games, and series are what decide placement.
     return {
       ...sum,
       games,
@@ -109,11 +97,7 @@ export class TeamsListComponent {
     return [...this.teams()].sort((a, b) => b[key] - a[key]);
   });
 
-  /**
-   * Shared scale for every range bar on the board, so bars can be read against
-   * each other and against the axis. Recomputed per board, because
-   * international ratings carry far wider ranges than regional ones.
-   */
+  /** One scale for the whole board. Per-board, since international ranges run far wider. */
   private readonly bounds = computed(() => {
     const rows = this.teams();
     if (rows.length === 0) return { lo: 0, hi: 1 };
@@ -130,18 +114,16 @@ export class TeamsListComponent {
   });
 
   constructor() {
-    // The shell's last-updated line reads this, so it has to be given up when
-    // the board leaves the screen or the other tab inherits this one's date.
-    // Empty while loading, or a scope switch shows the old board's baseline
-    // against the new board's name until the response lands.
+    // The shell's last-updated line reads this: cleared on destroy or the other
+    // tab inherits this date, empty while loading or a scope switch shows the
+    // old board's baseline under the new board's name.
     effect(() => this.anchor.publish(this.loading() ? [] : this.teams()));
     inject(DestroyRef).onDestroy(() => this.anchor.clear());
 
     effect((onCleanup) => {
       const scope = this.filterService.selectedScope();
       this.loading.set(true);
-      // A panel left open across a tab switch would show one board's record
-      // under another board's row.
+      // An open panel would survive into the next board and mismatch its row.
       this.openTeamId.set(null);
       this.detail.set(null);
       const subscription = this.api.getTeams(scope).subscribe({
@@ -203,11 +185,9 @@ export class TeamsListComponent {
   }
 
   /**
-   * What the slot shows: the finish where we have it, a dash otherwise. A dash
-   * covers both "did not play" and "played but no finish yet" -- the slot's
-   * styling and tooltip carry that difference. Ordinals, because "1st" is how a
-   * finish is spoken. Shared finishes stay as the range Liquipedia reports
-   * ("5-8"), since "5th-8th" would not fit and "5th" is a claim we cannot make.
+   * A dash covers both "did not play" and "played, no finish yet"; styling and
+   * the tooltip carry that difference. Shared finishes stay as Liquipedia's
+   * range ("5-8") -- "5th" would be a claim we cannot make.
    */
   protected slotLabel(team: TeamSummary, event: string): string {
     const placement = this.resultFor(team, event)?.placement;
@@ -237,15 +217,9 @@ export class TeamsListComponent {
     return result.placement ? `${event}: finished ${result.placement}` : `Played ${event}, finish unknown`;
   }
 
-  /**
-   * Podium finishes get filled medal colours; everything else stays outlined.
-   * A podium is the result people actually remember, so filling only the top
-   * three keeps the column scannable instead of a wall of identical boxes.
-   * Returns '' for an attended-but-lower finish, and callers handle absence.
-   */
+  /** '' for an attended-but-lower finish; callers handle absence. */
   protected medal(team: TeamSummary, event: string): '' | 'gold' | 'silver' | 'bronze' {
-    // Shared finishes arrive as ranges ("3-4"), and the lowest number in the
-    // range is the one that decides the podium.
+    // Shared finishes arrive as ranges ("3-4"); the lowest number decides.
     const placement = this.resultFor(team, event)?.placement;
     if (!placement) return '';
     switch (/^(\d+)/.exec(placement)?.[1]) {

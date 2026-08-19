@@ -85,16 +85,11 @@ export class TeamDetailComponent {
   protected readonly playerDetail = signal<PlayerDetail | null>(null);
   protected readonly playerLoading = signal(false);
 
-  /**
-   * Which board the open panel reads. Regional is the team's own league; the
-   * international pool is role-only and cross-region, so the two are never shown
-   * together -- switching replaces the grid rather than adding to it.
-   */
+  /** The two pools are incomparable, so switching replaces the grid rather than adding to it. */
   protected readonly panelScope = signal<PlayerRatingScope>('regional');
 
-  // Read off the detail on screen, not the chip that was clicked: during a swap
-  // the request has already changed scope while the grid still shows the old
-  // board, and a coverage line taken from the request would mislabel it.
+  // Off the detail on screen, not the chip: mid-swap the request has already
+  // changed scope while the grid still shows the old board.
   protected readonly panelCoverage = computed(() => {
     const shown = this.playerDetail();
     if (!shown) return '';
@@ -132,12 +127,7 @@ export class TeamDetailComponent {
     this.panelScope.set(scope);
   }
 
-  /**
-   * Which series rows are expanded, keyed by section-prefixed event name --
-   * "intl:" and "reg:" because a split and an event can share a name. Held as a
-   * Set in a signal rather than a flag on the row: the rows arrive from the API
-   * and copying them to carry UI state would mean re-copying on every load.
-   */
+  /** Keyed "intl:"/"reg:" because a split and an event can share a name. */
   private readonly openRows = signal<ReadonlySet<string>>(new Set());
 
   protected isOpen(key: string): boolean {
@@ -152,10 +142,7 @@ export class TeamDetailComponent {
     });
   }
 
-  /**
-   * A DOM-safe id for a row's detail so `aria-controls` can name it. Event
-   * names carry spaces, colons, and accents, none of which belong in an id.
-   */
+  /** Event names carry spaces, colons and accents, none of which belong in an id. */
   protected detailId(key: string): string {
     return `series-detail-${key.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
   }
@@ -175,11 +162,8 @@ export class TeamDetailComponent {
   }
 
   /**
-   * The headline rate, and the only one shown outside an expanded row. Series
-   * are what decide placement: a team that wins four series 3-2 is 4-0 here,
-   * which is what the bracket says about them, while its game rate is 12-8.
-   *
-   * 0 rather than NaN for a team with no games, so an empty row still renders.
+   * Series decide placement: four series won 3-2 is 4-0 here and 12-8 by games.
+   * 0 rather than NaN with no games, so an empty row still renders.
    */
   protected seriesWinRate(rows: TeamRecord[]): number {
     const { wins, losses } = this.seriesTotal(rows);
@@ -192,11 +176,7 @@ export class TeamDetailComponent {
     return wins + losses === 0 ? 0 : wins / (wins + losses);
   }
 
-  /**
-   * Ordinals, matching the placement pills on the board. Shared finishes stay
-   * as the range Liquipedia reports -- "5-8th" would not read, and "5th" would
-   * claim a place the data does not support.
-   */
+  /** Shared finishes stay as Liquipedia's range -- "5th" would claim a place we cannot. */
   protected finish(placement: string | null): string {
     if (!placement) return '—';
     if (!/^\d+$/.test(placement)) return placement;

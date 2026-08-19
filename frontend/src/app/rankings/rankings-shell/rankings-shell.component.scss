@@ -6,27 +6,22 @@
   margin-inline: auto;
 }
 
-// Header and control bar stick as ONE block. Previously each was sticky with
-// the second offset by a hand-written `top`, which was 4px short of the
-// first's real height -- so the control bar slid underneath and the gap
-// between them visibly shrank as soon as you scrolled.
+// Header and control bar stick as ONE block. Two sticky elements with a
+// hand-written `top` on the second ran 4px short of the first's real height,
+// so the control bar slid underneath on scroll.
 .sticky-top {
   position: sticky;
   top: 0;
   z-index: 30;
   background: var(--color-bg);
-  // The breathing room between the upper section and the board lives INSIDE
-  // the sticky block, so it is part of what pins and cannot disappear on
-  // scroll. Putting it on .content instead gave a gap at rest that vanished
-  // the moment the table header went flush -- and it applies to both boards
-  // equally, whether what follows is a table header or the role filter.
+  // The gap above the board lives INSIDE the sticky block so it pins with it.
+  // On .content it existed at rest and vanished once the header went flush.
   padding-bottom: 1rem;
-  // One extra pixel of the same background, painted BELOW the block. The
-  // measured height is ceiled, so the block can sit a fraction of a pixel
-  // above where a board pins under it, and rows scrolling through that
-  // fraction were the ghost line. Closing it here rather than by pinning the
-  // board 1px higher is what lets the table's top border stay visible: pulled
-  // up, the border was the pixel that went under this block.
+  // One extra pixel of background painted BELOW the block. The measured height
+  // is ceiled, so the block can sit a fraction above where a board pins under
+  // it, and rows scrolling through that fraction were a ghost line. Closing it
+  // here rather than pinning the board 1px higher keeps the table's top border
+  // visible -- pulled up, that border was the pixel that went under.
   box-shadow: 0 1px 0 var(--color-bg);
 }
 
@@ -76,9 +71,6 @@
   border-bottom: 1px solid var(--color-border);
   padding: 1rem 1.5rem 0.9rem;
   display: grid;
-  // Even split between the explanation and the strength box, with real space
-  // between them, rather than a wide column of text and a box squeezed against
-  // the right edge.
   grid-template-columns: 1fr 1fr;
   gap: 2rem;
   align-items: start;
@@ -113,8 +105,6 @@
   font-style: italic;
 }
 
-// Upright against the italic line, so the glyphs read as the marks they point
-// at rather than as slanted punctuation.
 .since__glyphs {
   font-style: normal;
   letter-spacing: 0.02em;
@@ -137,9 +127,6 @@
   }
 }
 
-// Regional strength lives beside every board rather than on a tab of its own:
-// it is the only place the league rating appears now that it is no longer
-// added to team ratings, and it is context rather than a ranking.
 .strength {
   border: 1px solid var(--color-border);
   border-radius: 8px;
@@ -170,10 +157,9 @@
     gap: 0.35rem 1.4rem;
   }
 
-  // The value column is a fixed width, not `auto`. Sized to its content it was
-  // ~10px narrower on "+42 ±24" than on "-208 ±32", which left every row a
-  // different length of track -- so the bands were drawn at six slightly
-  // different scales and could not be compared, which is the whole job here.
+  // Fixed width, not `auto`: sized to content it ran ~10px narrower on "+42 ±24"
+  // than on "-208 ±32", leaving every row a different length of track and the
+  // bands drawn at six different scales.
   li {
     display: grid;
     grid-template-columns: 2.9rem 1fr 5rem;
@@ -193,8 +179,6 @@
     cursor: help;
   }
 
-  // The reference the whole box is read against, so it is drawn on every row
-  // rather than left implicit in the middle of the track.
   .zero {
     position: absolute;
     left: 50%;
@@ -204,8 +188,6 @@
     background: var(--color-border);
   }
 
-  // The range the evidence supports. Held under the tick's weight so the
-  // estimate still reads as the headline.
   .band {
     position: absolute;
     top: 4px;
@@ -232,7 +214,6 @@
     text-align: right;
   }
 
-  // The ± recedes: it qualifies the estimate rather than competing with it.
   .val__rd {
     font-size: 0.64rem;
     opacity: 0.75;
@@ -268,10 +249,8 @@
   color: var(--color-gold-contrast);
 }
 
-// No top padding. Whatever sits at the top of a board -- the teams table's
-// header, the players' role filter -- pins flush under the sticky block when
-// scrolled, so any padding here would exist at rest and vanish on scroll. The
-// gap is now the same either way, which is the tighter of the two.
+// No top padding: whatever leads a board pins flush under the sticky block on
+// scroll, so padding here would exist at rest and vanish once scrolled.
 .content {
   max-width: 1264px;
   margin-inline: auto;

@@ -10,9 +10,8 @@ export interface PlacementImportResult {
 }
 
 /**
- * Lowest number in a placement, for ordering. Liquipedia writes shared
- * finishes as ranges ("5-6", "7-8") wherever a bracket has no third-place or
- * consolation match, so "5-6" sorts as 5 while still displaying as the range.
+ * Liquipedia writes shared finishes as ranges ("5-6") where a bracket has no
+ * third-place match, so "5-6" sorts as 5 while still displaying as the range.
  */
 export function placementSortValue(placement: string): number | null {
   const match = /^(\d+)/.exec(placement.trim());
@@ -43,17 +42,14 @@ export function placementSourceNames(ourName: string): string[] {
 }
 
 /**
- * Fills tournament_placements for EVERY tournament we hold, regional splits
- * included. Games record who beat whom, not who won: a team can go 6-4 and
- * finish 3rd or 9th depending on bracket path, so the finish has to be read.
+ * Fills tournament_placements for EVERY tournament we hold. Games record who
+ * beat whom, not who won: a team can go 6-4 and finish 3rd or 9th depending on
+ * bracket path, so the finish has to be read.
  *
- * Names are batched into OR-ed requests (see fetchPlacements) rather than one
- * per tournament, which is what made the regional half affordable -- 57
- * tournaments is 6 requests of the 60/hour, not 57.
- *
- * Team names are matched through the same alias table the roster import uses,
- * because Liquipedia's naming and ours differ in small ways -- it writes
- * "Secret Whales" where we hold "Team Secret Whales".
+ * Names are batched into OR-ed requests (see fetchPlacements): 57 tournaments
+ * cost 6 requests of the 60/hour, not 57. Team names go through the roster
+ * import's alias table -- Liquipedia writes "Secret Whales" where we hold
+ * "Team Secret Whales".
  */
 export async function ingestPlacements(pool: Pool): Promise<PlacementImportResult> {
   const tournaments = await pool.query<{ id: number; name: string }>(
@@ -68,9 +64,8 @@ export async function ingestPlacements(pool: Pool): Promise<PlacementImportResul
     teamIdByName.set(ourNameToLiquipediaName(team.name).toLowerCase(), team.id);
     teamIdByName.set(team.name.toLowerCase(), team.id);
   }
-  // Standings are historical, so a team appears under whatever name it used at
-  // the time -- Movistar KOI placed at 2024 events as MAD Lions KOI. Same
-  // problem match ingestion already solves, same map.
+  // Standings are historical, so a team appears under the name it used then --
+  // Movistar KOI placed at 2024 events as MAD Lions KOI.
   for (const [historical, current] of Object.entries(HISTORICAL_LIQUIPEDIA_NAME_ALIASES)) {
     const teamId = teamIdByName.get(current.toLowerCase());
     if (teamId) teamIdByName.set(historical.toLowerCase(), teamId);
@@ -79,9 +74,8 @@ export async function ingestPlacements(pool: Pool): Promise<PlacementImportResul
   const unmatched = new Set<string>();
   let inserted = 0;
 
-  // Every request first, then the write. A batched response carries rows for
-  // several tournaments at once, so they have to be keyed back to ours by the
-  // Liquipedia name each one draws its standings from (see placementSourceNames).
+  // A batched response carries rows for several tournaments, so they are keyed
+  // back to ours by the Liquipedia name each draws standings from.
   const tournamentIdByName = new Map<string, number>();
   const queryNames: string[] = [];
   for (const t of tournaments.rows) {

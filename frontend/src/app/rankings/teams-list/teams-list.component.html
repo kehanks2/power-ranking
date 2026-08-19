@@ -34,9 +34,6 @@
           </th>
           <th scope="col" class="interval-h">Confidence range</th>
           <th scope="col" class="placements-h">Last 6 {{ isInternational() ? 'int’l' : 'splits' }}</th>
-          <!-- Just "Games": the board's own description already says which
-               games it counts, and the longer label was setting this column's
-               width, taking room from the range beside it. -->
           <th scope="col" class="num games-h">Games</th>
         </tr>
         <tr class="axis-row">
@@ -50,8 +47,6 @@
               </div>
             </div>
           </th>
-          <!-- Each box named, so a finish can be read without counting columns
-               back from the most recent event. -->
           <th scope="col" class="placements-h">
             <div class="placements placements--key">
               @for (event of events(); track event) {
@@ -64,9 +59,7 @@
       </thead>
       <tbody>
         @for (team of sorted(); track team.id; let i = $index) {
-          <!-- Clicking anywhere on the row opens the panel. The name is still a
-               real button so the control stays reachable and announced without
-               a mouse; the row click is a mouse-only convenience on top, and
+          <!-- Row click is a mouse convenience; the name stays a real button.
                stopPropagation keeps the two from cancelling each other. -->
           <tr class="row-toggle" [class.is-open]="isOpen(team.id)" (click)="toggle(team.id)">
             <td class="rank">
@@ -190,8 +183,6 @@
     </table>
   </div>
 
-  <!-- Same order as the columns they explain, so the legend can be read
-       against the table rather than searched. -->
   <dl class="legend">
     <div class="term">
       <dt>Rating</dt>

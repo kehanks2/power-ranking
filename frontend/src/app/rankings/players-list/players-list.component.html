@@ -27,8 +27,7 @@
       }
     </div>
 
-    <!-- Regional only: the international pass rates a single, sparse body of
-         events, so there is no split to slice it into. -->
+    <!-- Regional only: the international pass has no split to slice. -->
     @if (!isGlobal()) {
       <div class="chip-group chip-group--window" role="group" aria-label="Rate over">
         <span class="chip-group__label" aria-hidden="true">Rated over</span>
@@ -80,10 +79,9 @@
       </thead>
       <tbody>
         @for (player of players(); track player.id) {
-          <!-- Clicking anywhere on the row toggles the panel. The handle is
-               still a real button so the control stays reachable and announced
-               without a mouse; row click is a mouse-only convenience on top,
-               and stopPropagation keeps the two from cancelling each other. -->
+          <!-- Row click is a mouse convenience; the handle stays a real button so
+               the panel is reachable without one. stopPropagation keeps the two
+               from cancelling each other. -->
           <tr
             class="row-toggle"
             [id]="'player-row-' + player.id"
@@ -115,10 +113,8 @@
                 }
               </td>
             }
-            <!-- A Team column is a claim about NOW, so a player who has left this
-                 league's rosters never carries one. Where they went is shown
-                 instead when we know it; the last team they played for is in the
-                 title, in the past tense, where it cannot read as current. -->
+            <!-- A Team column is a claim about NOW, so a player who has left carries none;
+                 the last team they played for is in the title, in the past tense. -->
             <td class="team">
               @if (player.teamName) {
                 {{ player.teamName }}
@@ -144,8 +140,6 @@
                   [coverage]="coverageNote()"
                   [windowCaveat]="windowCaveat()"
                 >
-                  <!-- The panel answers "how is this player doing"; the next
-                       question is usually about the side they play for. -->
                   @if (player.teamId) {
                     <a class="team-link" [routerLink]="['/rankings/teams', player.teamId]">
                       {{ player.teamName }} team page →
@@ -160,8 +154,6 @@
     </table>
   </div>
 
-  <!-- Same order as the columns and marks they explain, so the legend can be
-       read against the table rather than searched. -->
   <dl class="legend">
     <div class="term">
       <dt>Rating</dt>

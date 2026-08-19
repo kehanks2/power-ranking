@@ -39,8 +39,7 @@
           </thead>
           <tbody>
             @for (row of t.international; track row.event) {
-              <!-- The whole row toggles. The event name is still a real button
-                   so the control stays reachable and announced without a mouse;
+              <!-- Row click is a mouse convenience; the event name stays a real button.
                    stopPropagation keeps the two from cancelling each other. -->
               <tr class="row-toggle" [class.is-open]="isOpen('intl:' + row.event)" (click)="toggle('intl:' + row.event)">
                 <td class="event">
@@ -267,9 +266,8 @@
                   [coverage]="panelCoverage()"
                   [showRating]="true"
                 >
-                  <!-- Two pools, never side by side: a regional rating is a
-                       percentile inside one league, an international one is
-                       measured against a role pool drawn from everywhere. -->
+                  <!-- Two pools, never side by side: a regional rating is a percentile inside
+                       one league, international is a role pool drawn from everywhere. -->
                   @if (entry.hasInternational) {
                     <div panelScope class="chip-group" role="group" aria-label="Rate against">
                       <button

@@ -1,16 +1,12 @@
-<!-- Only the first load empties the panel. Reloading it for another board keeps
-     the current grid up, because collapsing to one line and back moves
-     everything below it and loses the reader's place. -->
+<!-- Only the first load empties the panel: reloading for another board would
+     lose the reader's place. -->
 @if (loading() && !detail()) {
   <p class="status">Loading {{ handle() }}’s stats…</p>
 } @else if (detail(); as d) {
-  <!-- Above the head, so a board switch reads as choosing what the whole
-       panel is about rather than as one more figure in it. -->
   <ng-content select="[panelScope]" />
 
   <div class="panel__head">
-    <!-- The rating for the board being shown, which is not always the one the
-         row above carries -- a scope switch changes this number. -->
+    <!-- The board being shown, which is not always the one the row above carries. -->
     @if (showRating()) {
       <p class="record record--rating">
         <strong>{{ d.rating | number: '1.1-1' }}</strong>
@@ -23,11 +19,8 @@
         <span class="record__unit">of {{ d.peerCount }} {{ d.role }}</span>
       </p>
     }
-    <!-- A 0-0 record and a 0% win rate say nothing the empty state below does
-         not say better. -->
     @if (d.stats.games > 0) {
-      <!-- Series first, matching the teams board: it is the unit placement is
-           decided in, and the two records routinely disagree. -->
+      <!-- Series first: the unit placement is decided in. -->
       <p class="record">
         <strong>{{ d.stats.seriesWins }}–{{ d.stats.seriesLosses }}</strong>
         <span class="record__unit">series</span>
@@ -43,8 +36,7 @@
     <ng-content />
   </div>
 
-  <!-- Carries its own axis: it sits inboard of the column the table's axis
-       labels, so there is nothing above it to read the bar against. -->
+  <!-- Carries its own axis: it sits inboard of the column the table labels. -->
   @if (showRating() && d.stats.games > 0) {
     <div class="panel__range">
       <app-confidence-axis />

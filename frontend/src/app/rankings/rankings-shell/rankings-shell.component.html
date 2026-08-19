@@ -1,6 +1,4 @@
-<!-- One sticky block, not two stacked ones. Offsetting the second by a
-     hand-written `top` left it 4px short of the first's real height, so it
-     slid underneath and the gap visibly shrank the moment you scrolled. -->
+<!-- One sticky block, not two stacked ones -- see the stylesheet. -->
 <div class="sticky-top" #stickyTop>
   <header class="shell-header">
     <h1 class="brand">PowerRanking</h1>
@@ -26,10 +24,7 @@
           </button>
         }
       </div>
-      <!-- Players and teams are rated by genuinely different methods -- a
-           Glicko-2 rating on one, a percentile among role peers on the other --
-           so one shared description was wrong on whichever view it was not
-           written for. -->
+      <!-- Players and teams are rated by different methods; the label names which. -->
       <p class="scope-note">
         @if (isPlayers()) {
           @if (filter.selectedScope() === 'international') {
@@ -57,10 +52,8 @@
         <!-- UTC, or a date-only string renders a day early west of Greenwich. -->
         <p class="last-updated">
           Last updated {{ lastUpdated() | date: 'd MMMM y' : 'UTC' }}
-          <!-- The arrows name their own baseline: it is neither yesterday nor
-               the last pull, and differs between the two boards. A board with
-               no prior board says so rather than going quiet -- a row of dashes
-               with no explanation reads as a bug. -->
+          <!-- Says which board it measures from rather than going quiet: a row
+               of dashes with no explanation reads as a bug. -->
           @if (anchor(); as board) {
             <span class="since">
               <!-- Labelled rather than paired with a visually-hidden gloss: the
@@ -84,17 +77,10 @@
 
     <aside class="strength" aria-labelledby="strength-heading">
       <h2 id="strength-heading">Regional strength</h2>
-      <!-- Ranked list, so it reads down each column: 1st-2nd-3rd, then
-           4th-5th-6th. Filling across would put 2nd beside 1st and 3rd below
-           it, which is not how a ranking is read. -->
       <ol>
         @for (league of leagues(); track league.slug) {
           <li [class]="'lg-' + league.slug">
             <span class="rg">{{ league.slug }}</span>
-            <!-- A band and a tick, the same language the teams board's
-                 confidence range uses. A bar growing from the centre line said
-                 "this much stronger" with no admission of how sure we are, and
-                 read as a range while being a single number. -->
             <span class="meter" [title]="rangeTitle(league)">
               <span class="zero" aria-hidden="true"></span>
               <span

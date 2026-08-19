@@ -4,12 +4,10 @@
  * the Americas ran as LTA North and LTA South. Mirrors the league_aliases table.
  *
  * Uncalled, and that is a SYMPTOM, not a reason to delete it: the 2025 Americas
- * season was never ingested (LCS and CBLOL hold zero 2025 games against LEC's
- * 308 and LPL's 817), because the backfill matches on series name and
- * "LCS"/"CBLOL" did not exist that year. So LCS rates on 366 games with a
- * 14-month hole, likely part of why it measures as the most under-rated region
- * (see MODEL.md). Backfilling those splits makes this load-bearing again, and
- * will move every rating -- re-sweep the tuned parameters afterwards.
+ * season was never ingested (LCS and CBLOL hold zero 2025 games), because the
+ * backfill matches on series name and "LCS"/"CBLOL" did not exist that year.
+ * Backfilling those splits makes this load-bearing again and will move every
+ * rating -- re-sweep the tuned parameters afterwards. See MODEL.md.
  */
 
 export interface LeagueAlias {

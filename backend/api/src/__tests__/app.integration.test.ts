@@ -1,8 +1,8 @@
 /**
- * Integration test against the real local Postgres (docker-compose.yml at repo root).
- * Runs against whatever data is currently ingested -- this project has moved past the
- * "empty DB" bootstrap state, so these assert on shape/invariants rather than emptiness
- * or cold-start values, which no longer hold once real games have been ingested.
+ * Integration test against `TEST_DATABASE_URL`, a dump-and-restore clone of the
+ * Neon database (`scripts/refreshTestDb.mjs`) -- so it asserts on shape and
+ * invariants, not on emptiness or cold-start values, which stopped holding once
+ * real games were ingested. Refresh the clone after an ingest or it reads stale.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';

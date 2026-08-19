@@ -3,11 +3,9 @@ export const LEAGUE_SLUGS = ['LCK', 'LPL', 'LEC', 'LCS', 'CBLOL', 'LCP'] as cons
 export type LeagueSlug = (typeof LEAGUE_SLUGS)[number];
 
 /**
- * Which board is being shown. There is no global board: every board is one
- * pool of evidence. A league slug means "ranked on games inside that region",
- * and those numbers are not comparable between regions. 'international' means
- * "ranked on cross-region games only" -- the one board that can compare
- * regions, because those teams played each other.
+ * A league slug means "ranked on games inside that region", and those numbers
+ * are not comparable between regions. 'international' is the one board that
+ * can compare regions, because those teams played each other.
  */
 export type BoardScope = 'international' | LeagueSlug;
 
@@ -22,8 +20,8 @@ export function isLeagueSlug(value: string | null | undefined): value is LeagueS
   return value !== null && value !== undefined && (LEAGUE_SLUGS as readonly string[]).includes(value);
 }
 
-/** `scope` is a league slug or 'international'; ISO date, null if never played. */
 export interface BoardUpdated {
+  /** A league slug or 'international'. */
   scope: string;
   lastUpdated: string | null;
 }
@@ -49,7 +47,7 @@ export interface TeamSummary {
   /** rating - rd. What the board is ranked by. */
   floor: number;
   rank: number;
-  /** Places gained since this team last played, positive upward; null when idle. */
+  /** Positive is upward; null when idle. */
   rankChange: number | null;
   /** ISO day `rankChange` measures from. Null exactly when `rankChange` is. */
   comparedTo: string | null;
@@ -57,7 +55,7 @@ export interface TeamSummary {
   recentRosterChange: boolean;
   /** Finish at each of the last four international events this team played. */
   results: { event: string; placement: string | null }[];
-  /** Most recent international when none of the last four were attended; otherwise null. */
+  /** Most recent international when none of the last four were attended. */
   lastInternational: string | null;
 }
 
@@ -66,26 +64,21 @@ export interface RosterEntry {
   handle: string;
   role: 'TOP' | 'JNG' | 'MID' | 'BOT' | 'SUP';
   isStarter: boolean;
-  /** In this team's league at this role -- the same figures the player board serves. */
+  /** In this team's league at this role -- the figures the player board serves. */
   rating: number;
   rawRating: number;
   confidence: number;
   gamesPlayed: number;
-  /** Their place among the league's players at this position, by rating. */
   roleRank: number;
   rolePeerCount: number;
-  /**
-   * Whether this player is rated internationally at all. Only ~30% of rostered
-   * players are, so the panel offers that board only where there is one.
-   */
+  /** Only ~30% of rostered players are, so the panel offers that board only where there is one. */
   hasInternational: boolean;
   /** The other squad Liquipedia names, when this player has no games here. */
   alsoPlaysFor: string | null;
 }
 
-/** A team's record at one tournament, in games and in series. */
 export interface TeamRecord {
-  /** The tournament as Liquipedia names it: "LEC 2026 Summer". */
+  /** As Liquipedia names it: "LEC 2026 Summer". */
   event: string;
   startDate: string;
   wins: number;
@@ -94,9 +87,9 @@ export interface TeamRecord {
   seriesLosses: number;
   /** Series lengths played here, ascending: [3, 5] is a Bo3 stage and a Bo5 playoff. */
   formats: number[];
-  /** The decided series themselves, oldest first, for the expanded row. */
+  /** Decided series only, oldest first. */
   series: TeamSeries[];
-  /** Finish where standings exist; text, since shared finishes are ranges. */
+  /** Text, since shared finishes are ranges. */
   placement: string | null;
 }
 
@@ -108,7 +101,7 @@ export interface TeamSeries {
   opponentScore: number;
   format: number | null;
   won: boolean;
-  /** Bracket play rather than regular season. Null where we have no stage marker. */
+  /** Null where we have no stage marker. */
   isPlayoff: boolean | null;
 }
 
@@ -116,24 +109,21 @@ export interface TeamDetail extends TeamSummary {
   roster: RosterEntry[];
   /** Split by split, newest first. */
   regional: TeamRecord[];
-  /** Each international event, newest first. */
+  /** Newest first. */
   international: TeamRecord[];
 }
 
 /**
- * Which pool a player's rating was measured against. 'regional' is a
- * percentile within (league, role) and is only meaningful inside one league;
- * 'international' is measured across everyone with international experience
- * and IS cross-league comparable. Never compare one to the other.
+ * 'regional' is a percentile within (league, role) and is only meaningful
+ * inside one league; 'international' is measured across everyone with
+ * international experience. Never compare one to the other.
  */
 export type PlayerRatingScope = 'regional' | 'international';
 
 /**
- * Which stretch of play a regional rating covers. 'all' is everything we hold,
- * recency-weighted; the other two are that league's current calendar year and
- * its current split. Per-league, because the leagues don't run on the same
- * calendar. The international board only has 'all' — its events are sparse
- * enough that a split window would leave nothing rated.
+ * Per-league, because the leagues don't run on the same calendar. The
+ * international board only has 'all' -- its events are sparse enough that a
+ * split window would leave nothing rated.
  */
 export const RATING_WINDOWS = ['all', 'year', 'split'] as const;
 
@@ -147,7 +137,7 @@ export type Role = (typeof ROLES)[number];
 export interface PlayerSummary {
   id: number;
   handle: string;
-  /** Their current team, for linking through to it. Null when unrostered. */
+  /** Null when unrostered. */
   teamId: number | null;
   teamSlug: string | null;
   /** Display name ("Gen.G"), not the slug. */
@@ -156,12 +146,12 @@ export interface PlayerSummary {
   role: Role;
   rating: number;
   rank: number;
-  /** Places gained since this player last played, positive upward; null when idle. */
+  /** Positive is upward; null when idle. */
   rankChange: number | null;
   /** ISO day `rankChange` measures from. Null exactly when `rankChange` is. */
   comparedTo: string | null;
   scope: PlayerRatingScope;
-  /** Which stretch of play it was measured over. Always 'all' internationally. */
+  /** Always 'all' internationally. */
   window: RatingWindow;
   gamesPlayed: number;
   /** The composite before shrinkage -- where `rating` settles if this form holds. */
@@ -172,9 +162,7 @@ export interface PlayerSummary {
    * and a transferred player is shrunk toward a carryover anchor, not 50.
    */
   confidence: number;
-  /**
-   * Where they are now, when they hold no roster row in this board's league.
-   */
+  /** Where they are now, when they hold no roster row in this board's league. */
   movedToTeam: string | null;
   movedToLeague: string | null;
   /** The team they last played for on this board, and the day of that game. */
@@ -183,9 +171,8 @@ export interface PlayerSummary {
 }
 
 /**
- * A stat and where it places the player among the same-role players on this
- * board. `place` is 1-based and always oriented so 1st is best, including for
- * deaths, where the better raw number is the lower one. Ties share a place.
+ * `place` is 1-based and always oriented so 1st is best, including for deaths,
+ * where the better raw number is the lower one. Ties share a place.
  */
 export interface PlayerStat {
   value: number | null;
@@ -197,7 +184,7 @@ export interface PlayerStats {
   wins: number;
   losses: number;
   winRate: number;
-  /** The same games grouped into series -- the unit that decides placement. */
+  /** Series are the unit that decides placement. */
   seriesWins: number;
   seriesLosses: number;
   seriesWinRate: number;
@@ -214,18 +201,16 @@ export interface PlayerStats {
 }
 
 export interface PlayerDetail extends PlayerSummary {
-  /** Another squad Liquipedia lists them on. Only the team page can reach this. */
   alsoPlaysFor: string | null;
   /** Measured over exactly the games this scope's rating was computed from. */
   stats: PlayerStats;
   /** The denominator behind every `place`: same-role players on this board. */
   peerCount: number;
-  /** Where they sit by rating among those peers -- the board's rank filtered to their role. */
   roleRank: number;
   /**
-   * Which stats carry weight at this role; the rest are shown as context. Comes
-   * from the server, which reads the tuned weights directly — restating them
-   * here would let the panel and the model drift apart.
+   * Which stats carry weight at this role. Comes from the server, which reads
+   * the tuned weights directly -- restating them here would let the panel and
+   * the model drift apart.
    */
   ratedStats: (keyof PlayerStats)[];
 }

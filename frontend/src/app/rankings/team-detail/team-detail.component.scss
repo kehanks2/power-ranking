@@ -164,7 +164,6 @@ tr.row-toggle {
   }
 }
 
-// A hover-explained dot, not a column that would be empty for 70% of rows.
 .dot {
   width: 7px;
   height: 7px;
@@ -245,12 +244,8 @@ tr.is-open {
   }
 }
 
-// Two records side by side: international first, since that is the record
-// people ask about, and the splits below it as the fuller history.
-// Wide enough for the event names before the two tables sit side by side; below
-// that they stack rather than squeezing those names to two lines each. Four
-// columns now that format and games moved into the expandable detail, so this
-// pairs up earlier than the 440px the six-column version needed.
+// Pairs up only once the event names fit; below that they stack rather than
+// wrapping each name to two lines.
 .records {
   display: grid;
   gap: 1.2rem 2rem;
@@ -283,7 +278,6 @@ tr.is-open {
     border-bottom: 0;
   }
 
-  // The totals row is a summary, not another split, so it sits apart.
   tfoot td {
     border-top: 1px solid var(--color-border);
     border-bottom: 0;
@@ -297,16 +291,14 @@ tr.is-open {
     white-space: nowrap;
   }
 
-  // The button inside carries the text and the padding, so the whole cell is a
-  // target rather than just the words.
+  // The button carries the padding, so the whole cell is the target.
   td.event {
     padding: 0;
   }
 }
 
-// The series name doubles as the control that opens the row. A button, not a
-// click handler on the <tr>: it is focusable, it announces its expanded state,
-// and it works from the keyboard without re-implementing any of that.
+// A button, not a click handler on the <tr>: focusable, announces its expanded
+// state, and works from the keyboard without re-implementing any of it.
 .disclosure {
   display: flex;
   align-items: center;
@@ -320,9 +312,8 @@ tr.is-open {
   text-align: left;
   cursor: pointer;
 
-  // No hover background of its own: the row paints --color-surface-hover across
-  // its whole width, and an opaque button on top of one cell read as a second
-  // colour in the event column.
+  // No hover background: the row paints --color-surface-hover full width, and an
+  // opaque button over one cell read as a second colour in the event column.
 
   // Inset, because an outline on a table cell is clipped by the cell beside it.
   &:focus-visible {
@@ -408,8 +399,7 @@ tr.is-open {
     font-size: 0.72rem;
   }
 
-  // Won rows take the ink. The W/L column carries the same information as
-  // text, so nothing depends on colour alone.
+  // The W/L column carries this as text too, so nothing rests on colour alone.
   tr.is-won td {
     color: var(--color-text);
   }
@@ -418,9 +408,8 @@ tr.is-open {
     color: var(--color-gold);
   }
 
-  // Playoff series are tinted and carry a "PO" tag, so the distinction never
-  // rests on colour alone. The tint sits under the won-row ink above, which
-  // only sets a text colour, so the two compose.
+  // The "PO" tag carries this too, so nothing rests on colour alone. The tint
+  // sits under the won-row ink, which sets only a text colour, so the two compose.
   tr.is-playoff td {
     background: color-mix(in srgb, var(--lg-LCP) 12%, transparent);
   }
@@ -442,9 +431,6 @@ tr.is-open {
   }
 }
 
-// Label above value, so the pair reads as one line of detail rather than
-// competing with the columns above. Right-aligned to land over the series
-// table's own numeric columns instead of floating loose on the left.
 .detail {
   display: flex;
   flex-wrap: wrap;
@@ -476,9 +462,6 @@ tr.is-open {
   color: var(--color-text-muted);
 }
 
-// No max-width: the note sits under a full-width pair of tables, and capping it
-// at a reading measure left most of the row empty for no gain -- the line is
-// three lines long at most, so it is never a wall of text to track back across.
 .records-note {
   margin: 0.9rem 0 0;
   font-size: 0.8rem;
