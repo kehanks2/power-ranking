@@ -191,17 +191,31 @@ Measured as the correlation between a player's rating and their own team's win
 rate (`teamCorr`, from `manualWeightConfigSweep.ts`), with walk-forward AUC over
 six monthly cutoffs on 1,255 held-out games:
 
-| config | teamCorr | held-out AUC |
-|---|---|---|
-| v2 uniform, win 0.5 — when 0.5 was chosen | 0.653 | 0.6822 |
-| v3 per-role, win 0.5 — the double-count | 0.681 | 0.6817 |
-| **v4 per-role, win 0.4 — shipped** | **0.652** | **0.6795** |
-| win 0.3 | 0.611 | 0.6752 |
-| no winRate | 0.427 | 0.6460 |
+Re-measured 2026-08-18 on 59,166 player-game rows and 6,226 intra-league games.
+Faker's rank is the face-validity anchor — the sweep reports several, and he is
+the one whose true rank nobody disputes.
 
-0.4 lands at 0.652 against the original 0.653: the balance restored, not
-changed. Note v3's extra stats bought no accuracy (0.6817 vs 0.6822) — they only
+| config | teamCorr | held-out AUC | Faker |
+|---|---|---|---|
+| v2 uniform, win 0.5 — when 0.5 was chosen | 0.654 | 0.6797 | 173 |
+| v3 per-role, win 0.5 — the double-count | 0.681 | 0.6796 | 116 |
+| **v4 per-role, win 0.4 — shipped** | **0.652** | **0.6778** | **156** |
+| win 0.3 | 0.613 | 0.6740 | 213 |
+| no winRate | 0.430 | 0.6469 | 550 |
+| no winRate/goldDiff | 0.336 | 0.6150 | 591 |
+| no winRate/goldDiff/kda | 0.175 | 0.5482 | 601 |
+
+0.4 lands at 0.652 against the original 0.654: the balance restored, not
+changed. Note v3's extra stats bought no accuracy (0.6796 vs 0.6797) — they only
 added team correlation.
+
+**The bottom of the table is why `teamCorr = 0` is not the target.** Stripping
+every win-correlated term reaches 0.175, and the board it produces ranks Faker
+601st while its held-out AUC collapses to 0.5482 — a coin flip. Good players
+genuinely win more, and good teams recruit good players, so some correlation is
+irreducible; nobody knows its value. The parameter is bracketed by two failure
+modes with no objective function between them, which is why it is settled by
+judgement and left alone.
 
 **Held-out accuracy cannot pick this parameter.** It rises monotonically to a win
 weight of 1.0 — "rank every player by their team's record and discard the box
