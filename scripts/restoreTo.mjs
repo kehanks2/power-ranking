@@ -1,8 +1,12 @@
 /**
  * Restores a pg_dump into a target database, whoever is hosting it.
  *
- *   node scripts/restoreTo.mjs "<target-url>" <dump.sql>
- *   node scripts/restoreTo.mjs "<target-url>" <dump.sql> --force
+ *   node scripts/restoreTo.mjs <dump.sql>                     (target: DATABASE_URL)
+ *   node scripts/restoreTo.mjs "<target-url>" <dump.sql>      (explicit target)
+ *
+ * Prefer the first form. It reads DATABASE_URL from the environment, else
+ * .env, so a URI carrying a password never reaches shell history, and the
+ * only thing printed is the host with the credentials masked.
  *
  * Written for moving hosts in either direction: Neon -> Aiven while an
  * allowance is exhausted, and back again once it resets. The target is
@@ -21,11 +25,39 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const [targetUrl, dumpPath, ...flags] = process.argv.slice(2);
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+/** Read from .env rather than argv, so a URI with a password never lands in shell history. */
+function fromDotEnv(name) {
+  try {
+    const line = readFileSync(join(REPO_ROOT, '.env'), 'utf8')
+      .split(/\r?\n/)
+      .find((l) => l.startsWith(`${name}=`));
+    return line?.slice(name.length + 1).trim().replace(/^["']|["']$/g, '') || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const args = process.argv.slice(2);
+const flags = args.filter((a) => a.startsWith('--'));
+const positional = args.filter((a) => !a.startsWith('--'));
+
+// One positional means the dump only, and the target comes from DATABASE_URL.
+const [dumpPath, explicitUrl] =
+  positional.length > 1 ? [positional[1], positional[0]] : [positional[0], undefined];
+
+const targetUrl = explicitUrl ?? process.env.DATABASE_URL ?? fromDotEnv('DATABASE_URL');
 if (!targetUrl || !dumpPath) {
-  throw new Error('usage: node scripts/restoreTo.mjs "<target-url>" <dump.sql> [--force]');
+  throw new Error(
+    [
+      'usage: node scripts/restoreTo.mjs <dump.sql> [--force]           (target from DATABASE_URL)',
+      '       node scripts/restoreTo.mjs "<target-url>" <dump.sql> [--force]',
+    ].join('\n'),
+  );
 }
 const force = flags.includes('--force');
 
