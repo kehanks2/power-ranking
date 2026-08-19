@@ -140,13 +140,22 @@ export function componentWeights(winWeight = DEFAULT_WIN_WEIGHT): Partial<Record
 // etc. The stats not listed for a role carry no weight there.
 //
 // The box-score terms are the 0.5-era figures scaled by 1.2, so lowering the win
-// weight did not quietly re-tune the role balance alongside it.
+// weight did not quietly re-tune the role balance alongside it, then by a
+// further 2/3 to make room for dpm at 0.20 -- again preserving each role's
+// internal balance, and leaving winRate untouched at 0.4.
+//
+// DPM earns 0.20 on two independent diagnostics that bracket it from both
+// sides: face validity peaks there (the anchors are better placed than at any
+// other setting) and collapses by 0.30, while transfer carry-over keeps
+// improving past it. Neither could pick the value alone -- carry-over rises
+// monotonically toward "rank players by damage", which would put every support
+// last. See MODEL.md.
 export const ROLE_COMPONENT_WEIGHTS: Record<string, Partial<Record<PlayerComponent, number>>> = {
-  TOP: { winRate: 0.4, goldDiff: 0.18, csMin: 0.108, goldShare: 0.096, damageShare: 0.084, kda: 0.072, killParticipation: 0.06 },
-  JNG: { winRate: 0.4, objControl: 0.156, killParticipation: 0.132, goldDiff: 0.108, kda: 0.084, csMin: 0.048, damageShare: 0.036, goldShare: 0.036 },
-  MID: { winRate: 0.4, damageShare: 0.144, goldDiff: 0.12, csMin: 0.108, killParticipation: 0.084, kda: 0.072, goldShare: 0.072 },
-  BOT: { winRate: 0.4, damageShare: 0.132, kda: 0.12, csMin: 0.108, goldShare: 0.096, goldDiff: 0.084, killParticipation: 0.06 },
-  SUP: { winRate: 0.4, killParticipation: 0.3, kda: 0.156, damageShare: 0.084, objControl: 0.06 },
+  TOP: { winRate: 0.4, dpm: 0.2, goldDiff: 0.12, csMin: 0.072, goldShare: 0.064, damageShare: 0.056, kda: 0.048, killParticipation: 0.04 },
+  JNG: { winRate: 0.4, dpm: 0.2, objControl: 0.104, killParticipation: 0.088, goldDiff: 0.072, kda: 0.056, csMin: 0.032, damageShare: 0.024, goldShare: 0.024 },
+  MID: { winRate: 0.4, dpm: 0.2, damageShare: 0.096, goldDiff: 0.08, csMin: 0.072, killParticipation: 0.056, kda: 0.048, goldShare: 0.048 },
+  BOT: { winRate: 0.4, dpm: 0.2, damageShare: 0.088, kda: 0.08, csMin: 0.072, goldShare: 0.064, goldDiff: 0.056, killParticipation: 0.04 },
+  SUP: { winRate: 0.4, dpm: 0.2, killParticipation: 0.2, kda: 0.104, damageShare: 0.056, objControl: 0.04 },
 };
 
 /** Per-role weights, falling back to the legacy uniform set for an unknown role. */

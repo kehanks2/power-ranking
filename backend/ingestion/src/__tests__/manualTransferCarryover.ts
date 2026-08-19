@@ -55,7 +55,10 @@ const CONFIGS: { label: string; weightsFor: (role: string) => Weights }[] = [
   { label: 'win 0.60', weightsFor: (r) => componentWeightsForRoleAtWinWeight(r, 0.6) },
   { label: 'win 0.30', weightsFor: (r) => componentWeightsForRoleAtWinWeight(r, 0.3) },
   { label: 'no winRate', weightsFor: (r) => without(componentWeightsForRole(r), ['winRate']) },
+  { label: 'dpm 0.10', weightsFor: (r) => withDpm(componentWeightsForRole(r), 0.1) },
+  { label: 'dpm 0.15', weightsFor: (r) => withDpm(componentWeightsForRole(r), 0.15) },
   { label: 'dpm 0.20', weightsFor: (r) => withDpm(componentWeightsForRole(r), 0.2) },
+  { label: 'dpm 0.30', weightsFor: (r) => withDpm(componentWeightsForRole(r), 0.3) },
   // The degenerate end: rating IS the team's record. Must show the widest gap of
   // all, or the diagnostic is not measuring what it claims to.
   { label: 'winRate only', weightsFor: () => ({ winRate: 1 }) },

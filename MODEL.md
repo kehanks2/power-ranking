@@ -288,7 +288,7 @@ Read with three caveats: carry-over is weak in absolute terms for every config
 across cutoffs, so the observations are not independent and these are indicative
 rather than a significance test; and quarterly cutoffs make "moved" approximate.
 
-### DPM — measured, not shipped
+### DPM — shipped at 0.20 (v5, 2026-08-18)
 
 Damage per minute is derivable with no re-ingest (`damage_to_champions` and
 `games.gamelength_seconds`), and covers 99.93% of rows (59,146 of 59,186, mean
@@ -325,9 +325,32 @@ Two negative results worth keeping: stacking DPM on a lower win weight
 overshoots (Faker 376), and DPM is not a substitute for `goldDiff` (Faker 266,
 Chovy 12) — it should come out of the box score as a whole.
 
-Not shipped. Adopting it changes `PLAYER_RATING_METHOD_VERSION` and moves the
-team boards through the roster-decay prior and international seeds, so it is a
-decision rather than a sweep result.
+**The share is bracketed from both sides, which is why 0.20 rather than a
+judgement call.** Face validity peaks there and breaks immediately after — at
+0.30 Faker falls to 270, and at 0.50 the board collapses (Chovy 159, Peyz 178,
+teamCorr 0.096). Transfer carry-over, meanwhile, keeps improving past 0.20
+(0.349 → 0.356 at 0.30) and would run on toward "rank players by damage", which
+puts every support last. Neither diagnostic can pick the value alone; together
+they close on it.
+
+| dpm share | teamCorr | AUC | Faker | carry-over |
+|---|---|---|---|---|
+| 0.10 | 0.615 | 0.6769 | 150 | 0.334 |
+| 0.15 | 0.584 | 0.6760 | 144 | 0.342 |
+| **0.20** | **0.542** | **0.6754** | **142** | **0.349** |
+| 0.30 | 0.423 | 0.6736 | 270 | 0.356 |
+| 0.50 | 0.096 | 0.6640 | 305 | — |
+
+Shipped as v5. The box-score terms are scaled by 2/3 to make room, preserving
+each role's internal balance, with `winRate` untouched at 0.4.
+
+**To revert.** `git revert` the weights commit, rebuild the rating engine, run
+`npm run recompute --workspace=@power-ranking/ingestion`, then
+`manualBackfillPlayerGenerations.ts` to rebuild caret baselines at the restored
+version — it skips any frontier already holding a generation of the CURRENT
+method version, so it fills exactly the days a version change invalidated.
+Reverting is cheap in both directions now; before the as-of backfill existed, a
+version change dashed every player board for about a week.
 
 ### Margin of victory — deliberately disabled
 

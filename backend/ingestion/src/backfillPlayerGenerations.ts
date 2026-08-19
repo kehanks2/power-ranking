@@ -23,6 +23,7 @@ import { DEFAULT_WIN_WEIGHT } from '@power-ranking/rating-engine';
 import {
   computeAllPlayerRatingWindows,
   computeInternationalPlayerRatings,
+  PLAYER_RATING_METHOD_VERSION,
   RETAINED_FRONTIERS,
 } from './computePlayerRatings.js';
 
@@ -55,10 +56,17 @@ async function recentPlayDays(pool: Pool, limit: number): Promise<string[]> {
   return result.rows.map((row) => row.day);
 }
 
+/**
+ * Frontiers already carrying a generation OF THE CURRENT METHOD VERSION. Version
+ * matters because carets refuse a baseline computed by a different model, so
+ * after a retune a day holding only the old version has no usable baseline and
+ * must be rebuilt -- which is the case that leaves every board dashed.
+ */
 async function frontiersHeld(pool: Pool): Promise<Set<string>> {
   const result = await pool.query<{ frontier: string }>(
     `SELECT DISTINCT data_frontier::text AS frontier FROM player_ratings_history
-      WHERE data_frontier IS NOT NULL`,
+      WHERE data_frontier IS NOT NULL AND method_version = $1`,
+    [PLAYER_RATING_METHOD_VERSION],
   );
   return new Set(result.rows.map((row) => row.frontier));
 }

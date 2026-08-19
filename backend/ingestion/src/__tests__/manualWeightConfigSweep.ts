@@ -80,7 +80,10 @@ const CONFIGS: { label: string; weightsFor: (role: string) => Weights }[] = [
   // addition to the box score and as a replacement for the terms that carry the
   // most outcome exposure.
   { label: 'dpm 0.10 (from box score)', weightsFor: (r) => withDpm(componentWeightsForRole(r), 0.1) },
+  { label: 'dpm 0.15 (from box score)', weightsFor: (r) => withDpm(componentWeightsForRole(r), 0.15) },
   { label: 'dpm 0.20 (from box score)', weightsFor: (r) => withDpm(componentWeightsForRole(r), 0.2) },
+  { label: 'dpm 0.30 (from box score)', weightsFor: (r) => withDpm(componentWeightsForRole(r), 0.3) },
+  { label: 'dpm 0.50 (from box score)', weightsFor: (r) => withDpm(componentWeightsForRole(r), 0.5) },
   {
     label: 'dpm 0.20, win 0.30',
     weightsFor: (r) => withDpm(componentWeightsForRoleAtWinWeight(r, 0.3), 0.2),

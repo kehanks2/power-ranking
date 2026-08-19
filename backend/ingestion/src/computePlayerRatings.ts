@@ -21,12 +21,15 @@ import {
 } from '@power-ranking/shared';
 import { bulkInsert } from './bulkInsert.js';
 
+// v5: dpm added at 0.20, box-score terms rescaled to match. Two diagnostics
+// bracket the value -- face validity peaks at 0.20 and breaks by 0.30, transfer
+// carry-over keeps rising past it -- so neither picks it alone. See MODEL.md.
 // v4: win weight cut from 0.5 to 0.4, box-score terms rescaled to match.
 // Bumping this is REQUIRED whenever a weight changes -- rank-change carets
 // refuse a baseline generation from a different method_version, and that guard
 // is the only thing stopping a retune being reported as player movement.
 // v3: per-role stat weighting, plus CS/min, gold-diff, and jungle objective control.
-const PLAYER_RATING_METHOD_VERSION = 4;
+export const PLAYER_RATING_METHOD_VERSION = 5;
 
 interface PlayerGroupStats {
   playerId: number;
