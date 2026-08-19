@@ -40,8 +40,19 @@ async function computeInternationalSeeds(pool: Pool): Promise<Map<string, Rating
   const playerRating = new Map<number, { rating: number; games: number }>();
   for (const r of ratingRows.rows) playerRating.set(r.player_id, { rating: Number(r.rating), games: r.games_played });
 
+  // Teams still playing only. A seed answers "how strong is this roster NOW",
+  // which is meaningless for a folded org -- and its roster is a stale scrape,
+  // since roster_memberships never closes a row. Without a seed such a team
+  // falls back to the cold prior, which is the honest answer. Matches the
+  // TEAM_INACTIVE_DAYS rule the boards use.
   const rosterRows = await pool.query<{ team_id: number; player_id: number }>(
-    'SELECT team_id, player_id FROM roster_memberships WHERE end_date IS NULL',
+    `SELECT rm.team_id, rm.player_id FROM roster_memberships rm
+      WHERE rm.end_date IS NULL
+        AND EXISTS (
+          SELECT 1 FROM games g
+          WHERE (g.team1_id = rm.team_id OR g.team2_id = rm.team_id)
+            AND g.datetime_utc >= (SELECT max(datetime_utc) FROM games) - INTERVAL '180 days'
+        )`,
   );
   const roster = new Map<number, number[]>();
   for (const r of rosterRows.rows) {
