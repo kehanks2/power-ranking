@@ -8,6 +8,8 @@
  * completed stage while the current one still owes fixtures. `stage-stalled`
  * means the fail-safe released a week that went quiet, which is worth looking
  * at: it usually means a postponed match or a fixture that will never happen.
+ * `stage-unpublished` should never appear: it means a decided series went
+ * GAMES_PUBLISH_DAYS without its games, so Liquipedia has changed something.
  */
 import { createPool } from '../db.js';
 import { resolveBoardAdvance, stageKind, STAGE_STATUS_SQL, type StageStatus } from '@power-ranking/shared';
@@ -20,7 +22,8 @@ const { rows } = await pool.query<{
   stage_name: string | null;
   last_played_day: string | null;
   previous_played_day: string | null;
-  unplayed_series: string;
+  pending_fixtures: string;
+  decided_awaiting_games: string;
   frontier_day: string | null;
 }>(STAGE_STATUS_SQL, [null]);
 
@@ -33,7 +36,8 @@ const statuses: StageStatus[] = rows.map((r) => ({
   stageName: r.stage_name,
   lastPlayedDay: r.last_played_day,
   previousPlayedDay: r.previous_played_day,
-  unplayedSeries: Number(r.unplayed_series),
+  pendingFixtures: Number(r.pending_fixtures),
+  decidedAwaitingGames: Number(r.decided_awaiting_games),
 }));
 
 // The frontier, not the wall clock: the stall window has to be measured against
@@ -59,7 +63,7 @@ for (const a of advances) {
   console.log(
     `  ${(slugOf.get(a.leagueId) ?? '').padEnd(8)} ${(current.bracketId ?? '--').padEnd(15)} ` +
       `${stageKind(current.bracketId).padEnd(8)} last result ${current.lastPlayedDay}, ` +
-      `${current.unplayedSeries} fixture(s) outstanding`,
+      `${current.pendingFixtures} fixture(s) outstanding, ${current.decidedAwaitingGames} awaiting games`,
   );
 }
 

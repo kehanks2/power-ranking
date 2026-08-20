@@ -6,6 +6,7 @@ import {
   isPlayoffSeries,
   resolveBoardAdvance,
   STAGE_STALL_DAYS,
+  GAMES_PUBLISH_DAYS,
   type StageStatus,
 } from '../stage.js';
 
@@ -65,18 +66,20 @@ const LCK = 1;
 const stage = (
   bracketId: string | null,
   lastPlayedDay: string | null,
-  unplayedSeries = 0,
+  pendingFixtures = 0,
   previousPlayedDay: string | null = null,
   // Null by default, so these keep exercising the id fallback they were
   // written for. Stage-name behaviour is covered separately below.
   stageName: string | null = null,
+  decidedAwaitingGames = 0,
 ): StageStatus => ({
   leagueId: LCK,
   bracketId,
   stageName,
   lastPlayedDay,
   previousPlayedDay,
-  unplayedSeries,
+  pendingFixtures,
+  decidedAwaitingGames,
 });
 
 describe('resolveBoardAdvance', () => {
@@ -120,13 +123,44 @@ describe('resolveBoardAdvance', () => {
     expect(stalled.asOfDate).toBe('2026-08-13');
   });
 
+  it('holds a decided series past the stall, rather than showing a week without it', () => {
+    // LCS week 4, 2026: Saturday landed, LYON/Sentinels was decided on the
+    // Sunday but its games went unpublished for three days. Counting it as an
+    // outstanding fixture let the stall release the week with the result that
+    // decided it missing, and Sentinels read as falling for beating the
+    // first-placed team. A decided series always gets its games, so wait.
+    const awaiting = [
+      stage('LCK26Sp3W2', '2026-08-09'),
+      stage('LCK26Sp3W3', '2026-08-16', 0, null, null, 1),
+    ];
+    const past = resolveBoardAdvance(awaiting, `2026-08-${16 + STAGE_STALL_DAYS}`)[0];
+    expect(past.reason).toBe('holding');
+    expect(past.asOfDate).toBe('2026-08-09');
+  });
+
+  it('releases a decided series whose games never arrive, as a last resort', () => {
+    const awaiting = [
+      stage('LCK26Sp3W2', '2026-08-09'),
+      stage('LCK26Sp3W3', '2026-08-16', 0, null, null, 1),
+    ];
+    const day = (offset: number) => new Date(Date.parse('2026-08-16T00:00:00Z') + offset * 86_400_000).toISOString().slice(0, 10);
+    expect(resolveBoardAdvance(awaiting, day(GAMES_PUBLISH_DAYS - 1))[0].reason).toBe('holding');
+    const released = resolveBoardAdvance(awaiting, day(GAMES_PUBLISH_DAYS))[0];
+    expect(released.reason).toBe('stage-unpublished');
+    expect(released.asOfDate).toBe('2026-08-16');
+  });
+
+  it('outlasts the stall, since the two windows bound unrelated delays', () => {
+    expect(GAMES_PUBLISH_DAYS).toBeGreaterThan(STAGE_STALL_DAYS);
+  });
+
   it('keeps each league on its own clock', () => {
     const LEC = 2;
     const advances = resolveBoardAdvance(
       [
         stage('LCK26Sp3W3', '2026-08-15', 0),
-        { leagueId: LEC, bracketId: 'LEC26SumW3', stageName: null, lastPlayedDay: '2026-08-10', previousPlayedDay: null, unplayedSeries: 0 },
-        { leagueId: LEC, bracketId: 'LEC26SumW4', stageName: null, lastPlayedDay: '2026-08-15', previousPlayedDay: null, unplayedSeries: 4 },
+        { leagueId: LEC, bracketId: 'LEC26SumW3', stageName: null, lastPlayedDay: '2026-08-10', previousPlayedDay: null, pendingFixtures: 0, decidedAwaitingGames: 0 },
+        { leagueId: LEC, bracketId: 'LEC26SumW4', stageName: null, lastPlayedDay: '2026-08-15', previousPlayedDay: null, pendingFixtures: 4, decidedAwaitingGames: 0 },
       ],
       '2026-08-16',
     );

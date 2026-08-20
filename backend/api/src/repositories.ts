@@ -107,7 +107,8 @@ export async function getBoardsLastUpdated(pool: Pool): Promise<BoardUpdatedDto[
     stage_name: string | null;
     last_played_day: string | null;
     previous_played_day: string | null;
-    unplayed_series: string;
+    pending_fixtures: string;
+    decided_awaiting_games: string;
     frontier_day: string | null;
   }>(STAGE_STATUS_SQL, [null]);
 
@@ -119,7 +120,8 @@ export async function getBoardsLastUpdated(pool: Pool): Promise<BoardUpdatedDto[
     stageName: row.stage_name,
     lastPlayedDay: row.last_played_day,
     previousPlayedDay: row.previous_played_day,
-    unplayedSeries: Number(row.unplayed_series),
+    pendingFixtures: Number(row.pending_fixtures),
+    decidedAwaitingGames: Number(row.decided_awaiting_games),
   }));
 
   const regional = today
@@ -353,7 +355,8 @@ async function getBoardAdvance(pool: Pool, leagueSlug: string): Promise<BoardAdv
     stage_name: string | null;
     last_played_day: string | null;
     previous_played_day: string | null;
-    unplayed_series: string;
+    pending_fixtures: string;
+    decided_awaiting_games: string;
     frontier_day: string | null;
   }>(STAGE_STATUS_SQL, [leagueSlug]);
 
@@ -366,7 +369,8 @@ async function getBoardAdvance(pool: Pool, leagueSlug: string): Promise<BoardAdv
     stageName: row.stage_name,
     lastPlayedDay: row.last_played_day,
     previousPlayedDay: row.previous_played_day,
-    unplayedSeries: Number(row.unplayed_series),
+    pendingFixtures: Number(row.pending_fixtures),
+    decidedAwaitingGames: Number(row.decided_awaiting_games),
   }));
 
   // Narrowed to this league in SQL, so there is exactly one advance to take.

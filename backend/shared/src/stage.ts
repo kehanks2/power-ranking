@@ -145,28 +145,35 @@ export function isPlayoffSeries(
 
 /**
  * Days a regular-season stage may go without a new result before the board
- * advances regardless. Guards a postponed or cancelled fixture -- or a schedule
- * we have wrong -- freezing a board indefinitely.
+ * advances with fixtures still OUTSTANDING. Guards a postponed or cancelled
+ * match -- or a schedule we have wrong -- freezing a board indefinitely.
  *
  * Safe by measurement, not by feel: across 82 regular-season stages in all six
  * leagues in 2026, the worst gap between consecutive play days inside a stage is
  * 1 day, with no exceptions. Brackets reach 11, which is why this applies only
  * to regular season.
  *
- * MUST EXCEED `STATS_GRACE_DAYS`, and that is why it is 3 rather than 2. A
- * series whose result is published before its stat lines has no games yet, so it
- * reads here as an outstanding fixture. At 2 the two windows expired together
- * and the stall won the race: LCS week 4 was released as of 15 Aug while the two
- * biggest results of the week -- LYON/Sentinels and FlyQuest/Cloud9, both played
- * on the 16th -- were still held for stats. The board showed a settled week with
- * its decisive games missing, and Sentinels appeared to fall for beating the
- * first-placed team.
- *
- * With the stall outlasting the grace, ingestion always resolves a stats delay
- * first: the games land, the stage completes honestly, and the stall is left to
- * do its actual job, which is releasing a fixture that may never be played.
+ * Applies to `pendingFixtures` only. A series already decided is a data gap that
+ * always fills, not a match that may never happen -- see GAMES_PUBLISH_DAYS.
  */
 export const STAGE_STALL_DAYS = 3;
+
+/**
+ * Days a stage is held for a DECIDED series whose games have not been published.
+ * A pure fail-safe against an unbounded hold, not a wait we expect to serve: of
+ * 302 games ingested incrementally since 2026-08-01, none arrived more than 3
+ * days after it was played, and no decided series in the whole database has ever
+ * been left without its games (2 outstanding, both same-day).
+ *
+ * Distinct from STAGE_STALL_DAYS because the two delays are unrelated. That one
+ * bounds a match that may never be played; this one bounds Liquipedia's
+ * publication, which `STATS_GRACE_DAYS` cannot -- the grace governs whether WE
+ * withhold a game we already hold, and expiring it cannot conjure a row
+ * Liquipedia has not written. Conflating them released LCS week 4 as of 16 Aug
+ * with LYON/Sentinels missing, and Sentinels appeared to fall for beating the
+ * first-placed team.
+ */
+export const GAMES_PUBLISH_DAYS = 14;
 
 /** One row per (league, stage): when it last produced a result, and what it still owes. */
 export interface StageStatus {
@@ -182,14 +189,24 @@ export interface StageStatus {
    * stage" can be the end of the regular season for weeks at a time.
    */
   previousPlayedDay: string | null;
-  /** Series in this stage with no games yet -- Liquipedia's -1 to -1 fixtures. */
-  unplayedSeries: number;
+  /**
+   * Series with neither games nor a winner -- Liquipedia's -1 to -1 fixtures.
+   * These may never be played, which is what STAGE_STALL_DAYS releases.
+   */
+  pendingFixtures: number;
+  /**
+   * Series with a winner but no games yet: played, and awaiting publication or
+   * held by `shouldWaitForStats`. Counted apart from `pendingFixtures` because
+   * the games always arrive, so the stage must wait rather than stall.
+   */
+  decidedAwaitingGames: number;
 }
 
 export type AdvanceReason =
   | 'bracket' // every series decisive, so move immediately
   | 'stage-complete' // the week is fully played
   | 'stage-stalled' // fail-safe: the week went quiet with fixtures outstanding
+  | 'stage-unpublished' // fail-safe: a decided series' games never arrived
   | 'holding' // mid-week, board pinned to the last completed stage
   | 'no-data';
 
@@ -268,13 +285,25 @@ export function resolveBoardAdvance(rows: StageStatus[], today: string): BoardAd
     let shownIndex: number;
     let reason: AdvanceReason;
 
+    const quietFor = daysBetween(current.lastPlayedDay, today);
     if (stageKindOf(current.stageName, current.bracketId) === 'bracket') {
       shownIndex = played.length - 1;
       reason = 'bracket';
-    } else if (current.unplayedSeries === 0) {
+    } else if (current.pendingFixtures === 0 && current.decidedAwaitingGames === 0) {
       shownIndex = played.length - 1;
       reason = 'stage-complete';
-    } else if (daysBetween(current.lastPlayedDay, today) >= STAGE_STALL_DAYS) {
+    } else if (current.decidedAwaitingGames > 0) {
+      // A result held without its games is a week we cannot show honestly: the
+      // team that won it reads as not having played, and is overtaken by a team
+      // whose smaller win did land. The games always come, so wait for them.
+      if (quietFor >= GAMES_PUBLISH_DAYS) {
+        shownIndex = played.length - 1;
+        reason = 'stage-unpublished';
+      } else {
+        shownIndex = played.length - 2;
+        reason = shownIndex >= 0 ? 'holding' : 'no-data';
+      }
+    } else if (quietFor >= STAGE_STALL_DAYS) {
       shownIndex = played.length - 1;
       reason = 'stage-stalled';
     } else {
@@ -333,7 +362,11 @@ export const STAGE_STATUS_SQL = `
          -- Second-newest day of play inside the stage, for bracket carets.
          (array_agg(DISTINCT g.day::date ORDER BY g.day::date DESC) FILTER (WHERE g.day IS NOT NULL))[2]::text
                                           AS previous_played_day,
-         count(*) FILTER (WHERE g.day IS NULL) AS unplayed_series,
+         -- Split on the winner, not the scores: migration 0010 guarantees an
+         -- unplayed -1 to -1 fixture never carries one, so a gameless series
+         -- with a winner was played and is only awaiting publication.
+         count(*) FILTER (WHERE g.day IS NULL AND s.winner_team_id IS NULL) AS pending_fixtures,
+         count(*) FILTER (WHERE g.day IS NULL AND s.winner_team_id IS NOT NULL) AS decided_awaiting_games,
          (SELECT day FROM frontier)       AS frontier_day
     FROM series s
     JOIN tournaments t ON t.id = s.tournament_id
