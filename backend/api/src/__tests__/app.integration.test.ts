@@ -467,16 +467,17 @@ describe('read API (live Postgres)', () => {
     // column came from the one group the rating chose, the panel aggregated
     // every game the player had anywhere. That part is fixed.
     //
-    // They are not always EQUAL, and asserting so was wrong: a stage-held board
-    // serves a frozen generation while the panel is computed live, so the two
-    // differ by exactly the games played since the hold -- LCS held at
-    // 2026-08-09 showed CoreJJ 271 against the panel's 273. The panel can
-    // therefore run ahead, never behind. See the open issue on that gap.
+    // They also disagreed while a board was stage-held: the column came from the
+    // frozen generation and the panel was computed live, so the two differed by
+    // exactly the games played since the hold -- LCS held at 2026-08-09 showed
+    // CoreJJ 271 against the panel's 273, and LCK held at 2026-08-16 showed
+    // Chovy 338 against 341. The panel now stops at the same held day, so
+    // equality is the honest assertion again rather than a direction.
     const board = await request(app).get('/players').query({ league: 'LCS' });
     for (const row of board.body.slice(0, 12)) {
       const res = await request(app).get(`/players/${row.id}`);
       expect(res.status).toBe(200);
-      expect(res.body.stats.games).toBeGreaterThanOrEqual(row.gamesPlayed);
+      expect(res.body.stats.games).toBe(row.gamesPlayed);
     }
   });
 

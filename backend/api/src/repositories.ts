@@ -394,7 +394,7 @@ async function resolvePlayerGeneration(
   scope: PlayerRatingScope,
   window: RatingWindow,
   asOfDate: string | null,
-): Promise<Date | null> {
+): Promise<{ computedAt: Date; dataFrontier: string } | null> {
   if (!asOfDate) return null;
   const { rows } = await pool.query<{ computed_at: Date; data_frontier: string | null }>(
     `SELECT DISTINCT ON (data_frontier) computed_at, data_frontier::text
@@ -407,7 +407,12 @@ async function resolvePlayerGeneration(
 
   const ordered = [...rows].sort((a, b) => (a.data_frontier! < b.data_frontier! ? -1 : 1));
   const qualifying = ordered.filter((row) => row.data_frontier! <= asOfDate);
-  return (qualifying.length > 0 ? qualifying[qualifying.length - 1] : ordered[0]).computed_at;
+  const chosen = qualifying.length > 0 ? qualifying[qualifying.length - 1] : ordered[0];
+  // The frontier rides along because it, not the stage date, is where the
+  // board's numbers actually stop: on the fallback above every candidate is
+  // PAST the stage, so bounding a stat line at the stage date would leave the
+  // panel short of the column beside it.
+  return { computedAt: chosen.computed_at, dataFrontier: chosen.data_frontier! };
 }
 
 async function computeRankChanges(
@@ -693,7 +698,7 @@ export async function getTeamById(pool: Pool, teamId: number): Promise<TeamDetai
     ORDER BY array_position(ARRAY['TOP','JNG','MID','BOT','SUP']::text[], COALESCE(prh.role, rm.role)),
              rm.is_starter DESC, p.handle
     `,
-    [teamId, rosterGeneration],
+    [teamId, rosterGeneration?.computedAt ?? null],
   );
 
   // The league's board, so a roster rank is the same number that board shows
@@ -1174,7 +1179,7 @@ export async function getPlayers(
     -- Global tab: no international games, no row.
     WHERE ($2 <> 'international' OR prh.rating IS NOT NULL)
     `,
-    [leagueSlug ?? null, scope, ratingWindow, generation],
+    [leagueSlug ?? null, scope, ratingWindow, generation?.computedAt ?? null],
   );
 
   const withRatings = result.rows
@@ -1212,7 +1217,7 @@ export async function getPlayers(
     ranked,
     scope,
     ratingWindow,
-    generation,
+    generation?.computedAt ?? null,
     leagueSlug ?? null,
     advance?.previousAsOfDate ?? null,
   );
@@ -1401,6 +1406,21 @@ export async function getPlayerById(
     ? ''
     : ` AND ${playerWindowPredicate(ratingWindow, 'g.datetime_utc', 'lss.latest_split_start')}`;
 
+  // The stats must stop where the board stops. `summary` comes from getPlayers
+  // and is pinned to the held generation, so an unbounded stat line reported a
+  // different game count from the row beside it -- LCK held at 16 Aug read
+  // "Chovy 338" on the board and 341 in his panel. Bound on the generation's
+  // frontier rather than the stage date, which are not the same day whenever
+  // resolvePlayerGeneration takes its oldest-generation fallback. Null off a
+  // held board, and never internationally, which does not hold. A DATE cast on
+  // both sides: `pg` would send a JS Date at local midnight.
+  const heldAdvance = isInternational || !leagueSlug ? null : await getBoardAdvance(pool, leagueSlug);
+  const heldGeneration = heldAdvance?.asOfDate
+    ? await resolvePlayerGeneration(pool, scope, ratingWindow, heldAdvance.asOfDate)
+    : null;
+  const heldParam = isInternational ? '$4' : '$5';
+  const heldFilter = ` AND (${heldParam}::text IS NULL OR g.datetime_utc::date <= ${heldParam}::date)`;
+
   const aggregates = STAT_METRICS.map((m) => `${m.expr} AS "${m.key}"`).join(',\n      ');
   // rank(), not percent_rank(): the panel reports a place, so ties share one
   // (1, 1, 3). NULLS LAST keeps a player with no value from taking 1st.
@@ -1421,7 +1441,7 @@ export async function getPlayerById(
       FROM player_game_performance pgp
       JOIN games g ON g.id = pgp.game_id
       ${scopeJoin}
-      WHERE pgp.player_id = ANY($2::int[]) AND pgp.role = ${roleParam}${windowFilter}
+      WHERE pgp.player_id = ANY($2::int[]) AND pgp.role = ${roleParam}${windowFilter}${heldFilter}
     ),
     -- Re-derived from the games in scope (a mid-split signing gets the series
     -- they played), decided by the scoreline since best_of is unreliable.
@@ -1461,7 +1481,9 @@ export async function getPlayerById(
     LEFT JOIN series_agg sa ON sa.player_id = r.player_id
     WHERE r.player_id = $1
     `,
-    isInternational ? [playerId, peerIds, summary.role] : [playerId, peerIds, leagueId, summary.role],
+    isInternational
+      ? [playerId, peerIds, summary.role, null]
+      : [playerId, peerIds, leagueId, summary.role, heldGeneration?.dataFrontier ?? null],
   );
 
   // A player with no games in this group still has a board row (rated 50), so the
