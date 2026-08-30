@@ -1,15 +1,4 @@
-import {
-  Component,
-  ChangeDetectionStrategy,
-  DestroyRef,
-  ElementRef,
-  afterNextRender,
-  inject,
-  Injector,
-  signal,
-  computed,
-  effect,
-} from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, inject, signal, computed, effect } from '@angular/core';
 import { DecimalPipe, PercentPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { RankingsApiService } from '../rankings-api.service';
@@ -37,12 +26,6 @@ const RECENT_EVENTS = ['W24', 'FS25', 'MSI25', 'W25', 'FS26', 'MSI26'] as const;
  */
 const AXIS_STEPS = [100, 200, 250, 500, 1000];
 
-/** Crest, its gap to the name, and the cell's own padding. */
-const TEAM_COL_OVERHEAD_PX = 56;
-
-/** Before the first measurement, and if a board somehow renders no names. */
-const TEAM_COL_FALLBACK_PX = 236;
-
 /** What fits the track without the labels touching. */
 const MAX_AXIS_TICKS = 5;
 
@@ -66,28 +49,6 @@ export class TeamsListComponent {
   protected readonly filterService = inject(LeagueFilterService);
 
   protected readonly teams = signal<TeamSummary[]>([]);
-  /**
-   * Width of the Team column, measured from the names actually on this board.
-   *
-   * One fixed width cannot serve every board: LCP needs 234px for "Fukuoka
-   * SoftBank HAWKS" and LEC needs 151, so a single value leaves the shorter
-   * boards a hole between the longest name and the next column. Under
-   * `table-layout: fixed` the column will not size itself, so it is measured.
-   * `scrollWidth` reports the full text width even while the cell clips, which
-   * is what keeps this from oscillating.
-   */
-  protected readonly teamColWidth = signal(TEAM_COL_FALLBACK_PX);
-
-  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
-  private readonly injector = inject(Injector);
-
-  private measureTeamColumn(): void {
-    const names = this.host.nativeElement.querySelectorAll<HTMLElement>('.team-cell .team');
-    if (names.length === 0) return;
-    const widest = Math.max(...[...names].map((n) => n.scrollWidth));
-    this.teamColWidth.set(Math.ceil(widest) + TEAM_COL_OVERHEAD_PX);
-  }
-
   protected readonly loading = signal(true);
   protected readonly sortKey = signal<SortKey>('floor');
 
@@ -175,13 +136,6 @@ export class TeamsListComponent {
     // old board's baseline under the new board's name.
     effect(() => this.anchor.publish(this.loading() ? [] : this.teams()));
 
-    // Re-measured whenever the rows change, and once after the first render:
-    // the names are what set the width, and a board switch replaces all of them.
-    afterNextRender(() => this.measureTeamColumn());
-    effect(() => {
-      this.sorted();
-      afterNextRender(() => this.measureTeamColumn(), { injector: this.injector });
-    });
     inject(DestroyRef).onDestroy(() => this.anchor.clear());
 
     effect((onCleanup) => {

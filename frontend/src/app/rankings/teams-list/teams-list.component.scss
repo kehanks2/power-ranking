@@ -205,14 +205,16 @@ tbody td.rank {
   max-width: 100%;
 }
 
-// Fixed, not the remainder column. Left to absorb whatever the other columns
-// gave back, it grew an 80px hole between the longest name and the next column
-// every time one of them was tightened. Sized to the longest name we hold --
-// LCP's "Fukuoka SoftBank HAWKS" on top of the crest and its gap -- and the
-// meter takes the remainder instead, being the one column that can use it.
+// Sized to hold a name at the display limit, not to whatever is left over.
+// `displayTeamName` caps a name at 22 characters, and 22 characters measures
+// 160-182px in this face (179 for the real longest, "Fukuoka SoftBank HAWKS"),
+// so 186 of text plus the crest, its gap and the cell's padding, plus room to
+// keep the longest name off the next column. Deriving this from the rendered
+// names instead sized it to the exact width of the longest one, leaving them
+// nothing to breathe into.
 .teams-table th.team-h,
 .teams-table td.team-col {
-  width: var(--team-col, 236px);
+  width: 260px;
 }
 
 // Half the shared padding on the team cell. None at all put the crest closer to
@@ -336,11 +338,19 @@ tbody td.rank {
 
 // Wide enough for eight tick labels without crowding, but allowed to give way
 // before the Games column does -- it is a meter, and loses least by narrowing.
-// No width: under fixed layout the column without one takes the remainder, and
-// a wider track is exactly what the axis labels want.
+// No width: under fixed layout the column without one takes the remainder.
 td.interval,
 th.interval-h {
   min-width: 170px;
+}
+
+// Extra left padding is what separates the meter from the Floor figure -- at
+// the shared padding the two read as one column. Named through thead/tbody to
+// beat `.teams-table tbody td`, which sets the shared padding and wins on
+// element count once encapsulation levels the classes.
+.teams-table thead th.interval-h,
+.teams-table tbody td.interval {
+  padding-left: calc(#{$cell-pad-x} + 0.55rem);
 }
 
 // The rightmost tick label overhangs the track's edge; reserved by insetting the
