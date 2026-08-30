@@ -30,6 +30,7 @@ import {
   REGIONAL_SERIES_TO_LEAGUE_SLUG,
   INTERNATIONAL_SERIES,
   AMERICAS_SERIES,
+  SERIES_EXTRA_CONDITIONS,
 } from './liquipediaMatchIngest.js';
 import { computeRatings } from './computeRatings.js';
 import { refreshStatlessGames } from './refreshStatlessGames.js';
@@ -115,9 +116,11 @@ async function main() {
   const failed: string[] = [];
   for (const series of ALL_SERIES) {
     try {
+      const extra = SERIES_EXTRA_CONDITIONS[series];
       const result = await ingestLiquipediaMatches(
         pool,
-        `[[series::${series}]] AND [[date::>${startDate}]] AND [[date::<${cutoff}]]`,
+        `[[series::${series}]] AND [[date::>${startDate}]] AND [[date::<${cutoff}]]` +
+          (extra ? ` AND ${extra}` : ''),
       );
       games += result.gamesProcessed;
       incomplete += result.gamesSkippedIncomplete;

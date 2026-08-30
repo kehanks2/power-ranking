@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   classifyMatch,
+  isPromotionPlay,
   goldByRole,
   hasCompletePlayerData,
   shouldWaitForStats,
@@ -254,5 +255,50 @@ describe('re-ingesting must never narrow what we already hold', () => {
     // The 806 statless games. Re-fetching one must leave it exactly as it is.
     expect(offeredToPrune([0, 0])).toBe(false);
     expect(offeredToPrune([])).toBe(false);
+  });
+});
+
+describe('isPromotionPlay', () => {
+  // Promotion is a league team playing an outsider for a slot, not a season
+  // game. Neither tier nor tiertype separates it -- LCP 2026 Promotion is
+  // tier 1 Qualifier, LCP's Wild Card Playoffs tier 2 with no tiertype, and
+  // LPL's Regional Finals (real playoffs) tier 2 with no tiertype as well.
+  it('catches every promotion path the wiki actually uses', () => {
+    expect(isPromotionPlay('LCP/2026/Promotion')).toBe(true);
+    expect(isPromotionPlay('LCP/2027/Promotion/Wild_Card_Playoffs')).toBe(true);
+    expect(isPromotionPlay('LCP/2027/Promotion/Wild_Card_Playoffs/TH_Qualifier/Open')).toBe(true);
+    expect(isPromotionPlay('LTA/2026/North/Promotion_Tournament')).toBe(true);
+    expect(isPromotionPlay('LTA/2026/South/Promotion_Tournament')).toBe(true);
+  });
+
+  // These ARE the league's playoffs and carry games we rate. Dropping them
+  // would take 38 games off ten current LCK and LPL teams.
+  it('leaves Regional Finals and the ordinary season alone', () => {
+    expect(isPromotionPlay('LCK/2024/Regional_Finals')).toBe(false);
+    expect(isPromotionPlay('LPL/2025/Regional_Finals')).toBe(false);
+    expect(isPromotionPlay('LPL/2026/Regional_Finals')).toBe(false);
+    expect(isPromotionPlay('LPL/2026/Split_3')).toBe(false);
+    expect(isPromotionPlay('LCK/2024/Summer')).toBe(false);
+    expect(isPromotionPlay('LTA/2025/Split_2/North')).toBe(false);
+    expect(isPromotionPlay('Mid-Season_Invitational/2026')).toBe(false);
+  });
+
+  // A whole segment, so a name that merely begins with the word is not caught.
+  it('matches a path segment, not a substring', () => {
+    expect(isPromotionPlay('LCS/2026/Promotional_Series_Invitational')).toBe(false);
+    expect(isPromotionPlay('LEC/2026/Season_Promotionally_Sponsored')).toBe(false);
+  });
+});
+
+describe('classifyMatch on promotion play', () => {
+  it('excludes it whatever the series says', () => {
+    expect(classifyMatch('LoL Championship Pacific', 'LCP/2026/Promotion', leagueMap())).toBeNull();
+    expect(
+      classifyMatch('LoL Championship of The Americas', 'LTA/2026/North/Promotion_Tournament', leagueMap()),
+    ).toBeNull();
+  });
+
+  it('still classifies the league’s own playoffs', () => {
+    expect(classifyMatch('LoL Pro League', 'LPL/2026/Regional_Finals', leagueMap())).not.toBeNull();
   });
 });

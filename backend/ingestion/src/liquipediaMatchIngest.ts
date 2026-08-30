@@ -34,12 +34,51 @@ export interface MatchClassification {
 }
 
 /**
+ * Promotion and relegation play, which is not part of a league's season.
+ *
+ * Matched on the page path, because neither tier nor tiertype separates it:
+ * LCP 2026 Promotion is tier 1 Qualifier, LCP's Wild Card Playoffs are tier 2
+ * with no tiertype, and LPL's Regional Finals -- which ARE that league's
+ * playoffs and must stay -- are tier 2 with no tiertype too. The path is the
+ * one field that tells them apart: `LCP/2026/Promotion`,
+ * `LCP/2027/Promotion/Wild_Card_Playoffs/...` and `LTA/2026/North/
+ * Promotion_Tournament` against `LPL/2025/Regional_Finals`.
+ *
+ * A whole segment, anchored: a league called "Promotional League" would not be
+ * promotion play, and `Regional_Finals` must never match.
+ */
+const PROMOTION_SEGMENT = /(^|\/)Promotion(_[A-Za-z]+)?(\/|$)/;
+
+export function isPromotionPlay(parent: string): boolean {
+  return PROMOTION_SEGMENT.test(parent);
+}
+
+/**
+ * Extra LPDB conditions per series, ANDed onto the pull's date window.
+ *
+ * `classifyMatch` is what guarantees promotion play never lands; this only
+ * stops us fetching it. LCP earns one because its series bucket carries the
+ * whole open-qualifier tier -- 82 of the 84 matches in a daily window, and 224
+ * of 247 over a month.
+ *
+ * NOT global. `tiertype=Qualifier` is also what MSI's regional qualifier
+ * brackets carry, and those are games we rate.
+ */
+export const SERIES_EXTRA_CONDITIONS: Record<string, string> = {
+  'LoL Championship Pacific': '[[liquipediatiertype::!Qualifier]]',
+};
+
+/**
  * Classifies a match's series+parent for ingestion, or null to exclude.
  * Exclusion is the default, so an unrecognized series never sneaks in. Regional
  * MSI-qualifier brackets share the "Mid-Season Invitational" series with the
  * real MSI, so `parent` is checked too (see the Road_to_ guard below).
  */
 export function classifyMatch(series: string, parent: string, leagueIdBySlug: Map<string, number>): MatchClassification | null {
+  // Before anything else: a promotion bracket is a league team playing an
+  // outsider for a slot, not a season game, and it moved two LCP ratings.
+  if (isPromotionPlay(parent)) return null;
+
   const leagueSlug = REGIONAL_SERIES_TO_LEAGUE_SLUG[series];
   if (leagueSlug) {
     const canonicalLeagueId = leagueIdBySlug.get(leagueSlug);
