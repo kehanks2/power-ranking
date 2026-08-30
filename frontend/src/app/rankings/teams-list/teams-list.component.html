@@ -4,7 +4,7 @@
   <p class="status">No teams ranked yet for this board.</p>
 } @else {
   <div class="table-scroll">
-    <table class="teams-table">
+    <table class="teams-table" [style.--team-col.px]="teamColWidth()">
       <caption class="visually-hidden">
         Teams ranked by floor, with rating, uncertainty and international appearances
       </caption>

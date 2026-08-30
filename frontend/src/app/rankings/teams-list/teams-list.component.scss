@@ -205,14 +205,14 @@ tbody td.rank {
   max-width: 100%;
 }
 
-// Wide enough to spell out the longest name we hold -- LCP's
-// "Fukuoka SoftBank HAWKS gaming" needs 234px of text on top of the crest and
-// its gap. The cap still exists because the wrapper clips rather than scrolls,
-// so an unbounded column takes its overflow off the Games figure; the meter
-// below gives up the width instead, being the thing that loses least by it.
+// Fixed, not the remainder column. Left to absorb whatever the other columns
+// gave back, it grew an 80px hole between the longest name and the next column
+// every time one of them was tightened. Sized to the longest name we hold --
+// LCP's "Fukuoka SoftBank HAWKS" on top of the crest and its gap -- and the
+// meter takes the remainder instead, being the one column that can use it.
 .teams-table th.team-h,
 .teams-table td.team-col {
-  max-width: 300px;
+  width: var(--team-col, 236px);
 }
 
 // Half the shared padding on the team cell. None at all put the crest closer to
@@ -254,17 +254,19 @@ tbody td.rank {
   font-weight: 650;
 }
 
-// Left-aligned, alone among the numeric columns. It is an annotation on the
-// rating rather than a ranked figure, and right-aligning it put the heading's
-// lone "±" over the last digit of "±119" instead of over the ± it names.
-// Tabular figures keep the digits in line anyway.
+// Centred, alone among the numeric columns, heading and values together. It
+// annotates the rating rather than ranking anything, so it is not scanned down
+// the way Rating and Floor are; and a lone "±" heading over a right-aligned
+// column sat above the last digit of "±119" rather than above the column.
+// Centring both is the only arrangement where the two share a mid-line whatever
+// the value's width.
 .pm {
   color: var(--color-text-muted);
-  text-align: left;
+  text-align: center;
 }
 
 .teams-table thead th.pm-h {
-  text-align: left;
+  text-align: center;
 }
 
 .floor {
@@ -334,25 +336,29 @@ tbody td.rank {
 
 // Wide enough for eight tick labels without crowding, but allowed to give way
 // before the Games column does -- it is a meter, and loses least by narrowing.
+// No width: under fixed layout the column without one takes the remainder, and
+// a wider track is exactly what the axis labels want.
 td.interval,
 th.interval-h {
-  width: 200px;
+  min-width: 170px;
 }
 
 // The rightmost tick label overhangs the track's edge; reserved by insetting the
 // content, not padding the cell (which doubled the gap to the placements).
 .interval__inner {
-  margin-right: 1.3rem;
+  margin-right: 0.85rem;
 }
 
 .teams-table th.region-h,
 .teams-table td.region-cell {
-  width: 68px;
+  width: 57px;
 }
 
+// 54, not the 50 the figures need: "GAMES" is wider than any count under it,
+// and at 50 the heading's last 2px fell outside the table.
 .teams-table thead th.games-h,
 .teams-table tbody td.games {
-  width: 62px;
+  width: 54px;
 }
 
 .teams-table th.rank,
@@ -395,7 +401,7 @@ pr-rank-change,
 // table is what makes them binding; see there.
 .teams-table thead th.rating-h,
 .teams-table tbody td.rating {
-  width: 84px;
+  width: 67px;
 }
 
 .teams-table thead th.pm-h,
@@ -405,7 +411,7 @@ pr-rank-change,
 
 .teams-table thead th.floor-h,
 .teams-table tbody td.floor {
-  width: 78px;
+  width: 66px;
 }
 
 .track {
