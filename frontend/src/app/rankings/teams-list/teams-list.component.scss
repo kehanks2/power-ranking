@@ -173,7 +173,7 @@ pr-rank-change {
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.85rem;
 
   &:hover .team {
     color: var(--color-gold);
@@ -204,9 +204,23 @@ pr-rank-change {
   max-width: 100%;
 }
 
+// Wide enough to spell out the longest name we hold -- LCP's
+// "Fukuoka SoftBank HAWKS gaming" needs 234px of text on top of the crest and
+// its gap. The cap still exists because the wrapper clips rather than scrolls,
+// so an unbounded column takes its overflow off the Games figure; the meter
+// below gives up the width instead, being the thing that loses least by it.
 .teams-table th.team-h,
 .teams-table td.team-col {
-  max-width: 210px;
+  max-width: 300px;
+}
+
+// No left padding on the team cell: the gap to the crest is the rank cell's
+// right padding plus this one's left, which together put the rank's caret
+// further from the crest than the crest is from the name it belongs to.
+// Named through tbody to beat `.teams-table tbody td` -- view encapsulation
+// levels the class counts, so a bare `td.team-col` loses on element count.
+.teams-table tbody td.team-col {
+  padding-left: 0;
 }
 
 // One fixed 26px slot whichever branch fills it, or the team names start at a
@@ -312,7 +326,7 @@ pr-rank-change {
 // before the Games column does -- it is a meter, and loses least by narrowing.
 td.interval {
   width: 278px;
-  min-width: 228px;
+  min-width: 170px;
 }
 
 // The rightmost tick label overhangs the track's edge; reserved by insetting the

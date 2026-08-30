@@ -4,22 +4,34 @@
   padding: 1.5rem 0 2.5rem;
 }
 
+// Spans the board's full width rather than stopping halfway across it. Three
+// columns instead of one long measure: the text fills the page without any line
+// running the 1264px of it, which at this size is ~180 characters.
 .inner {
   max-width: 1264px;
   margin-inline: auto;
   padding-inline: 1.5rem;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 1.5rem 2.5rem;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .inner {
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
+  }
 }
 
 p {
-  margin: 0 0 0.6rem;
-  max-width: 88ch;
+  margin: 0;
   font-size: 0.74rem;
   line-height: 1.6;
   color: var(--color-text-dim);
 }
 
 .source {
-  margin-bottom: 0;
   color: var(--color-text-muted);
 }
 

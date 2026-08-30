@@ -48,6 +48,25 @@ export class PlayersListComponent {
   private openedFromLink = false;
 
   private readonly allPlayers = signal<PlayerSummary[]>([]);
+  /**
+   * Team crests that failed to load, keyed by team id. Served from our own
+   * origin -- Liquipedia refuses hotlinks by Referer -- and a crest that will
+   * not load leaves the name to stand alone rather than a broken image.
+   */
+  private readonly logoFailed = signal<ReadonlySet<number>>(new Set());
+
+  protected showLogo(player: PlayerSummary): boolean {
+    return player.teamLogoUrl !== null && player.teamId !== null && !this.logoFailed().has(player.teamId);
+  }
+
+  protected logoSrc(teamId: number): string {
+    return this.api.teamLogoUrl(teamId);
+  }
+
+  protected onLogoError(teamId: number): void {
+    this.logoFailed.update((failed) => new Set(failed).add(teamId));
+  }
+
   protected readonly loading = signal(true);
 
   // Role filter is client-side: places in the panel are measured against the
@@ -126,14 +145,6 @@ export class PlayersListComponent {
         return `${region} Only.`;
     }
   });
-
-  // Said on the short windows: fewer games means ratings sit closer to the
-  // neutral 50, which is honest, not a filter bug.
-  protected readonly windowCaveat = computed(() =>
-    this.window() === 'all'
-      ? null
-      : 'Fewer games behind every rating here, so they sit closer to the neutral 50 than the full-history board does.',
-  );
 
   constructor() {
     // Off the shown rows, so a role filter that leaves nothing comparable drops

@@ -29,8 +29,14 @@
   }
 }
 
+// No circle and no crop. The width/height attributes are a layout hint, not a
+// shape: these are org marks of wildly different aspect ratios, and forcing them
+// square stretched them before the radius clipped their ends off.
 .logo {
-  border-radius: 50%;
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  flex: 0 0 64px;
 }
 
 .logo--placeholder {

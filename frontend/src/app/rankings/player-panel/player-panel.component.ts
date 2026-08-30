@@ -54,7 +54,6 @@ export class PlayerPanelComponent {
   readonly handle = input('');
   /** What the numbers are measured over, e.g. "LCK Only." */
   readonly coverage = input('');
-  readonly windowCaveat = input<string | null>(null);
   // Off where the row above already carries the rating, on where the panel can
   // be showing a different board than that row.
   readonly showRating = input(false);

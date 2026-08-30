@@ -1029,6 +1029,7 @@ export async function getPlayers(
     team_id: number | null;
     team_slug: string | null;
     team_name: string | null;
+    team_logo_url: string | null;
     league_slug: string | null;
     role: PlayerSummaryDto['role'] | null;
     rating: string | null;
@@ -1111,7 +1112,7 @@ export async function getPlayers(
             ))
     )
     SELECT b.player_id AS id, p.handle,
-           rt.team_id, rt.team_slug, rt.team_name,
+           rt.team_id, rt.team_slug, rt.team_name, rt.team_logo_url,
            -- International rows carry no league_id, so the Region column falls
            -- back to where the player is currently rostered. Regional rows
            -- always name the board's own league.
@@ -1129,6 +1130,7 @@ export async function getPlayers(
     -- the pool they are ranked in.
     LEFT JOIN LATERAL (
       SELECT t.id AS team_id, t.slug AS team_slug, t.name AS team_name, rm.role,
+             CASE WHEN t.logo_data IS NOT NULL THEN t.logo_url END AS team_logo_url,
              rm.secondary_team, l4.slug AS league_slug
       FROM roster_memberships rm
       JOIN teams t ON t.id = rm.team_id
@@ -1201,6 +1203,7 @@ export async function getPlayers(
         teamId: row.team_id,
         teamSlug: row.team_slug,
         teamName: row.team_name,
+        teamLogoUrl: row.team_logo_url,
         leagueSlug: row.league_slug,
         role: row.role as PlayerSummaryDto['role'],
         rating,
@@ -1347,11 +1350,13 @@ export async function getPlayerById(
       team_id: number | null;
       team_slug: string | null;
       team_name: string | null;
+      team_logo_url: string | null;
       league_slug: string | null;
       role: PlayerSummaryDto['role'] | null;
       secondary_team: string | null;
     }>(
       `SELECT p.handle, t.id AS team_id, t.slug AS team_slug, t.name AS team_name,
+              CASE WHEN t.logo_data IS NOT NULL THEN t.logo_url END AS team_logo_url,
               l.slug AS league_slug, rm.role, rm.secondary_team
        FROM players p
        LEFT JOIN roster_memberships rm ON rm.player_id = p.id AND rm.end_date IS NULL
@@ -1371,6 +1376,7 @@ export async function getPlayerById(
       teamId: row.team_id,
       teamSlug: row.team_slug,
       teamName: row.team_name,
+      teamLogoUrl: row.team_logo_url,
       leagueSlug: row.league_slug,
       role: row.role,
       rating: NEUTRAL_SCORE,
