@@ -344,13 +344,20 @@ th.interval-h {
   min-width: 170px;
 }
 
-// Extra left padding is what separates the meter from the Floor figure -- at
-// the shared padding the two read as one column. Named through thead/tbody to
-// beat `.teams-table tbody td`, which sets the shared padding and wins on
-// element count once encapsulation levels the classes.
+// Extra left padding separates the meter from the Floor figure -- at the shared
+// padding the two read as one column, and the axis's leftmost label sat 6px from
+// the FLOOR heading, since a tick is centred on its position and so overhangs
+// the track's start by half its own width.
+//
+// The AXIS ROW has to carry the identical value. It is a separate `th` with its
+// own class, and giving the padding to the other two put the header's ticks 9px
+// left of the gridlines they label. It needs `tr.axis-row` named as well:
+// `thead tr.axis-row th` sets the row's padding with THREE elements, and beats
+// a two-element selector however many classes it carries.
 .teams-table thead th.interval-h,
+.teams-table thead tr.axis-row th.axis-cell,
 .teams-table tbody td.interval {
-  padding-left: calc(#{$cell-pad-x} + 0.55rem);
+  padding-left: calc(#{$cell-pad-x} + 1.4rem);
 }
 
 // The rightmost tick label overhangs the track's edge; reserved by insetting the
@@ -364,11 +371,15 @@ th.interval-h {
   width: 57px;
 }
 
-// 54, not the 50 the figures need: "GAMES" is wider than any count under it,
-// and at 50 the heading's last 2px fell outside the table.
+// Sized for the HEADING, not the figures. "GAMES" is 41px against a 26px count,
+// and text wider than its line box ignores `text-align` -- it starts at the
+// content box and overflows right, which is why padding alone could not pull the
+// heading off the table's edge and it sat 2px from it. 41 + the padding either
+// side, and this being the last column the right side gets a little extra.
 .teams-table thead th.games-h,
 .teams-table tbody td.games {
-  width: 54px;
+  width: 70px;
+  padding-right: calc(#{$cell-pad-x} + 0.3rem);
 }
 
 .teams-table th.rank,
