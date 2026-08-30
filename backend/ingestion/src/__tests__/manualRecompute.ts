@@ -1,8 +1,12 @@
 /**
  * Manual runner: recompute ratings from already-ingested game data. Does NOT
- * touch roster_memberships -- that's a display-only table populated separately
- * from Liquipedia's rate-limited API (manualLiquipediaRosterRun.ts), and rating
- * computation never reads it, so skipping it here changes nothing.
+ * refresh roster_memberships -- that comes from Liquipedia's rate-limited API,
+ * separately (manualLiquipediaRosterRun.ts).
+ *
+ * Rosters are NOT display-only, so the order matters the other way round:
+ * `computeRatings` reads roster_memberships to seed the international rating of
+ * a team whose own games are too old, which means a roster import can move a
+ * rating and must be FOLLOWED by a recompute.
  */
 import { createPool } from '../db.js';
 import { computeRatings } from '../computeRatings.js';
