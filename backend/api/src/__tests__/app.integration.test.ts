@@ -1,8 +1,8 @@
 /**
- * Integration test against `TEST_DATABASE_URL`, a dump-and-restore clone of the
- * Neon database (`scripts/refreshTestDb.mjs`) -- so it asserts on shape and
- * invariants, not on emptiness or cold-start values, which stopped holding once
- * real games were ingested. Refresh the clone after an ingest or it reads stale.
+ * Integration test against the suite database -- in-process PGlite loaded from
+ * `db/fixtures`, or a real server when TEST_DATABASE_URL is set in the
+ * environment. Either way it holds real ingested games, so this asserts on shape
+ * and invariants rather than on emptiness or cold-start values.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
@@ -687,5 +687,72 @@ describe('read API (live Postgres)', () => {
   it('GET /players/:id rejects a non-numeric id and 404s an unknown one', async () => {
     expect((await request(app).get('/players/not-a-number')).status).toBe(400);
     expect((await request(app).get('/players/99999999')).status).toBe(404);
+  });
+
+  describe('team crests', () => {
+    // Smallest valid PNG: a 1x1 transparent pixel.
+    const PIXEL = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    let teamId: number;
+
+    beforeAll(async () => {
+      const row = await pool.query<{ id: number }>(`SELECT id FROM teams ORDER BY id LIMIT 1`);
+      teamId = row.rows[0].id;
+      // Both columns, as production always has them: fetchTeamLogos only ever
+      // stores bytes for a team whose logo_url it just downloaded.
+      await pool.query(
+        `UPDATE teams
+            SET logo_url = 'https://example.test/c.png', logo_data = $2,
+                logo_content_type = 'image/webp', logo_source_url = 'https://example.test/c.png'
+          WHERE id = $1`,
+        [teamId, PIXEL],
+      );
+    });
+
+    afterAll(async () => {
+      await pool.query(
+        `UPDATE teams SET logo_url = NULL, logo_data = NULL, logo_content_type = NULL, logo_source_url = NULL
+          WHERE id = $1`,
+        [teamId],
+      );
+    });
+
+    it('serves the stored bytes, not a redirect to the wiki', async () => {
+      const res = await request(app).get(`/teams/${teamId}/logo`);
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('image/webp');
+      expect(Buffer.from(res.body)).toEqual(PIXEL);
+    });
+
+    it('lets a crest be cached, since it changes about once a season', async () => {
+      const res = await request(app).get(`/teams/${teamId}/logo`);
+      expect(res.headers['cache-control']).toMatch(/max-age=\d{4,}/);
+      expect(res.headers['etag']).toBeTruthy();
+    });
+
+    it('404s a team with no stored crest, so the board can draw initials', async () => {
+      const other = await pool.query<{ id: number }>(
+        `SELECT id FROM teams WHERE logo_data IS NULL ORDER BY id LIMIT 1`,
+      );
+      expect((await request(app).get(`/teams/${other.rows[0].id}/logo`)).status).toBe(404);
+      expect((await request(app).get('/teams/not-a-number/logo')).status).toBe(400);
+    });
+
+    // Without this the board asks for a crest that cannot exist on every load:
+    // Liquipedia refuses hotlinks, and some logo_url files have been deleted.
+    it('names a logo on the board only for a team whose bytes we hold', async () => {
+      const stored = await pool.query<{ id: number }>(`SELECT id FROM teams WHERE logo_data IS NOT NULL`);
+      const withBytes = new Set(stored.rows.map((r) => r.id));
+
+      const leagues = await request(app).get('/leagues');
+      for (const league of leagues.body) {
+        const board = await request(app).get('/teams').query({ scope: league.slug });
+        for (const team of board.body) {
+          expect(team.logoUrl === null).toBe(!withBytes.has(team.id));
+        }
+      }
+    });
   });
 });

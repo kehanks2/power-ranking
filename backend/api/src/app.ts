@@ -9,7 +9,15 @@ import {
   getPlayers,
   getPlayerById,
   getBoardsLastUpdated,
+  getTeamLogo,
 } from './repositories.js';
+
+/**
+ * A crest changes about once a season and a board asks for one per row, so this
+ * is cached hard. Express ETags the body, so a rebrand still invalidates on its
+ * own once the week is up.
+ */
+const LOGO_CACHE_CONTROL = 'public, max-age=604800, stale-while-revalidate=86400';
 
 /** Thin, precomputed-only read API -- no request-time rating computation, per plan. */
 export function createApp(pool: Pool): Express {
@@ -49,6 +57,23 @@ export function createApp(pool: Pool): Express {
       return;
     }
     res.json(team);
+  });
+
+  app.get('/teams/:id/logo', async (req, res) => {
+    const teamId = Number(req.params.id);
+    if (!Number.isInteger(teamId)) {
+      res.status(400).json({ error: 'invalid team id' });
+      return;
+    }
+    const logo = await getTeamLogo(pool, teamId);
+    // 404 rather than a placeholder image: the board draws initials for a team
+    // with no crest, and it needs the failure to say so.
+    if (!logo) {
+      res.status(404).json({ error: 'no logo for this team' });
+      return;
+    }
+    res.setHeader('Cache-Control', LOGO_CACHE_CONTROL);
+    res.type(logo.contentType).send(logo.data);
   });
 
   app.get('/players', async (req, res) => {

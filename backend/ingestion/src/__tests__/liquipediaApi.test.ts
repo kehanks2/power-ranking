@@ -96,18 +96,31 @@ describe('retryDelayMs', () => {
 });
 
 describe('teamLogoUrl', () => {
-  it('prefers the dark variant, which is what a dark board wants', () => {
-    expect(teamLogoUrl({ logourl: 'light.png', logodarkurl: 'dark.png' })).toBe('dark.png');
+  const none = { logourl: '', logodarkurl: '', textlesslogourl: '', textlesslogodarkurl: '' };
+
+  // The board draws this at 26px, where a full lockup is an unreadable smear of
+  // type -- G2, Fnatic and SK Gaming all shipped as wordmarks.
+  it('prefers the textless mark over the full lockup', () => {
+    expect(
+      teamLogoUrl({ ...none, logourl: 'full.png', logodarkurl: 'full-dark.png', textlesslogourl: 'icon.png' }),
+    ).toBe('icon.png');
   });
 
-  it('falls back to the light one, which most teams repeat anyway', () => {
-    expect(teamLogoUrl({ logourl: 'light.png', logodarkurl: '' })).toBe('light.png');
+  it('prefers dark within each pair', () => {
+    expect(teamLogoUrl({ ...none, textlesslogourl: 'icon.png', textlesslogodarkurl: 'icon-dark.png' })).toBe(
+      'icon-dark.png',
+    );
+    expect(teamLogoUrl({ ...none, logourl: 'full.png', logodarkurl: 'full-dark.png' })).toBe('full-dark.png');
   });
 
-  // The API returns '' rather than null for a team with no logo, and an empty
-  // string reaching the frontend renders a broken image rather than the crest.
+  it('falls back to the lockup for a team with no textless mark', () => {
+    expect(teamLogoUrl({ ...none, logourl: 'full.png' })).toBe('full.png');
+  });
+
+  // The API returns '' rather than null for a variant a team does not have, and
+  // an empty string reaching the frontend renders a broken image, not a crest.
   it('is null when the wiki holds no logo at all', () => {
-    expect(teamLogoUrl({ logourl: '', logodarkurl: '' })).toBeNull();
-    expect(teamLogoUrl({ logourl: '   ', logodarkurl: '  ' })).toBeNull();
+    expect(teamLogoUrl(none)).toBeNull();
+    expect(teamLogoUrl({ logourl: '  ', logodarkurl: ' ', textlesslogourl: '', textlesslogodarkurl: '   ' })).toBeNull();
   });
 });

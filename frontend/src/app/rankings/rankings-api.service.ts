@@ -40,6 +40,15 @@ export class RankingsApiService {
   }
 
   /**
+   * Served from our own origin, not from `logoUrl`. Liquipedia refuses hotlinks
+   * by Referer, so the stored bytes are the only ones a browser can load; the
+   * DTO's `logoUrl` says only WHETHER a crest exists.
+   */
+  teamLogoUrl(id: number): string {
+    return `${API_BASE_URL}/teams/${id}/logo`;
+  }
+
+  /**
    * There is no cross-league "all players" list, because the regional rating
    * is a percentile within (league, role) -- every league's distribution is
    * centred on ~50, so pooling them ranks nothing. The 'all' selection is

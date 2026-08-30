@@ -196,31 +196,43 @@ export interface LiquipediaTeam {
   pagename: string;
   name: string;
   status: string;
-  /** Wordmark on a light ground. Empty string when the wiki holds no logo. */
+  /** Full lockup, org name included. Empty string when the wiki holds no logo. */
   logourl: string;
-  /** The same wordmark tuned for a dark ground; most teams repeat logourl here. */
+  /** The same lockup tuned for a dark ground; most teams repeat logourl here. */
   logodarkurl: string;
+  /** Icon only, no wordmark -- the one that survives being drawn at 26px. */
+  textlesslogourl: string;
+  textlesslogodarkurl: string;
 }
 
 /** All currently-active teams on the LoL wiki -- one broad paginated query, not one per team. */
 export async function fetchActiveTeams(): Promise<LiquipediaTeam[]> {
   return liquipediaGetAll<LiquipediaTeam>('v3/team', {
     conditions: '[[status::active]]',
-    query: 'pagename,name,status,logourl,logodarkurl',
+    query: 'pagename,name,status,logourl,logodarkurl,textlesslogourl,textlesslogodarkurl',
     order: 'pagename ASC',
   });
 }
 
 /**
- * The crest to show on a dark board.
+ * The crest to show on a dark board, in order of preference.
  *
- * `logodarkurl` is the variant drawn for a dark ground, but most teams repeat
- * their light one there and some leave both blank, so this falls back rather
- * than assuming a dark variant exists. Empty string, not null, is what the API
- * returns for a team with no logo at all.
+ * TEXTLESS first, because the board draws this at 26px and the full lockups are
+ * wordmarks -- G2, Fnatic and SK Gaming rendered as unreadable smears of type.
+ * Dark before light within each pair, since most teams repeat their light logo
+ * in the dark field and a few leave one blank. Empty string, not null, is what
+ * the API returns for a variant a team does not have.
  */
-export function teamLogoUrl(team: Pick<LiquipediaTeam, 'logourl' | 'logodarkurl'>): string | null {
-  return team.logodarkurl?.trim() || team.logourl?.trim() || null;
+export function teamLogoUrl(
+  team: Pick<LiquipediaTeam, 'logourl' | 'logodarkurl' | 'textlesslogourl' | 'textlesslogodarkurl'>,
+): string | null {
+  return (
+    team.textlesslogodarkurl?.trim() ||
+    team.textlesslogourl?.trim() ||
+    team.logodarkurl?.trim() ||
+    team.logourl?.trim() ||
+    null
+  );
 }
 
 export interface LiquipediaMatchOpponent {

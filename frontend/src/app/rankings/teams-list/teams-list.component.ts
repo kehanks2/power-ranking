@@ -234,7 +234,26 @@ export class TeamsListComponent {
     }
   }
 
-  /** Placeholder crest: teams.logo_url is empty for every team, so initials stand in. */
+  /**
+   * Crests that failed to load. A stored logo can still 404 -- Team Vitality's
+   * wiki file is gone -- and the row must fall back to initials rather than
+   * leave a broken image, which no `alt` can rescue at 26px.
+   */
+  private readonly logoFailed = signal<ReadonlySet<number>>(new Set());
+
+  protected showLogo(team: TeamSummary): boolean {
+    return team.logoUrl !== null && !this.logoFailed().has(team.id);
+  }
+
+  protected logoSrc(teamId: number): string {
+    return this.api.teamLogoUrl(teamId);
+  }
+
+  protected onLogoError(teamId: number): void {
+    this.logoFailed.update((failed) => new Set(failed).add(teamId));
+  }
+
+  /** Stands in for a team with no crest, or one whose crest would not load. */
   protected initials(name: string): string {
     return name
       .replace(/[^A-Za-z0-9 ]/g, '')

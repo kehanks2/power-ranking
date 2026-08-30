@@ -1,6 +1,6 @@
 import { Component, ChangeDetectionStrategy, inject, signal, computed, effect } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { DecimalPipe, NgOptimizedImage, PercentPipe } from '@angular/common';
+import { DecimalPipe, PercentPipe } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { RankingsApiService } from '../rankings-api.service';
 import { ConfidenceAxisComponent } from '../confidence/confidence-axis.component';
@@ -13,7 +13,6 @@ import type { BoardScope, PlayerDetail, PlayerRatingScope, TeamDetail, TeamRecor
   selector: 'app-team-detail',
   imports: [
     DecimalPipe,
-    NgOptimizedImage,
     PercentPipe,
     RouterLink,
     ConfidenceAxisComponent,
@@ -34,6 +33,25 @@ export class TeamDetailComponent {
   protected readonly team = signal<TeamDetail | null>(null);
   protected readonly loading = signal(true);
   protected readonly notFound = signal(false);
+
+  /**
+   * Crests come from our own origin -- Liquipedia refuses hotlinks by Referer.
+   * Keyed by team id so navigating to another team does not inherit the last
+   * one's failure.
+   */
+  private readonly logoFailedFor = signal<number | null>(null);
+
+  protected logoSrc(teamId: number): string {
+    return this.api.teamLogoUrl(teamId);
+  }
+
+  protected logoFailed(): boolean {
+    return this.logoFailedFor() === this.team()?.id;
+  }
+
+  protected onLogoError(): void {
+    this.logoFailedFor.set(this.team()?.id ?? null);
+  }
 
   constructor() {
     effect((onCleanup) => {

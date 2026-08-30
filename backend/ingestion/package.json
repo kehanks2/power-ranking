@@ -14,7 +14,8 @@
   "dependencies": {
     "@power-ranking/rating-engine": "*",
     "@power-ranking/shared": "*",
-    "pg": "^8.13.0"
+    "pg": "^8.13.0",
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
     "@types/pg": "^8.11.0",

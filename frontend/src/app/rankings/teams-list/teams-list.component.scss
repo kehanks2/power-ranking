@@ -209,7 +209,8 @@ pr-rank-change {
   max-width: 210px;
 }
 
-// Placeholder crest: logo_url is empty for every team, so initials stand in.
+// One fixed 26px slot whichever branch fills it, or the team names start at a
+// different x from row to row.
 .crest {
   width: 26px;
   height: 26px;
@@ -222,6 +223,16 @@ pr-rank-change {
   font-weight: 800;
   border: 1px solid currentColor;
   background: rgb(255 255 255 / 4%);
+}
+
+// A real crest is the org's own artwork: no ring, no tint, and CONTAIN rather
+// than cover, since these are wordmarks of wildly different aspect ratios and
+// cover crops the ends off the wide ones.
+.crest--logo {
+  border: 0;
+  background: none;
+  border-radius: 0;
+  object-fit: contain;
 }
 
 .rating {

@@ -591,7 +591,13 @@ export async function getTeams(pool: Pool, scope: string): Promise<TeamSummaryDt
           JOIN series s ON s.tournament_id = re.id JOIN games g ON g.series_id = s.id
       ) rg GROUP BY team_id
     )
-    SELECT t.id, t.slug, t.name, t.logo_url, t.brand_color, l.slug AS league_slug,
+    -- The URL says only WHETHER a crest can be served, and the answer is the
+    -- stored bytes, not the wiki link: Liquipedia refuses hotlinks, and a link
+    -- whose file has since been deleted (Team Vitality) would cost every board
+    -- load a doomed request before falling back to initials.
+    SELECT t.id, t.slug, t.name,
+           CASE WHEN t.logo_data IS NOT NULL THEN t.logo_url END AS logo_url,
+           t.brand_color, l.slug AS league_slug,
            tr.mu_ctx AS mu, tr.phi_ctx AS phi,
            ${international ? 'igc.games' : 'rgc.games'} AS games,
            ${international ? 'att.results' : 'ratt.results'} AS results,
@@ -1531,4 +1537,26 @@ export async function getPlayerById(
       objectiveControl: stat('objectiveControl'),
     },
   };
+}
+
+export interface TeamLogo {
+  data: Buffer;
+  contentType: string;
+  /** Cheap, stable ETag: the URL the bytes came from changes exactly when they do. */
+  sourceUrl: string;
+}
+
+/**
+ * The stored crest. Liquipedia refuses hotlinks by Referer, so the artwork is
+ * fetched into `teams.logo_data` by the roster import and served from here.
+ */
+export async function getTeamLogo(pool: Pool, teamId: number): Promise<TeamLogo | null> {
+  const result = await pool.query<{ logo_data: Buffer; logo_content_type: string; logo_source_url: string }>(
+    `SELECT logo_data, logo_content_type, logo_source_url FROM teams
+      WHERE id = $1 AND logo_data IS NOT NULL`,
+    [teamId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return { data: row.logo_data, contentType: row.logo_content_type, sourceUrl: row.logo_source_url };
 }
