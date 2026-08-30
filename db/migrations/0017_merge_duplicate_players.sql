@@ -8,7 +8,7 @@
 -- board showed the empty half -- a 0-game row on the board while the row with
 -- the real record was invisible for want of a league.
 --
--- Adjudicated by kward 2026-08-17; all four are one person. Sav1or/Shaoye is the
+-- Adjudicated 2026-08-17; all four are one person. Sav1or/Shaoye is the
 -- one no similarity rule would have caught.
 --
 -- The kept row is the one holding the game history, so ratings survive intact,

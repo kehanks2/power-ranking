@@ -502,7 +502,7 @@ describe('read API (live Postgres)', () => {
   });
 
   it('carries only players currently in the league, and never labels them with another team', async () => {
-    // kward's rule: a regional board answers "who is in this league NOW", so a
+    // The rule: a regional board answers "who is in this league NOW", so a
     // player who moved region leaves the old board entirely rather than
     // lingering on it with a note -- ranking him against the players actually
     // there was confusing and answered nothing.

@@ -81,7 +81,7 @@ describe('selectCaretGenerations against a stage boundary', () => {
   });
 
   it('measures from the previous stage, not from yesterday', () => {
-    // The bug kward caught: the job runs daily, so a board showing the end of
+    // The bug: the job runs daily, so a board showing the end of
     // LCK week 12 (16 Aug) was comparing against data stopping mid-week on the
     // 15th. The previous stage ended on the 9th, and only a generation at or
     // before that may be the baseline.
