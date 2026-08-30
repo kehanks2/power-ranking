@@ -35,7 +35,7 @@ import { computeRatings } from './computeRatings.js';
 import { refreshStatlessGames } from './refreshStatlessGames.js';
 import { computeAllPlayerRatingWindows, computeInternationalPlayerRatings } from './computePlayerRatings.js';
 
-const ALL_SERIES = [...Object.keys(REGIONAL_SERIES_TO_LEAGUE_SLUG), AMERICAS_SERIES, ...INTERNATIONAL_SERIES];
+export const ALL_SERIES = [...Object.keys(REGIONAL_SERIES_TO_LEAGUE_SLUG), AMERICAS_SERIES, ...INTERNATIONAL_SERIES];
 const FORWARD_DAYS = 21;
 const MAX_LOOKBACK_DAYS = 14;
 
@@ -66,6 +66,20 @@ export function resolvePullStart(frontier: string, oldestPending: string | null)
   if (oldestPending && oldestPending < start) start = oldestPending;
   if (start < floor) start = floor;
   return shiftDays(start, -1);
+}
+
+/**
+ * Whether a run should report failure.
+ *
+ * Only a total blackout does. A partial pull self-heals: `resolvePullStart`
+ * reaches back from the oldest decided series still missing its games, so the
+ * next run asks for everything this one missed -- which is exactly what
+ * recovered the 429 on 2026-08-26. Failing on a partial made the only alarm
+ * this job has, a red run in the Actions list, mean "no action needed" most of
+ * the time, and an alarm nobody opens is not an alarm.
+ */
+export function isTotalPullFailure(failed: readonly string[], attempted: readonly string[]): boolean {
+  return attempted.length > 0 && failed.length === attempted.length;
 }
 
 async function main() {
@@ -155,11 +169,13 @@ async function main() {
     `[${new Date().toISOString()}] done. newest game ${after.rows[0]?.day}, ` +
       `${ratings.teamRows} team rows, ${ratings.internationalRows} international`,
   );
-  if (failed.length > 0) console.log(`series to retry next run: ${failed.join(', ')}`);
+  if (failed.length > 0) {
+    const blackout = isTotalPullFailure(failed, ALL_SERIES) ? 'EVERY series failed; ' : '';
+    console.log(`${blackout}series to retry next run: ${failed.join(', ')}`);
+  }
 
   await pool.end();
-  // Non-zero so a scheduler surfaces a partial pull rather than reporting success.
-  if (failed.length > 0) process.exitCode = 1;
+  if (isTotalPullFailure(failed, ALL_SERIES)) process.exitCode = 1;
 }
 
 // Guarded so importing resolvePullStart does not run a pull.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolvePullStart } from '../dailyUpdate.js';
+import { ALL_SERIES, isTotalPullFailure, resolvePullStart } from '../dailyUpdate.js';
 
 describe('resolvePullStart', () => {
   it('starts a day before the frontier when nothing is outstanding', () => {
@@ -29,5 +29,26 @@ describe('resolvePullStart', () => {
     // play on, so the first run that may ingest it sees a frontier of D+3.
     const played = '2026-08-16';
     expect(resolvePullStart('2026-08-19', played) < played).toBe(true);
+  });
+});
+
+describe('isTotalPullFailure', () => {
+  it('stays quiet for a clean run', () => {
+    expect(isTotalPullFailure([], ALL_SERIES)).toBe(false);
+  });
+
+  it('stays quiet for a partial pull, which the next run reaches back for', () => {
+    expect(isTotalPullFailure(['LCS'], ALL_SERIES)).toBe(false);
+    expect(isTotalPullFailure(ALL_SERIES.slice(1), ALL_SERIES)).toBe(false);
+  });
+
+  it('reports the blackout that a hard block produces', () => {
+    // 2026-08-26: four attempts spent on 429s, then every remaining series
+    // refused by our own limiter for the hour.
+    expect(isTotalPullFailure(ALL_SERIES, ALL_SERIES)).toBe(true);
+  });
+
+  it('never reports success as failure when there was nothing to attempt', () => {
+    expect(isTotalPullFailure([], [])).toBe(false);
   });
 });

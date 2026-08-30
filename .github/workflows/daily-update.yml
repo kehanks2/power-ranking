@@ -62,7 +62,9 @@ jobs:
           key: liquipedia-rate-limit-${{ github.run_id }}
           restore-keys: liquipedia-rate-limit-
 
-      # Exits non-zero on a partial pull, naming the series for the next run.
+      # Exits non-zero only when EVERY series failed. A partial pull is logged
+      # and left green: the next run reaches back for whatever was missed, so
+      # red here means the pull got nothing and freshness is actually at risk.
       - name: Pull and recompute
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
