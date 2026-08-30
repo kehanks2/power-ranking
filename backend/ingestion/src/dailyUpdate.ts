@@ -1,5 +1,5 @@
 /**
- * Scheduled daily update: pull, then recompute.
+ * Scheduled daily update: pull, refresh rosters and crests, then recompute.
  *
  * The pull deliberately reaches PAST today. It used to stop at "today,
  * exclusive" so a board could not be built on a part-played day, but boards no
@@ -34,6 +34,8 @@ import {
 import { computeRatings } from './computeRatings.js';
 import { refreshStatlessGames } from './refreshStatlessGames.js';
 import { computeAllPlayerRatingWindows, computeInternationalPlayerRatings } from './computePlayerRatings.js';
+import { populateRosterFromLiquipedia } from './populateRosterFromLiquipedia.js';
+import { fetchTeamLogos } from './fetchTeamLogos.js';
 
 export const ALL_SERIES = [...Object.keys(REGIONAL_SERIES_TO_LEAGUE_SLUG), AMERICAS_SERIES, ...INTERNATIONAL_SERIES];
 const FORWARD_DAYS = 21;
@@ -155,6 +157,35 @@ async function main() {
   } catch (err) {
     // A best-effort catch-up must never cost the run its recompute.
     console.error(`  statless refresh FAILED: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Rosters, then crests, then the recompute -- in that order and all before it.
+  // `computeRatings` seeds a team's international rating from its roster, so a
+  // roster refresh that did not reach a recompute would leave the two disagreeing
+  // until the next day; and crests are read off logo_url, which the roster import
+  // is what refreshes. Neither costs a v3/match request, so neither competes with
+  // the pull for the budget that matters.
+  try {
+    const roster = await populateRosterFromLiquipedia(pool);
+    console.log(
+      `  rosters: ${roster.teamsMatched} teams, +${roster.membershipsInserted} -${roster.membershipsClosed} memberships` +
+        (roster.playersCreated > 0 ? `, ${roster.playersCreated} new players` : '') +
+        (roster.logosUpdated > 0 ? `, ${roster.logosUpdated} crest urls` : ''),
+    );
+    if (roster.teamsUnmatched.length > 0) console.log(`  rosters unmatched: ${roster.teamsUnmatched.join(', ')}`);
+  } catch (err) {
+    // Rosters are a refresh of state we already hold, so yesterday's stand.
+    console.error(`  roster refresh FAILED: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  try {
+    const logos = await fetchTeamLogos(pool);
+    if (logos.fetched > 0 || logos.failed.length > 0) {
+      console.log(`  crests: ${logos.fetched} fetched, ${logos.unchanged} unchanged`);
+    }
+    for (const { team, reason } of logos.failed) console.log(`  crest FAILED for ${team}: ${reason}`);
+  } catch (err) {
+    console.error(`  crest refresh FAILED: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Ratings are rebuilt even when nothing new arrived: the carets read the

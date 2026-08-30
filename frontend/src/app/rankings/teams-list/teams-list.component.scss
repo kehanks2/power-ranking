@@ -52,6 +52,10 @@ $slot-width: 56px;
   border-spacing: 0;
   width: 100%;
   min-width: 900px;
+  // Fixed, so the widths below are obeyed rather than treated as ratios for
+  // handing out slack. Every column names one; Team takes what is left, which
+  // is why it is the only one without.
+  table-layout: fixed;
 
   // Pinned under the shell's sticky block, whose measured height is published as
   // --sticky-top-height (taller on the International board than a regional one).
@@ -324,9 +328,9 @@ pr-rank-change {
 
 // Wide enough for eight tick labels without crowding, but allowed to give way
 // before the Games column does -- it is a meter, and loses least by narrowing.
-td.interval {
-  width: 278px;
-  min-width: 170px;
+td.interval,
+th.interval-h {
+  width: 200px;
 }
 
 // The rightmost tick label overhangs the track's edge; reserved by insetting the
@@ -340,9 +344,45 @@ td.interval {
   width: 68px;
 }
 
-.teams-table th.games-h,
-.teams-table td.games {
+.teams-table thead th.games-h,
+.teams-table tbody td.games {
   width: 62px;
+}
+
+.teams-table th.rank,
+.teams-table td.rank {
+  width: 62px;
+}
+
+.teams-table th.placements-h,
+.teams-table td.placements-cell {
+  width: 373px;
+}
+
+// Numeric columns sized to their widest value plus the shared cell padding.
+// Named through `thead`/`tbody` on purpose: `thead th.num` sets `width: 100%`
+// to right-align the sort buttons, and under fixed layout a 100% header means
+// "take an equal share", which it did -- Rating, +/-, Floor and Games all came
+// out 128px. View encapsulation levels the class counts, so a bare
+// `.teams-table th.rating-h` loses to it.
+// Under `table-layout: auto` these were only hints -- the browser hands out the
+// table's leftover width in proportion to each column's max-content, which left
+// Rating 131px wide for a five-character number and the gaps between columns
+// running 11px in some places and 145 in others. `table-layout: fixed` on the
+// table is what makes them binding; see there.
+.teams-table thead th.rating-h,
+.teams-table tbody td.rating {
+  width: 84px;
+}
+
+.teams-table thead th.pm-h,
+.teams-table tbody td.pm {
+  width: 64px;
+}
+
+.teams-table thead th.floor-h,
+.teams-table tbody td.floor {
+  width: 78px;
 }
 
 .track {

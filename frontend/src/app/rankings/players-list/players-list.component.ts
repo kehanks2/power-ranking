@@ -12,6 +12,7 @@ import {
 import { DOCUMENT, DecimalPipe } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { RankingsApiService } from '../rankings-api.service';
+import { displayTeamName } from '../team-name';
 import { LeagueFilterService } from '../league-filter.service';
 import { BoardAnchorService } from '../board-anchor.service';
 import { ConfidenceAxisComponent } from '../confidence/confidence-axis.component';
@@ -59,8 +60,12 @@ export class PlayersListComponent {
     return player.teamLogoUrl !== null && player.teamId !== null && !this.logoFailed().has(player.teamId);
   }
 
-  protected logoSrc(teamId: number): string {
-    return this.api.teamLogoUrl(teamId);
+  protected displayName(name: string | null): string {
+    return displayTeamName(name);
+  }
+
+  protected logoSrc(player: PlayerSummary): string {
+    return this.api.teamLogo(player.teamLogoUrl!);
   }
 
   protected onLogoError(teamId: number): void {

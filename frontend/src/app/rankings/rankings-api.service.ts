@@ -40,12 +40,12 @@ export class RankingsApiService {
   }
 
   /**
-   * Served from our own origin, not from `logoUrl`. Liquipedia refuses hotlinks
-   * by Referer, so the stored bytes are the only ones a browser can load; the
-   * DTO's `logoUrl` says only WHETHER a crest exists.
+   * Absolute URL for a crest path the API handed us. The path already carries
+   * the `?v=` digest that makes new artwork a new URL, so this only prefixes
+   * the origin -- never build the path here, or a re-fetched logo stays cached.
    */
-  teamLogoUrl(id: number): string {
-    return `${API_BASE_URL}/teams/${id}/logo`;
+  teamLogo(path: string): string {
+    return `${API_BASE_URL}${path}`;
   }
 
   /**

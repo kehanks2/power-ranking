@@ -142,7 +142,7 @@ export interface PlayerSummary {
   teamSlug: string | null;
   /** Display name ("Gen.G"), not the slug. */
   teamName: string | null;
-  /** Non-null when a crest can be served for `teamId`. */
+  /** API path to the team's crest, null when we hold none. */
   teamLogoUrl: string | null;
   leagueSlug: string | null;
   role: Role;

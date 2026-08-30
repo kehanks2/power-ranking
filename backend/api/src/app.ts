@@ -13,11 +13,14 @@ import {
 } from './repositories.js';
 
 /**
- * A crest changes about once a season and a board asks for one per row, so this
- * is cached hard. Express ETags the body, so a rebrand still invalidates on its
- * own once the week is up.
+ * Cached hard, but only for a request that names which artwork it wants. The
+ * boards link `?v=<digest of the source url>`, so new artwork is a new URL and
+ * `immutable` is safe; without the token a cached crest would outlive its own
+ * replacement for the whole max-age, which is how a re-fetch to the textless
+ * marks left every existing visitor still looking at the old lockups.
  */
-const LOGO_CACHE_CONTROL = 'public, max-age=604800, stale-while-revalidate=86400';
+const LOGO_CACHE_IMMUTABLE = 'public, max-age=604800, immutable';
+const LOGO_CACHE_UNVERSIONED = 'public, max-age=300, stale-while-revalidate=86400';
 
 /** Thin, precomputed-only read API -- no request-time rating computation, per plan. */
 export function createApp(pool: Pool): Express {
@@ -72,7 +75,7 @@ export function createApp(pool: Pool): Express {
       res.status(404).json({ error: 'no logo for this team' });
       return;
     }
-    res.setHeader('Cache-Control', LOGO_CACHE_CONTROL);
+    res.setHeader('Cache-Control', req.query.v ? LOGO_CACHE_IMMUTABLE : LOGO_CACHE_UNVERSIONED);
     res.type(logo.contentType).send(logo.data);
   });
 

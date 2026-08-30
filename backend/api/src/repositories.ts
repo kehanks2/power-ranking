@@ -591,12 +591,14 @@ export async function getTeams(pool: Pool, scope: string): Promise<TeamSummaryDt
           JOIN series s ON s.tournament_id = re.id JOIN games g ON g.series_id = s.id
       ) rg GROUP BY team_id
     )
-    -- The URL says only WHETHER a crest can be served, and the answer is the
-    -- stored bytes, not the wiki link: Liquipedia refuses hotlinks, and a link
-    -- whose file has since been deleted (Team Vitality) would cost every board
-    -- load a doomed request before falling back to initials.
+    -- Our own path, not the wiki link: Liquipedia refuses hotlinks, and a link
+    -- whose file has since been deleted would cost every board load a doomed
+    -- request before falling back to initials. The ?v token is the source URL's
+    -- digest, so new artwork is a NEW url -- without it a cached crest survives
+    -- its own replacement for the whole max-age.
     SELECT t.id, t.slug, t.name,
-           CASE WHEN t.logo_data IS NOT NULL THEN t.logo_url END AS logo_url,
+           CASE WHEN t.logo_data IS NOT NULL
+                THEN '/teams/' || t.id || '/logo?v=' || left(md5(t.logo_source_url), 8) END AS logo_url,
            t.brand_color, l.slug AS league_slug,
            tr.mu_ctx AS mu, tr.phi_ctx AS phi,
            ${international ? 'igc.games' : 'rgc.games'} AS games,
@@ -1130,7 +1132,8 @@ export async function getPlayers(
     -- the pool they are ranked in.
     LEFT JOIN LATERAL (
       SELECT t.id AS team_id, t.slug AS team_slug, t.name AS team_name, rm.role,
-             CASE WHEN t.logo_data IS NOT NULL THEN t.logo_url END AS team_logo_url,
+             CASE WHEN t.logo_data IS NOT NULL
+                  THEN '/teams/' || t.id || '/logo?v=' || left(md5(t.logo_source_url), 8) END AS team_logo_url,
              rm.secondary_team, l4.slug AS league_slug
       FROM roster_memberships rm
       JOIN teams t ON t.id = rm.team_id
@@ -1356,7 +1359,8 @@ export async function getPlayerById(
       secondary_team: string | null;
     }>(
       `SELECT p.handle, t.id AS team_id, t.slug AS team_slug, t.name AS team_name,
-              CASE WHEN t.logo_data IS NOT NULL THEN t.logo_url END AS team_logo_url,
+              CASE WHEN t.logo_data IS NOT NULL
+                  THEN '/teams/' || t.id || '/logo?v=' || left(md5(t.logo_source_url), 8) END AS team_logo_url,
               l.slug AS league_slug, rm.role, rm.secondary_team
        FROM players p
        LEFT JOIN roster_memberships rm ON rm.player_id = p.id AND rm.end_date IS NULL

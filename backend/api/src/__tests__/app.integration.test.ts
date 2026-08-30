@@ -726,10 +726,32 @@ describe('read API (live Postgres)', () => {
       expect(Buffer.from(res.body)).toEqual(PIXEL);
     });
 
-    it('lets a crest be cached, since it changes about once a season', async () => {
-      const res = await request(app).get(`/teams/${teamId}/logo`);
-      expect(res.headers['cache-control']).toMatch(/max-age=\d{4,}/);
-      expect(res.headers['etag']).toBeTruthy();
+    // A versioned URL is safe to cache forever because new artwork gets a new
+    // one. Without the token it is not: re-fetching every crest to the textless
+    // marks left existing visitors on the old lockups for the whole max-age.
+    it('caches a versioned crest hard and an unversioned one briefly', async () => {
+      const versioned = await request(app).get(`/teams/${teamId}/logo`).query({ v: 'abc12345' });
+      expect(versioned.headers['cache-control']).toContain('immutable');
+      expect(versioned.headers['cache-control']).toMatch(/max-age=\d{4,}/);
+
+      const plain = await request(app).get(`/teams/${teamId}/logo`);
+      expect(plain.headers['cache-control']).not.toContain('immutable');
+      expect(Number(/max-age=(\d+)/.exec(plain.headers['cache-control'])![1])).toBeLessThan(3600);
+
+      expect(versioned.headers['etag']).toBeTruthy();
+    });
+
+    it('points the board at our own versioned path, never at the wiki', async () => {
+      const leagues = await request(app).get('/leagues');
+      for (const league of leagues.body) {
+        const board = await request(app).get('/teams').query({ scope: league.slug });
+        for (const team of board.body) {
+          if (team.logoUrl === null) continue;
+          expect(team.logoUrl).toBe(`/teams/${team.id}/logo?v=${team.logoUrl.split('v=')[1]}`);
+          expect(team.logoUrl).not.toContain('liquipedia');
+          expect(team.logoUrl).toMatch(/\?v=[0-9a-f]{8}$/);
+        }
+      }
     });
 
     it('404s a team with no stored crest, so the board can draw initials', async () => {

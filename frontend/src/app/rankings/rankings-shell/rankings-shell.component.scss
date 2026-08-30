@@ -41,7 +41,15 @@
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--color-gold);
+
+  a {
+    color: var(--color-gold);
+    text-decoration: none;
+
+    &:hover {
+      color: var(--color-text);
+    }
+  }
 }
 
 .tabs {

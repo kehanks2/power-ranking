@@ -17,16 +17,16 @@
           }
           <th
             scope="col"
-            class="num sortable"
+            class="num sortable rating-h"
             [class.active]="sortKey() === 'rating'"
             [attr.aria-sort]="sortKey() === 'rating' ? 'descending' : 'none'"
           >
             <button type="button" (click)="setSort('rating')">Rating{{ sortKey() === 'rating' ? ' ↓' : '' }}</button>
           </th>
-          <th scope="col" class="num">±</th>
+          <th scope="col" class="num pm-h">±</th>
           <th
             scope="col"
-            class="num sortable"
+            class="num sortable floor-h"
             [class.active]="sortKey() === 'floor'"
             [attr.aria-sort]="sortKey() === 'floor' ? 'descending' : 'none'"
           >
@@ -79,7 +79,7 @@
                 @if (showLogo(team)) {
                   <img
                     class="crest crest--logo"
-                    [src]="logoSrc(team.id)"
+                    [src]="logoSrc(team)"
                     width="26"
                     height="26"
                     loading="lazy"
@@ -90,7 +90,7 @@
                 } @else {
                   <span class="crest" [class]="'lg-' + team.leagueSlug">{{ initials(team.name) }}</span>
                 }
-                <span class="team">{{ team.name }}</span>
+                <span class="team">{{ displayName(team.name) }}</span>
               </button>
             </td>
             @if (isInternational()) {

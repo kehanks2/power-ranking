@@ -2,6 +2,7 @@ import { Component, ChangeDetectionStrategy, DestroyRef, inject, signal, compute
 import { DecimalPipe, PercentPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { RankingsApiService } from '../rankings-api.service';
+import { displayTeamName } from '../team-name';
 import { LeagueFilterService } from '../league-filter.service';
 import { BoardAnchorService } from '../board-anchor.service';
 import type { TeamDetail, TeamRecord, TeamSummary } from '../models';
@@ -245,8 +246,12 @@ export class TeamsListComponent {
     return team.logoUrl !== null && !this.logoFailed().has(team.id);
   }
 
-  protected logoSrc(teamId: number): string {
-    return this.api.teamLogoUrl(teamId);
+  protected displayName(name: string | null): string {
+    return displayTeamName(name);
+  }
+
+  protected logoSrc(team: TeamSummary): string {
+    return this.api.teamLogo(team.logoUrl!);
   }
 
   protected onLogoError(teamId: number): void {

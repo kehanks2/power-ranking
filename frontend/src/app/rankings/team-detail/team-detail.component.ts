@@ -41,8 +41,8 @@ export class TeamDetailComponent {
    */
   private readonly logoFailedFor = signal<number | null>(null);
 
-  protected logoSrc(teamId: number): string {
-    return this.api.teamLogoUrl(teamId);
+  protected logoSrc(team: TeamDetail): string {
+    return this.api.teamLogo(team.logoUrl!);
   }
 
   protected logoFailed(): boolean {

@@ -117,21 +117,26 @@
                  the last team they played for is in the title, in the past tense. -->
             <td class="team">
               @if (player.teamName) {
-                <!-- Laid out inline, not flex: `display: flex` on a td drops the
-                     cell out of the table layout and it stops tracking its th. -->
-                @if (showLogo(player)) {
-                  <img
-                    class="team-crest"
-                    [src]="logoSrc(player.teamId!)"
-                    width="18"
-                    height="18"
-                    loading="lazy"
-                    decoding="async"
-                    alt=""
-                    (error)="onLogoError(player.teamId!)"
-                  />
-                }
-                {{ player.teamName }}
+                <!-- An inner wrapper, because `display: flex` on the td itself
+                     drops the cell out of the table layout and it stops tracking
+                     its th. `vertical-align: middle` on the image alone centres
+                     it on the baseline plus half an x-height, which left it
+                     2.6px low against the name. -->
+                <span class="team-with-crest">
+                  @if (showLogo(player)) {
+                    <img
+                      class="team-crest"
+                      [src]="logoSrc(player)"
+                      width="26"
+                      height="26"
+                      loading="lazy"
+                      decoding="async"
+                      alt=""
+                      (error)="onLogoError(player.teamId!)"
+                    />
+                  }
+                  {{ displayName(player.teamName) }}
+                </span>
               } @else if (player.movedToTeam) {
                 <span class="team-gone" [title]="teamNote(player)">→ {{ player.movedToLeague }}</span>
               } @else {

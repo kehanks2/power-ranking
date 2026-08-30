@@ -175,7 +175,7 @@ export interface PlayerSummaryDto {
   teamSlug: string | null;
   /** Display name ("Gen.G"), not the slug. */
   teamName: string | null;
-  /** Non-null when a crest can be served for `teamId`; the bytes come from the API. */
+  /** API path to the team's crest (`/teams/:id/logo?v=…`), null when we hold none. */
   teamLogoUrl: string | null;
   /** The player's current region/league (e.g. 'LCK'); null if unresolved. */
   leagueSlug: string | null;

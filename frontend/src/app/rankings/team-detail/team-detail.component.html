@@ -8,7 +8,7 @@
 
   <header class="team-header" [style.--team-color]="t.brandColor ?? 'var(--color-gold)'">
     @if (t.logoUrl && !logoFailed()) {
-      <img class="logo" [src]="logoSrc(t.id)" width="64" height="64" decoding="async" alt="" (error)="onLogoError()" />
+      <img class="logo" [src]="logoSrc(t)" width="64" height="64" decoding="async" alt="" (error)="onLogoError()" />
     } @else {
       <span class="logo logo--placeholder" aria-hidden="true">{{ t.slug.slice(0, 2).toUpperCase() }}</span>
     }
