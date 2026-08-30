@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { TooltipDirective } from '../tooltip.directive';
 
 /**
  * Marks a row whose player has no games on the board showing it. Shared because
@@ -7,11 +8,12 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
  * squad for, and the team page marked nothing at all.
  */
 @Component({
+  imports: [TooltipDirective],
   selector: 'pr-unplayed-marker',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (gamesPlayed() === 0) {
-      <span class="dot" [title]="label()" aria-hidden="true"></span>
+      <span class="dot" [prTooltip]="label()" aria-hidden="true"></span>
       <span class="visually-hidden">{{ label() }}</span>
     }
   `,

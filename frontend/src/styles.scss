@@ -92,3 +92,22 @@ button {
 .lg-LCS { color: var(--lg-LCS); }
 .lg-LCP { color: var(--lg-LCP); }
 .lg-CBLOL { color: var(--lg-CBLOL); }
+
+/* Tooltip bubble. Global rather than component-scoped: the directive appends it
+   to <body>, outside any component's encapsulation, because the boards clip
+   their overflow and a child of the cell would be cut off at its edge. */
+.pr-tooltip {
+  position: absolute;
+  z-index: 100;
+  max-width: 22rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  /* 0.82rem against the OS tooltip's ~11px, and the page's own family. */
+  font-size: 0.82rem;
+  line-height: 1.45;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 45%);
+  pointer-events: none;
+}

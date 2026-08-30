@@ -8,6 +8,7 @@ import { ConfidenceRangeComponent } from '../confidence/confidence-range.compone
 import { PlayerPanelComponent } from '../player-panel/player-panel.component';
 import { UnplayedMarkerComponent } from '../unplayed-marker/unplayed-marker.component';
 import type { BoardScope, PlayerDetail, PlayerRatingScope, TeamDetail, TeamRecord } from '../models';
+import { TooltipDirective } from '../tooltip.directive';
 
 @Component({
   selector: 'app-team-detail',
@@ -18,8 +19,7 @@ import type { BoardScope, PlayerDetail, PlayerRatingScope, TeamDetail, TeamRecor
     ConfidenceAxisComponent,
     ConfidenceRangeComponent,
     PlayerPanelComponent,
-    UnplayedMarkerComponent,
-  ],
+    UnplayedMarkerComponent, TooltipDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './team-detail.component.html',
   styleUrl: './team-detail.component.scss',

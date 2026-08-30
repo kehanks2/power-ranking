@@ -10,7 +10,12 @@
       </caption>
       <thead>
         <tr>
-          <th scope="col" class="rank">#</th>
+          <!-- Mirrors the cell's structure so the heading lands over the number
+               rather than over the number-plus-caret slot. -->
+          <th scope="col" class="rank">
+            <span class="rank-num">#</span>
+            <span class="rank-change-slot" aria-hidden="true"></span>
+          </th>
           <th scope="col" class="team-h">Team</th>
           @if (isInternational()) {
             <th scope="col" class="region-h">Region</th>
@@ -103,7 +108,7 @@
                 @if (team.recentRosterChange) {
                   <span
                     class="dot dot--churn"
-                    title="Roster change — the range stays wide until the new lineup has played 10 games"
+                    prTooltip="Roster change — the range stays wide until the new lineup has played 10 games"
                   ></span>
                 } @else {
                   <span class="dot-spacer" aria-hidden="true"></span>
@@ -133,7 +138,7 @@
                     [class.slot--gold]="medal(team, event) === 'gold'"
                     [class.slot--silver]="medal(team, event) === 'silver'"
                     [class.slot--bronze]="medal(team, event) === 'bronze'"
-                    [title]="slotTitle(team, event)"
+                    [prTooltip]="slotTitle(team, event)"
                   >
                     <span class="slot__medal" aria-hidden="true"></span>
                     <span class="slot__place">{{ slotLabel(team, event) }}</span>
@@ -142,7 +147,7 @@
                 @if (team.lastInternational) {
                   <span
                     class="dot dot--old"
-                    [title]="'No appearance in the last six events. Last international: ' + team.lastInternational"
+                    [prTooltip]="'No appearance in the last six events. Last international: ' + team.lastInternational"
                   ></span>
                 }
               </div>

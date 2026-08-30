@@ -7,6 +7,7 @@ import { LeagueFilterService } from '../league-filter.service';
 import { BoardAnchorService } from '../board-anchor.service';
 import type { TeamDetail, TeamRecord, TeamSummary } from '../models';
 import { RankChangeComponent } from '../rank-change/rank-change.component';
+import { TooltipDirective } from '../tooltip.directive';
 
 /**
  * OLDEST first, and the same window the international rating is built from --
@@ -16,7 +17,17 @@ import { RankChangeComponent } from '../rank-change/rank-change.component';
 const RECENT_EVENTS = ['W24', 'FS25', 'MSI25', 'W25', 'FS26', 'MSI26'] as const;
 
 /** Axis gridline spacing, in rating points. */
-const AXIS_STEP = 100;
+/**
+ * Axis gridline spacing, in rating points, coarsest first once 100 will not fit.
+ *
+ * The step is chosen, not fixed: the meter is 200px and a four-digit label is
+ * ~26px, so a fixed 100 put seven labels on the international board with 3px
+ * between them -- "1200130014001500160017001800".
+ */
+const AXIS_STEPS = [100, 200, 250, 500, 1000];
+
+/** What fits the track without the labels touching. */
+const MAX_AXIS_TICKS = 5;
 
 type SortKey = 'floor' | 'rating';
 
@@ -27,7 +38,7 @@ interface AxisTick {
 
 @Component({
   selector: 'app-teams-list',
-  imports: [DecimalPipe, PercentPipe, RouterLink, RankChangeComponent],
+  imports: [DecimalPipe, PercentPipe, RouterLink, RankChangeComponent, TooltipDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './teams-list.component.html',
   styleUrl: './teams-list.component.scss',
@@ -101,16 +112,21 @@ export class TeamsListComponent {
   /** One scale for the whole board. Per-board, since international ranges run far wider. */
   private readonly bounds = computed(() => {
     const rows = this.teams();
-    if (rows.length === 0) return { lo: 0, hi: 1 };
-    const lo = Math.floor(Math.min(...rows.map((t) => t.floor)) / AXIS_STEP) * AXIS_STEP;
-    const hi = Math.ceil(Math.max(...rows.map((t) => t.rating + t.rd)) / AXIS_STEP) * AXIS_STEP;
-    return { lo, hi: hi === lo ? lo + AXIS_STEP : hi };
+    if (rows.length === 0) return { lo: 0, hi: 1, step: AXIS_STEPS[0]! };
+    const low = Math.min(...rows.map((t) => t.floor));
+    const high = Math.max(...rows.map((t) => t.rating + t.rd));
+    const step =
+      AXIS_STEPS.find((candidate) => Math.ceil(high / candidate) - Math.floor(low / candidate) + 1 <= MAX_AXIS_TICKS) ??
+      AXIS_STEPS[AXIS_STEPS.length - 1]!;
+    const lo = Math.floor(low / step) * step;
+    const hi = Math.ceil(high / step) * step;
+    return { lo, hi: hi === lo ? lo + step : hi, step };
   });
 
   protected readonly ticks = computed<AxisTick[]>(() => {
-    const { lo, hi } = this.bounds();
+    const { lo, hi, step } = this.bounds();
     const out: AxisTick[] = [];
-    for (let value = lo; value <= hi; value += AXIS_STEP) out.push({ value, left: this.pct(value) });
+    for (let value = lo; value <= hi; value += step) out.push({ value, left: this.pct(value) });
     return out;
   });
 

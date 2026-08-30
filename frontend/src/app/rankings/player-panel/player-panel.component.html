@@ -70,12 +70,12 @@
                 <dd>
                   <span class="stat__value">{{ stat.display }}</span>
                   <span class="stat__place">{{ stat.place ?? '—' }}</span>
-                  <span class="stat__scale" [title]="stat.standing">
+                  <span class="stat__scale" [prTooltip]="stat.standing">
                     <span class="stat__track" aria-hidden="true"></span>
                     <span class="stat__dot" [style.left.%]="stat.position * 100"></span>
                   </span>
                   @if (stat.drive) {
-                    <span class="stat__drive" [class]="'stat__drive--' + stat.drive" [title]="stat.drive">
+                    <span class="stat__drive" [class]="'stat__drive--' + stat.drive" [prTooltip]="stat.drive">
                       {{ stat.drive === 'lifting' ? '▲' : '▼' }}
                     </span>
                   } @else {

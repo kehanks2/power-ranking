@@ -81,7 +81,7 @@
         @for (league of leagues(); track league.slug) {
           <li [class]="'lg-' + league.slug">
             <span class="rg">{{ league.slug }}</span>
-            <span class="meter" [title]="rangeTitle(league)">
+            <span class="meter" [prTooltip]="rangeTitle(league)" tabindex="0">
               <span class="zero" aria-hidden="true"></span>
               <span
                 class="band"

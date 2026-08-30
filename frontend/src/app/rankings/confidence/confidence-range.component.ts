@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { AXIS_TICKS, confidenceRange, type RatingConfidence } from './confidence-range';
+import { TooltipDirective } from '../tooltip.directive';
 
 /**
  * The rating drawn as a range: a solid band for the distance the games have
@@ -7,11 +8,12 @@ import { AXIS_TICKS, confidenceRange, type RatingConfidence } from './confidence
  * in the column header, which labels the same divisions.
  */
 @Component({
+  imports: [TooltipDirective],
   selector: 'app-confidence-range',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './confidence-range.component.scss',
   template: `
-    <span class="range" [title]="range().label">
+    <span class="range" [prTooltip]="range().label" tabindex="0">
       @for (tick of ticks; track tick) {
         <span class="range__gridline" [class.range__gridline--mid]="tick === 50" [style.left.%]="tick"></span>
       }

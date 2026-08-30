@@ -80,7 +80,7 @@
                             <td class="date">
                               {{ s.date }}
                               @if (s.isPlayoff) {
-                                <span class="playoff-tag" title="Playoff series">PO</span>
+                                <span class="playoff-tag" prTooltip="Playoff series">PO</span>
                               }
                             </td>
                             <td class="res">{{ s.won ? 'W' : 'L' }}</td>
@@ -164,7 +164,7 @@
                             <td class="date">
                               {{ s.date }}
                               @if (s.isPlayoff) {
-                                <span class="playoff-tag" title="Playoff series">PO</span>
+                                <span class="playoff-tag" prTooltip="Playoff series">PO</span>
                               }
                             </td>
                             <td class="res">{{ s.won ? 'W' : 'L' }}</td>
@@ -234,7 +234,7 @@
               >
                 <span class="handle">{{ entry.handle }}</span>
                 @if (entry.hasInternational) {
-                  <span class="dot dot--intl" title="Has an international record"></span>
+                  <span class="dot dot--intl" prTooltip="Has an international record"></span>
                   <span class="visually-hidden">Has an international record</span>
                 }
                 <pr-unplayed-marker [gamesPlayed]="entry.gamesPlayed" [alsoPlaysFor]="entry.alsoPlaysFor" />
@@ -247,7 +247,7 @@
                 <span class="role-rank__place">{{ ordinal(entry.roleRank) }}</span>
                 <span class="role-rank__of">of {{ entry.rolePeerCount }}</span>
               } @else {
-                <span class="role-rank__place" title="Not ranked — no games on this board">—</span>
+                <span class="role-rank__place" prTooltip="Not ranked — no games on this board">—</span>
               }
             </td>
             <td class="num player-rating">{{ entry.rating | number: '1.1-1' }}</td>

@@ -20,6 +20,7 @@ import { ConfidenceRangeComponent } from '../confidence/confidence-range.compone
 import { PlayerPanelComponent } from '../player-panel/player-panel.component';
 import { RankChangeComponent } from '../rank-change/rank-change.component';
 import { RATING_WINDOWS, ROLES, type PlayerDetail, type PlayerSummary, type RatingWindow, type Role } from '../models';
+import { TooltipDirective } from '../tooltip.directive';
 
 @Component({
   selector: 'app-players-list',
@@ -29,8 +30,7 @@ import { RATING_WINDOWS, ROLES, type PlayerDetail, type PlayerSummary, type Rati
     ConfidenceAxisComponent,
     ConfidenceRangeComponent,
     PlayerPanelComponent,
-    RankChangeComponent,
-  ],
+    RankChangeComponent, TooltipDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './players-list.component.html',
   styleUrl: './players-list.component.scss',

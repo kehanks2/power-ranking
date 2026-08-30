@@ -17,10 +17,11 @@ import { LeagueFilterService } from '../league-filter.service';
 import { BoardAnchorService } from '../board-anchor.service';
 import { RankingsApiService } from '../rankings-api.service';
 import { BOARD_SCOPES, type BoardScope, type BoardUpdated, type LeagueSummary } from '../models';
+import { TooltipDirective } from '../tooltip.directive';
 
 @Component({
   selector: 'app-rankings-shell',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, DecimalPipe, DatePipe],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, DecimalPipe, DatePipe, TooltipDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './rankings-shell.component.html',
   styleUrl: './rankings-shell.component.scss',

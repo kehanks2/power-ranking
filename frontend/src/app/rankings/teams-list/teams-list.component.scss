@@ -141,7 +141,6 @@ $slot-width: 56px;
 }
 
 .rank {
-  width: 6.5ch;
   text-align: right;
   color: var(--color-text-muted);
   font-weight: 700;
@@ -153,19 +152,17 @@ tbody td.rank {
   white-space: nowrap;
 }
 
+// rem, not ch: the header's font is 10.4px against the body's 15.68px, so `ch`
+// resolved to a 12px box in the head and an 18px one in the body and the two
+// could not line up. These are the body's measured widths.
 .rank-num {
   display: inline-block;
-  min-width: 2ch;
+  min-width: 1.125rem;
   text-align: right;
 }
 
 // Fixed slot, or the variable-width caret drifts the rank numbers.
-pr-rank-change {
-  display: inline-block;
-  width: 3.25ch;
-  margin-left: 0.3rem;
-  text-align: left;
-}
+
 
 .team-cell {
   appearance: none;
@@ -218,13 +215,13 @@ pr-rank-change {
   max-width: 300px;
 }
 
-// No left padding on the team cell: the gap to the crest is the rank cell's
-// right padding plus this one's left, which together put the rank's caret
-// further from the crest than the crest is from the name it belongs to.
-// Named through tbody to beat `.teams-table tbody td` -- view encapsulation
-// levels the class counts, so a bare `td.team-col` loses on element count.
+// Half the shared padding on the team cell. None at all put the crest closer to
+// the rank's caret than to the name it belongs to; the full amount, doubled with
+// the rank cell's own right padding, put it further. Named through tbody to beat
+// `.teams-table tbody td` -- view encapsulation levels the class counts, so a
+// bare `td.team-col` loses on element count.
 .teams-table tbody td.team-col {
-  padding-left: 0;
+  padding-left: calc(#{$cell-pad-x} / 2);
 }
 
 // One fixed 26px slot whichever branch fills it, or the team names start at a
@@ -257,8 +254,17 @@ pr-rank-change {
   font-weight: 650;
 }
 
+// Left-aligned, alone among the numeric columns. It is an annotation on the
+// rating rather than a ranked figure, and right-aligning it put the heading's
+// lone "±" over the last digit of "±119" instead of over the ± it names.
+// Tabular figures keep the digits in line anyway.
 .pm {
   color: var(--color-text-muted);
+  text-align: left;
+}
+
+.teams-table thead th.pm-h {
+  text-align: left;
 }
 
 .floor {
@@ -351,7 +357,24 @@ th.interval-h {
 
 .teams-table th.rank,
 .teams-table td.rank {
-  width: 62px;
+  width: 72px;
+}
+
+// `#` sits over the NUMBER, not over the number-plus-caret slot. The header
+// mirrors the cell's structure rather than guessing an offset, so the two stay
+// aligned if the caret's width ever changes. `thead th` sets text-align left and
+// outranks a bare `.rank`, hence naming thead.
+.teams-table thead th.rank {
+  text-align: right;
+  white-space: nowrap;
+}
+
+pr-rank-change,
+.rank-change-slot {
+  display: inline-block;
+  width: 1.83rem;
+  margin-left: 0.3rem;
+  text-align: left;
 }
 
 .teams-table th.placements-h,
@@ -377,7 +400,7 @@ th.interval-h {
 
 .teams-table thead th.pm-h,
 .teams-table tbody td.pm {
-  width: 64px;
+  width: 72px;
 }
 
 .teams-table thead th.floor-h,

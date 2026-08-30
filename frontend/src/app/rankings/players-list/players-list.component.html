@@ -37,7 +37,7 @@
             class="chip"
             [class.chip--active]="window() === w"
             [attr.aria-pressed]="window() === w"
-            [title]="windowHint(w)"
+            [prTooltip]="windowHint(w)"
             (click)="setWindow(w)"
           >
             {{ windowLabel(w) }}
@@ -62,7 +62,12 @@
       </caption>
       <thead>
         <tr>
-          <th scope="col" class="rank">#</th>
+          <!-- Mirrors the cell's structure so the heading lands over the number
+               rather than over the number-plus-caret slot. -->
+          <th scope="col" class="rank">
+            <span class="rank-num">#</span>
+            <span class="rank-change-slot" aria-hidden="true"></span>
+          </th>
           <th scope="col">Player</th>
           <th scope="col" class="role-col">Role</th>
           @if (isGlobal()) {
@@ -138,9 +143,9 @@
                   {{ displayName(player.teamName) }}
                 </span>
               } @else if (player.movedToTeam) {
-                <span class="team-gone" [title]="teamNote(player)">→ {{ player.movedToLeague }}</span>
+                <span class="team-gone" [prTooltip]="teamNote(player)">→ {{ player.movedToLeague }}</span>
               } @else {
-                <span class="team-gone" [title]="teamNote(player)">No team</span>
+                <span class="team-gone" [prTooltip]="teamNote(player)">No team</span>
               }
             </td>
             <td class="num rating">{{ player.rating | number: '1.1-1' }}</td>

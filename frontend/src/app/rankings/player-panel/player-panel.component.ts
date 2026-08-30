@@ -3,6 +3,7 @@ import { DecimalPipe, PercentPipe } from '@angular/common';
 import { ConfidenceAxisComponent } from '../confidence/confidence-axis.component';
 import { ConfidenceRangeComponent } from '../confidence/confidence-range.component';
 import type { PlayerDetail, PlayerStat, PlayerStats } from '../models';
+import { TooltipDirective } from '../tooltip.directive';
 
 /** The members of PlayerStats that are placed stats, not the bare counts alongside them. */
 type StatKey = { [K in keyof PlayerStats]: PlayerStats[K] extends PlayerStat ? K : never }[keyof PlayerStats];
@@ -38,7 +39,7 @@ interface StatGroup {
  */
 @Component({
   selector: 'app-player-panel',
-  imports: [DecimalPipe, PercentPipe, ConfidenceAxisComponent, ConfidenceRangeComponent],
+  imports: [DecimalPipe, PercentPipe, ConfidenceAxisComponent, ConfidenceRangeComponent, TooltipDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './player-panel.component.html',
   styleUrl: './player-panel.component.scss',

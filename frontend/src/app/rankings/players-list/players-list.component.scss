@@ -114,8 +114,10 @@ $cell-pad-x: 0.7rem;
   // `thead th` alone beats `.num` on specificity, which left every numeric
   // heading at the left edge of a right-aligned column.
   thead th.num,
+  // Mirrors the cell: `#` over the number, with the caret's width reserved.
   thead th.rank {
     text-align: right;
+    white-space: nowrap;
   }
 
   // The role pill insets its own text by a border and 0.4rem of padding, so a
@@ -170,16 +172,20 @@ tbody td.rank {
   white-space: nowrap;
 }
 
+// rem, not ch: the header's font is 10.4px against the body's 15.68px, so `ch`
+// resolved to a 12px box in the head and an 18px one in the body and the two
+// could not line up. These are the body's measured widths.
 .rank-num {
   display: inline-block;
-  min-width: 2ch;
+  min-width: 1.125rem;
   text-align: right;
 }
 
 // Fixed slot, or the variable-width caret drifts the rank numbers.
-pr-rank-change {
+pr-rank-change,
+.rank-change-slot {
   display: inline-block;
-  width: 3.25ch;
+  width: 1.83rem;
   margin-left: 0.3rem;
   text-align: left;
 }
