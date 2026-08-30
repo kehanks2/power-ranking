@@ -4,6 +4,7 @@ import {
   retryDelayMs,
   REQUESTS_PER_HOUR,
   RETRY_DELAYS_MS,
+  teamLogoUrl,
   WINDOW_MS,
   type RateLimitState,
 } from '../liquipediaApi.js';
@@ -91,5 +92,22 @@ describe('retryDelayMs', () => {
   it('cannot outlast the workflow timeout', () => {
     const worst = RETRY_DELAYS_MS.reduce((sum, _, i) => sum + retryDelayMs(i, () => 1), 0);
     expect(worst).toBeLessThan(15 * 60 * 1000);
+  });
+});
+
+describe('teamLogoUrl', () => {
+  it('prefers the dark variant, which is what a dark board wants', () => {
+    expect(teamLogoUrl({ logourl: 'light.png', logodarkurl: 'dark.png' })).toBe('dark.png');
+  });
+
+  it('falls back to the light one, which most teams repeat anyway', () => {
+    expect(teamLogoUrl({ logourl: 'light.png', logodarkurl: '' })).toBe('light.png');
+  });
+
+  // The API returns '' rather than null for a team with no logo, and an empty
+  // string reaching the frontend renders a broken image rather than the crest.
+  it('is null when the wiki holds no logo at all', () => {
+    expect(teamLogoUrl({ logourl: '', logodarkurl: '' })).toBeNull();
+    expect(teamLogoUrl({ logourl: '   ', logodarkurl: '  ' })).toBeNull();
   });
 });

@@ -196,15 +196,31 @@ export interface LiquipediaTeam {
   pagename: string;
   name: string;
   status: string;
+  /** Wordmark on a light ground. Empty string when the wiki holds no logo. */
+  logourl: string;
+  /** The same wordmark tuned for a dark ground; most teams repeat logourl here. */
+  logodarkurl: string;
 }
 
 /** All currently-active teams on the LoL wiki -- one broad paginated query, not one per team. */
 export async function fetchActiveTeams(): Promise<LiquipediaTeam[]> {
   return liquipediaGetAll<LiquipediaTeam>('v3/team', {
     conditions: '[[status::active]]',
-    query: 'pagename,name,status',
+    query: 'pagename,name,status,logourl,logodarkurl',
     order: 'pagename ASC',
   });
+}
+
+/**
+ * The crest to show on a dark board.
+ *
+ * `logodarkurl` is the variant drawn for a dark ground, but most teams repeat
+ * their light one there and some leave both blank, so this falls back rather
+ * than assuming a dark variant exists. Empty string, not null, is what the API
+ * returns for a team with no logo at all.
+ */
+export function teamLogoUrl(team: Pick<LiquipediaTeam, 'logourl' | 'logodarkurl'>): string | null {
+  return team.logodarkurl?.trim() || team.logourl?.trim() || null;
 }
 
 export interface LiquipediaMatchOpponent {

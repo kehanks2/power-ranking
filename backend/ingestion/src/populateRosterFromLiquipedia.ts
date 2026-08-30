@@ -3,6 +3,7 @@ import {
   fetchActiveTeams,
   fetchAllActiveSquadPlayers,
   fetchActivePlayersForTeams,
+  teamLogoUrl,
   type LiquipediaSquadPlayer,
   type LiquipediaPlayer,
 } from './liquipediaApi.js';
@@ -23,6 +24,8 @@ export interface RosterImportResult {
   academyCohortsDropped: { team: string; squad: string; handles: string[] }[];
   /** Memberships closed because the squad page no longer lists them. */
   membershipsClosed: number;
+  /** Teams whose crest changed. Rides along on the team query the roster already makes. */
+  logosUpdated: number;
 }
 
 // Blank role = starter; any label ("Substitute", "Loan") = not. Testing for a
@@ -183,6 +186,7 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
   const liquipediaTeams = await fetchActiveTeams();
   const allSquadPlayers = await fetchAllActiveSquadPlayers();
   const pagenameByName = new Map(liquipediaTeams.map((t) => [t.name, t.pagename]));
+  const logoByPagename = new Map(liquipediaTeams.map((t) => [t.pagename, teamLogoUrl(t)]));
   const squadByPagename = new Map<string, LiquipediaSquadPlayer[]>();
   for (const player of allSquadPlayers) {
     if (!squadByPagename.has(player.pagename)) squadByPagename.set(player.pagename, []);
@@ -224,8 +228,27 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
   let membershipsInserted = 0;
   let membershipsClosed = 0;
   let playersCreated = 0;
+  let logosUpdated = 0;
   try {
     await client.query('BEGIN');
+
+    // One statement for every matched team, not one per team: the round trip is
+    // the cost against a hosted database, not the statement. A team the wiki has
+    // no logo for keeps whatever it had -- COALESCE, so a blank never erases a
+    // crest that is already there.
+    const logoTeamIds = matchedTeams.map(({ teamId }) => teamId);
+    const logoUrls = matchedTeams.map(({ pagename }) => logoByPagename.get(pagename) ?? null);
+    if (logoTeamIds.length > 0) {
+      const logoWrite = await client.query(
+        `UPDATE teams t
+            SET logo_url = COALESCE(v.logo_url, t.logo_url)
+           FROM unnest($1::int[], $2::text[]) AS v(team_id, logo_url)
+          WHERE t.id = v.team_id
+            AND t.logo_url IS DISTINCT FROM COALESCE(v.logo_url, t.logo_url)`,
+        [logoTeamIds, logoUrls],
+      );
+      logosUpdated = logoWrite.rowCount ?? 0;
+    }
 
     const today = new Date().toISOString().slice(0, 10);
     // Every (team, player, role) this import saw. What is missing from it gets
@@ -334,5 +357,6 @@ export async function populateRosterFromLiquipedia(pool: Pool): Promise<RosterIm
     teamsWithNoRoster: teamsStillEmpty,
     academyCohortsDropped,
     membershipsClosed,
+    logosUpdated,
   };
 }
