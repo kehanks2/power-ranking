@@ -21,7 +21,7 @@
     <section aria-labelledby="boards">
       <h3 id="boards">Boards are not comparable</h3>
       <p class="key">
-        This is the one thing worth taking away: a regional board ranks only against itself.
+        A regional board ranks only against itself.
       </p>
       <p>
         A player's regional rating is a percentile among the others playing the same role in that
@@ -137,7 +137,7 @@
         wide when we have seen little or the roster just changed.
       </p>
       <p>
-        A roster change widens the range rather than resetting it. We usually know the incoming
+        A roster change widens the range without resetting it. We usually know the incoming
         players well enough to move the rating with them, but five known players are still an
         unknown combination, so some of the certainty goes. A team whose roster changed inside its
         last 10 games is flagged on the board.
@@ -152,15 +152,19 @@
     <section aria-labelledby="order">
       <h3 id="order">Why a lower number can sit above a higher one</h3>
       <p>
-        Boards are ordered by the bottom of the range, the rating minus its uncertainty, and then
-        display the rating itself. A well-established team can therefore rank above one carrying a
-        higher number on far less evidence.
+        The teams board is ranked on <strong>Floor</strong>, which has its own column: the rating
+        minus its uncertainty, or what we are confident a team is at least worth. Rating sits beside
+        it as the single best estimate. Both are on screen, and either will sort the table.
       </p>
       <p>
-        Ranking on a conservative estimate is standard, and it keeps a team with a spectacular but
-        thin record out of the top few places. The consequence is that the column you read is not
-        the column that sorted, so the table can show a smaller number above a larger one. The ±
-        range beside them explains the pair.
+        Reading down the Rating column you will find the occasional pair out of order. A team
+        carrying a high number on thin evidence has a low floor, and it ranks where its floor puts
+        it. That is what ranking this way buys: a spectacular but barely-tested rating stays out of
+        the top few places until the games back it up. The ± column between them shows how much
+        evidence each one has.
+      </p>
+      <p>
+        The player boards have nothing like this. They are ranked on the number they show.
       </p>
     </section>
 
@@ -171,10 +175,10 @@
         are not “since yesterday”, because a board does not advance daily.
       </p>
       <p>
-        <strong>Boards advance per stage, not per day.</strong> A regular-season week is held until
-        it owes no more fixtures, so a team that played on Saturday does not leapfrog one playing on
-        Sunday and then drop back a day later. Bracket play advances series by series, which is how
-        it is resolved.
+        <strong>A board advances a stage at a time</strong>, so days can pass without one moving. A
+        regular-season week is held until it owes no more fixtures, so a team that played on
+        Saturday does not leapfrog one playing on Sunday and then drop back a day later. Bracket
+        play advances series by series, which is how it is resolved.
       </p>
       <p>
         An arrow compares the board against how it stood at the end of an earlier stage, and the
@@ -215,9 +219,9 @@
       <p>
         Games are weighted by recency, with a 120-day half-life. The board also offers three
         windows: All, This year and This split. They run the same method over fewer games. A split
-        is only a few dozen games, so those ratings sit closer to 50, and the narrower spread there
-        is caution doing its job rather than a bug. Both bounded windows key off each league's own
-        split start, since the regions do not share a calendar.
+        is only a few dozen games, so those ratings sit closer to 50. That narrower spread is the
+        shrinkage working as intended. Both bounded windows key off each league's own split start,
+        since the regions do not share a calendar.
       </p>
       <p>
         <strong>A regional board carries who is in the league now</strong>: rostered to a team still
@@ -267,13 +271,12 @@
 
     <section aria-labelledby="limits">
       <h3 id="limits">Where the model is weakest</h3>
-      <p>Measured, not guessed:</p>
+      <p>Every one of these is measured:</p>
       <ul>
         <li>
           <strong>It is overconfident at the top end.</strong> Where it claims better than 80% it is
           claiming about 85% and delivering about 79%. Narrowing the ranges to tidy up the boards
-          would make this worse, not better, because tighter ranges push the probabilities further
-          out.
+          would make it worse: tighter ranges push the probabilities further out.
         </li>
         <li>
           <strong>One number per region cannot represent an intransitive matchup.</strong> The LEC
@@ -290,8 +293,8 @@
         </li>
         <li>
           <strong>A player with no professional record anywhere gets nothing better than a neutral
-          start.</strong> That is mostly academy call-ups and brand-new teams, and closing it needs
-          tier-two data rather than a cleverer prior.
+          start.</strong> That is mostly academy call-ups and brand-new teams, and closing it takes
+          tier-two data; a cleverer prior cannot do it.
         </li>
       </ul>
       <p class="note">

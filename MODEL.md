@@ -406,24 +406,31 @@ Measured, not guessed. Re-check with the runners below.
   but G2 still ranks above LYON on the board, because ranking is by
   `conservativeRank` and G2 is the more certain of the two (RD 58 vs 66).
 
-## Ranking order vs displayed rating
+## Ranking order vs displayed rating — settled
 
-The board is ordered by `conservativeRank` (rating − `DEFAULT_CONSERVATIVE_K` ×
-RD) but displays the raw rating. These are different quantities, so the table
-can legitimately show a lower number above a higher one — currently 18 of 55
-adjacent pairs, the largest inversion being 59 points (JD Gaming 1644 at #13
-above Invictus Gaming 1704 at #14, which carries RD 129).
+The team boards sort on `floor` (`rating - DEFAULT_CONSERVATIVE_K x RD`, k = 1),
+and **`floor` is a column on the board** — sortable, the default sort, and named
+in the legend as what the ranking uses. `rating` sits beside it as the point
+estimate. The two are different quantities, so reading down the Rating column
+finds the occasional inverted pair. Measured 2026-09-01: 14 of 71 adjacent pairs
+across all seven boards, on International (8 of 21), LPL (3), LEC (2) and LCP
+(1); LCK, LCS and CBLOL have none. The largest is FURIA 1423 (RD 135) at #19
+above Fnatic 1471 (RD 186) at #20.
 
-The ordering itself is defensible and standard: TrueSkill leaderboards rank on a
-conservative estimate for the same reason, so that a team with a high but
-poorly-evidenced rating does not sit above a well-established one. It is also
-doing useful work here — it is what keeps high-RD teams like BNK FEARX and
-Invictus Gaming out of the top few places.
+The ordering is standard: TrueSkill leaderboards rank on a conservative estimate
+for the same reason, so that a high but poorly-evidenced rating does not sit
+above a well-established one. It is also doing useful work here — it is what
+keeps high-RD teams out of the top few places.
 
-What is not defensible is ranking by one number and displaying another, which
-reads as a sorting bug. Either display the conservative value that is actually
-sorted on, or sort on the displayed rating and let the ± column carry the
-uncertainty. This is an open UI decision, not a model one.
+This section used to record an open UI decision, that ranking by one number
+while displaying another reads as a sorting bug, and named two ways out. **The
+first of them shipped: the Floor column.** Nothing here is open.
+
+**Player boards do not do this at all.** They sort on the same `rating` they
+display; shrinkage is already inside that number, with `rawRating` drawn as the
+dashed tail. The one place a sort key is still not a column is the six-row
+regional-strength aside, which sorts on `conservativeRank` and shows
+`rating ±rd`.
 
 ## Diagnostics
 
