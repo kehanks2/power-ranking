@@ -24,6 +24,10 @@ interface BoardRow {
 
 const ANCHOR_GAP = 16;
 
+// Matches the stylesheet's breakpoint: above it the contents list is a sidebar
+// and always open, below it a disclosure.
+const WIDE_VIEWPORT = '(min-width: 941px)';
+
 const BOARD_RANKS: Record<BoardScope, string> = {
   international: 'Teams and players measured against the same field, at First Stand, MSI and Worlds',
   LCK: 'Teams and players in the LCK, against each other only',
@@ -55,6 +59,8 @@ export class HowItWorksComponent {
     { id: 'limits', label: 'Where the model is weakest' },
   ];
 
+  protected readonly wideViewport = signal(true);
+
   private readonly updated = signal<BoardUpdated[]>([]);
 
   protected readonly leagues = signal<LeagueSummary[]>([]);
@@ -70,6 +76,8 @@ export class HowItWorksComponent {
   );
 
   constructor() {
+    this.trackViewport();
+
     // The router scrolls an anchor with `scrollBy`, so it ignores
     // `scroll-margin-top` and lands every heading under the sticky header. The
     // offset is a function because that header is measured, not fixed.
@@ -94,6 +102,16 @@ export class HowItWorksComponent {
       this.updated.set(boards);
       keepAnchor();
     });
+  }
+
+  private trackViewport(): void {
+    const view = inject(DOCUMENT).defaultView;
+    if (!view) return;
+    const query = view.matchMedia(WIDE_VIEWPORT);
+    const apply = () => this.wideViewport.set(query.matches);
+    apply();
+    query.addEventListener('change', apply);
+    inject(DestroyRef).onDestroy(() => query.removeEventListener('change', apply));
   }
 
   private stickyHeight(root: HTMLElement): number {

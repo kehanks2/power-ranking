@@ -1,13 +1,15 @@
 <div class="how">
-  <nav class="toc" aria-labelledby="toc-heading">
-    <h2 id="toc-heading">On this page</h2>
-    <!-- routerLink, not a bare `#id`: `<base href="/">` sends a fragment-only
-         href to `/#boards`, which redirects away to the teams board. -->
-    <ol>
-      @for (entry of contents; track entry.id) {
-        <li><a routerLink="." [fragment]="entry.id">{{ entry.label }}</a></li>
-      }
-    </ol>
+  <nav class="toc" aria-label="On this page">
+    <details [open]="wideViewport()">
+      <summary>On this page</summary>
+      <!-- routerLink, not a bare `#id`: `<base href="/">` sends a fragment-only
+           href to `/#boards`, which redirects away to the teams board. -->
+      <ol>
+        @for (entry of contents; track entry.id) {
+          <li><a routerLink="." [fragment]="entry.id">{{ entry.label }}</a></li>
+        }
+      </ol>
+    </details>
   </nav>
 
   <article class="prose">

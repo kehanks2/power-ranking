@@ -1,14 +1,15 @@
 .how {
   display: grid;
-  grid-template-columns: 13rem minmax(0, 1fr);
+  grid-template-columns: 13rem minmax(0, 78ch);
+  justify-content: center;
   gap: 1rem 4.5rem;
   padding-top: 0.5rem;
 }
 
 @media (max-width: 940px) {
   .how {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 1.5rem;
+    grid-template-columns: minmax(0, min(100%, 78ch));
+    gap: 1rem;
   }
 }
 
@@ -24,13 +25,18 @@
   align-self: start;
   font-size: 0.82rem;
 
-  h2 {
-    margin: 0 0 0.6rem;
+  summary {
+    margin-bottom: 0.6rem;
     font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--color-text-dim);
+    list-style: none;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
   }
 
   ol {
@@ -59,19 +65,37 @@
     position: static;
     padding-bottom: 1rem;
     border-bottom: 1px solid var(--color-border);
+    font-size: 0.9rem;
+  }
+
+  // Collapsed here, so eight entries do not push the page's own title off the
+  // first screen. `open` is bound, not defaulted, so the wide layout stays open.
+  .toc summary {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0;
+    padding: 0.35rem 0;
+    font-size: 0.72rem;
+  }
+
+  .toc summary::after {
+    content: '';
+    width: 0.4rem;
+    height: 0.4rem;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: translateY(-1px) rotate(45deg);
+  }
+
+  .toc details[open] summary::after {
+    transform: translateY(2px) rotate(-135deg);
   }
 
   .toc ol {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 0.4rem 0.9rem;
-  }
-
-  // Two entries sharing a wrapped line read as one phrase without this.
-  .toc li:not(:last-child)::after {
-    content: '·';
-    margin-left: 0.9rem;
-    color: var(--color-border);
+    gap: 0.7rem;
+    padding: 0.5rem 0 0.2rem;
   }
 }
 
@@ -118,10 +142,6 @@
       color: var(--color-text);
     }
   }
-}
-
-.prose :is(p, ul, h3, h4) {
-  max-width: 74ch;
 }
 
 .page-title {
