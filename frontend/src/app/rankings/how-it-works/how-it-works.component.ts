@@ -50,7 +50,7 @@ export class HowItWorksComponent {
 
   protected readonly contents = [
     { id: 'boards', label: 'Boards are not comparable' },
-    { id: 'teams', label: "What a team's rating is" },
+    { id: 'teams', label: 'How a team is rated' },
     { id: 'range', label: 'The ± range' },
     { id: 'order', label: 'Why a lower number can sit higher' },
     { id: 'arrows', label: 'The ▲▼ arrows' },

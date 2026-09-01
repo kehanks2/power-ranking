@@ -399,3 +399,15 @@ tr.is-open td {
 .drive--dragging {
   color: var(--color-down);
 }
+
+// Stickiness has to come off wherever .table-scroll becomes the scrollport
+// above. `top: --sticky-top-height` then measures from the TABLE's top rather
+// than the page's, so the header was drawn 518px down among the rows, over the
+// row it covered, with a gap left where it belonged. Declared here rather than
+// beside that rule: same specificity as the sticky one, so it has to come after.
+@media (max-width: 1000px) {
+  .players-table thead th,
+  .players-table thead tr.axis-row th {
+    position: static;
+  }
+}

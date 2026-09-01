@@ -51,7 +51,12 @@ $slot-width: 56px;
   border-collapse: separate;
   border-spacing: 0;
   width: 100%;
-  min-width: 900px;
+  // 1180, not 900. The meter column takes the table's remainder, so at 900 the
+  // fixed columns eat all of it: the Confidence range header had 0-13px to sit
+  // in and its 153px label overflowed across Last 6 int'l. 1200 leaves the meter
+  // ~160px on the widest board. Below the breakpoint above this scrolls; the
+  // deeper rethink for small viewports is issue #17.
+  min-width: 1200px;
   // Fixed, so the widths below are obeyed rather than treated as ratios for
   // handing out slack. Every column names one; Team takes what is left, which
   // is why it is the only one without.
@@ -771,5 +776,17 @@ tr.is-open td {
 
   .teams-table {
     min-width: 640px;
+  }
+}
+
+// Stickiness has to come off wherever .table-scroll becomes the scrollport
+// above. `top: --sticky-top-height` then measures from the TABLE's top rather
+// than the page's, so the header was drawn 462px down among the rows, over the
+// row it covered, with a gap left where it belonged. Declared here rather than
+// beside that rule: same specificity as the sticky one, so it has to come after.
+@media (max-width: 1250px) {
+  .teams-table thead th,
+  .teams-table thead tr.axis-row th {
+    position: static;
   }
 }
