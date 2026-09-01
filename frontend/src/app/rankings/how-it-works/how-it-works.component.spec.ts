@@ -32,8 +32,6 @@ describe('HowItWorksComponent', () => {
     expect(rows.length).toBe(BOARD_SCOPES.length);
   });
 
-  // The board it describes may not have advanced yet, and a blank cell reads as
-  // a broken page rather than as "nothing to show".
   it('marks a board that has never updated rather than leaving the cell empty', () => {
     const dom = render([{ scope: 'LCK', lastUpdated: '2026-08-16' }]);
     const when = [...dom.querySelectorAll('.boards tbody .when')].map((c) => c.textContent!.trim());

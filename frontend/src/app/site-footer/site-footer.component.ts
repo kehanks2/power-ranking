@@ -27,28 +27,38 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
           derived from Liquipedia is shared under the same licence.
         </p>
 
-        <p class="attribution">
-          Team names and logos are the property of their respective organisations and of Riot Games.
-          Not endorsed by Riot Games.
-        </p>
+        <div class="stack">
+          <p class="attribution">
+            Team names and logos are the property of their respective organisations and of Riot
+            Games. Not endorsed by Riot Games.
+          </p>
 
-        <!-- AGPL §13: running this over a network obliges us to offer users the
-             corresponding source, which in practice is this link. -->
-        <p class="source">
-          PowerRanking is free software under
-          <a
-            href="https://www.gnu.org/licenses/agpl-3.0.html"
-            rel="license noopener noreferrer external"
-            target="_blank"
-            >AGPL-3.0</a
-          >.
-          <a
-            class="source__link"
-            href="https://github.com/kehanks2/power-ranking"
-            rel="noopener noreferrer external"
-            target="_blank"
-            >Source code</a
-          >
+          <!-- AGPL §13: running this over a network obliges us to offer users the
+               corresponding source, which in practice is this link. -->
+          <p class="source">
+            PowerRanking is free software under
+            <a
+              href="https://www.gnu.org/licenses/agpl-3.0.html"
+              rel="license noopener noreferrer external"
+              target="_blank"
+              >AGPL-3.0</a
+            >.
+            <a
+              class="source__link"
+              href="https://github.com/kehanks2/power-ranking"
+              rel="noopener noreferrer external"
+              target="_blank"
+              >Source code</a
+            >
+          </p>
+        </div>
+
+        <p class="attribution">
+          Built with
+          <a href="https://claude.com/claude-code" rel="noopener noreferrer external" target="_blank"
+            >Claude Code</a
+          >. Anthropic's Claude wrote the code, the rating model and the words on this site. The
+          direction, the decisions and the review are its maintainer's.
         </p>
       </div>
     </footer>

@@ -12,9 +12,8 @@
   }
 }
 
-// Covers the scrolls the browser does itself -- find-in-page, focus. The
-// router's own anchor jump ignores this and takes an explicit ViewportScroller
-// offset instead; see the component.
+// For find-in-page and focus. The router's own anchor jump ignores this and
+// takes a ViewportScroller offset instead; see the component.
 :is(h3, h4)[id] {
   scroll-margin-top: calc(var(--sticky-top-height, 5rem) + 1rem);
 }
@@ -68,8 +67,7 @@
     gap: 0.4rem 0.9rem;
   }
 
-  // Wrapped onto shared lines, two entries with only a gap between them read as
-  // one phrase.
+  // Two entries sharing a wrapped line read as one phrase without this.
   .toc li:not(:last-child)::after {
     content: '·';
     margin-left: 0.9rem;
@@ -154,7 +152,6 @@
   color: var(--color-text-dim);
 }
 
-// The one claim the page exists to make.
 .key {
   border-left: 3px solid var(--color-gold);
   padding: 0.15rem 0 0.15rem 0.9rem;
@@ -206,9 +203,8 @@
     white-space: nowrap;
   }
 
-  // Only the International row: a league row takes its colour from the global
-  // .lg-* accent, and setting a colour here would out-specify it once
-  // encapsulation has appended its attribute to every compound selector.
+  // International only. Colouring `tbody th` would out-specify the global
+  // .lg-* accents once encapsulation has added its attribute to each compound.
   tbody th.intl {
     color: var(--color-text);
   }

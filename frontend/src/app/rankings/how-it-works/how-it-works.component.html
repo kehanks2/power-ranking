@@ -1,9 +1,8 @@
 <div class="how">
   <nav class="toc" aria-labelledby="toc-heading">
     <h2 id="toc-heading">On this page</h2>
-    <!-- routerLink, not a bare `#id`: `<base href="/">` makes the browser
-         resolve a fragment-only href against the base, so `#boards` navigates
-         to `/#boards` and redirects away to the teams board. -->
+    <!-- routerLink, not a bare `#id`: `<base href="/">` sends a fragment-only
+         href to `/#boards`, which redirects away to the teams board. -->
     <ol>
       @for (entry of contents; track entry.id) {
         <li><a routerLink="." [fragment]="entry.id">{{ entry.label }}</a></li>
@@ -14,10 +13,9 @@
   <article class="prose">
     <h2 class="page-title">How the rankings work</h2>
     <p class="lede">
-      Every number on this site is computed from results — the professional games we hold from the
-      LCK, LPL, LEC, LCS, CBLOL and LCP, plus the international events. There is no panel, no vote,
-      and no hand-placed team. This page explains what the numbers mean, what they cannot tell you,
-      and where the model is weakest.
+      Every number here is computed from results: the professional games we hold from the LCK, LPL,
+      LEC, LCS, CBLOL and LCP, plus the international events. There is no panel and no vote. This
+      page covers what the numbers mean, what they cannot tell you, and where the model is weakest.
     </p>
 
     <section aria-labelledby="boards">
@@ -26,20 +24,20 @@
         This is the one thing worth taking away: a regional board ranks only against itself.
       </p>
       <p>
-        A player's regional rating is a percentile among the others playing the same role in the
-        same league, and every league's scale is centred on 50. So a CBLOL player rated 78 and an
-        LCK player rated 78 are each well above average <em>for their own league</em> — and that is
-        the whole of what the number says. It is not a shared standard, and it does not travel.
+        A player's regional rating is a percentile among the others playing the same role in that
+        league, and every league's scale is centred on 50. A CBLOL player rated 78 and an LCK player
+        rated 78 are each well above average for their own league. That is the whole of what the
+        number says. It is not a shared standard and it does not travel.
       </p>
       <p>
-        Team ratings have the same limit for a different reason: a team's rating floats within the
-        pool it actually plays in. Two regions can sit on the same numbers while playing to
-        completely different standards, and nothing in a regional record could tell you.
+        Team ratings have the same limit for a different reason: a rating floats within the pool it
+        plays in. Two regions can sit on the same numbers while playing to different standards, and
+        nothing in a purely regional record would show it.
       </p>
       <p>
         <strong>One board does compare regions: International.</strong> It is built only from games
-        teams genuinely played against each other — First Stand, MSI and Worlds. Because everyone on
-        it faced the same field, those numbers mean the same thing wherever a team is from.
+        teams played against each other, at First Stand, MSI and Worlds. Everyone on it faced the
+        same field, so those numbers mean the same thing wherever a team is from.
       </p>
 
       <h4>The boards</h4>
@@ -70,33 +68,33 @@
         </table>
       </div>
       <p class="note">
-        A board does not advance every day — see
-        <a routerLink="." fragment="arrows">the arrows</a> for why.
+        A board does not advance every day.
+        <a routerLink="." fragment="arrows">The arrows</a> explain why.
       </p>
     </section>
 
     <section aria-labelledby="teams">
       <h3 id="teams">What a team's rating is</h3>
       <p>
-        The core is Glicko-2, the rating system used for chess and for matchmaking, which tracks
-        both a rating and how certain it is. On top of it a team's number is two terms:
+        The core is Glicko-2, a rating system that tracks both a rating and how certain it is. A
+        team's number is two terms:
       </p>
       <ul>
         <li>
-          <strong>Their own record</strong> — how they have done against everyone they have played,
-          updated by every game. International games count double, because they are the only
-          cross-region evidence and there are roughly ten times fewer of them; at equal weight a
-          team's domestic schedule simply outvotes them.
+          <strong>Their own record.</strong> How they have done against everyone they have played,
+          updated by every game. International games count double: they are the only cross-region
+          evidence and there are about ten times fewer of them, so at equal weight a domestic
+          schedule outvotes them.
         </li>
         <li>
-          <strong>Their region's strength</strong> — measured only from international results. For a
-          team that never leaves its league, this is the only cross-region signal that exists.
+          <strong>Their region's strength</strong>, measured only from international results. For a
+          team that never leaves its league this is the only cross-region signal there is.
         </li>
       </ul>
       <p>
-        Both are needed. Measured on our own data, the average of the first term barely separates
-        the leagues at all and does not even put them in the right order; essentially all the
-        cross-region information lives in the second.
+        Both are needed. Averaged by league, the first term barely separates them and does not even
+        put them in the right order. Essentially all the cross-region information sits in the
+        second.
       </p>
       @if (leagues().length) {
         <p class="live">
@@ -107,64 +105,62 @@
             >{{ last ? '.' : ', ' }}
           }
           Above zero, a region's teams beat what their ratings predicted against other regions;
-          below zero they fell short.
+          below zero, they fell short.
         </p>
       }
       <p>
-        A region's credit fades if it stops showing up: full credit for six months, tapering over
-        two years to a floor. It never reaches zero — a team that has not had the chance still
+        A region's credit fades if it stops showing up: full for six months, tapering to a floor
+        over two years. It never reaches zero, because a team that has not had the chance still
         belongs to its region.
       </p>
       <p>
         <strong>Regional team boards are not cut to a recent window.</strong> Old results already
-        count for very little through the rating's own drift and the sheer volume of regional play,
-        40 to 80 games a split. We tested cutting the record to 24, 18 and 12 months and graded
-        every version on the same recent games: the differences were inside noise except at 12
-        months, which was measurably worse. Past a point a window is just discarding evidence.
+        count for very little, through the rating's own drift and the volume of regional play at 40
+        to 80 games a split. We tested cutting the record to 24, 18 and 12 months and graded every
+        version on the same recent games. The differences were inside noise except at 12 months,
+        which was measurably worse. Past a point a window only discards evidence.
       </p>
       <p>
-        <strong>The International board is cut</strong>, to the last six events — about two years.
+        <strong>The International board is cut</strong>, to the last six events, or about two years.
         International play runs two or three events a year, so without a hard cutoff a result from
-        two seasons ago leaks in forever, and this board's whole claim is who is good at that level
-        <em>now</em>. A team needs 10 games across those events to appear. A team missing from it is
-        not ranked low; it is not ranked.
+        two seasons ago leaks in forever, and this board's claim is who is good at that level now. A
+        team needs 10 games across those events to appear. One missing from it is not ranked low; it
+        is not ranked.
       </p>
     </section>
 
     <section aria-labelledby="range">
       <h3 id="range">The ± range</h3>
       <p>
-        Every rating carries a range, and the range is the point. It is how much the model thinks
-        the number could be wrong by: narrow when a team has played a lot recently against known
-        opposition, wide when we have seen little, or when the roster just changed.
+        Every rating carries a range, and the range is the point. It is how far the model thinks the
+        number could be out: narrow when a team has played a lot recently against known opposition,
+        wide when we have seen little or the roster just changed.
       </p>
       <p>
-        A roster change widens the range rather than resetting it. We usually already know the
-        incoming players well enough to move the rating with them — but five known players are still
-        an unknown combination, so some of the certainty goes. A team whose roster changed inside
-        its last 10 games is flagged on the board.
+        A roster change widens the range rather than resetting it. We usually know the incoming
+        players well enough to move the rating with them, but five known players are still an
+        unknown combination, so some of the certainty goes. A team whose roster changed inside its
+        last 10 games is flagged on the board.
       </p>
       <p>
         On the player boards the same idea is drawn as a bar: solid out to what the games have
-        actually earned, then a dashed tail on to where the rating would settle if the current form
-        holds. Hovering it gives one of <strong>Settled</strong>, <strong>Firming</strong> or
-        <strong>Provisional</strong>.
+        earned, then a dashed tail on to where the rating would settle if the form holds. Hovering
+        it gives Settled, Firming or Provisional.
       </p>
     </section>
 
     <section aria-labelledby="order">
       <h3 id="order">Why a lower number can sit above a higher one</h3>
       <p>
-        Boards are ordered by the <em>bottom</em> of the range — the rating minus its uncertainty —
-        and then display the rating itself. So a well-established team can rank above one carrying a
-        higher number with far less evidence behind it.
+        Boards are ordered by the bottom of the range, the rating minus its uncertainty, and then
+        display the rating itself. A well-established team can therefore rank above one carrying a
+        higher number on far less evidence.
       </p>
       <p>
-        Ranking on a conservative estimate is standard and it is doing real work here: it is what
-        keeps a team with a spectacular but thinly-evidenced rating out of the top few places. The
-        consequence is that the column you read is not the column that sorted, so the table can
-        legitimately show a smaller number above a larger one. The ± range beside it is what
-        explains the pair.
+        Ranking on a conservative estimate is standard, and it keeps a team with a spectacular but
+        thin record out of the top few places. The consequence is that the column you read is not
+        the column that sorted, so the table can show a smaller number above a larger one. The ±
+        range beside them explains the pair.
       </p>
     </section>
 
@@ -178,65 +174,63 @@
         <strong>Boards advance per stage, not per day.</strong> A regular-season week is held until
         it owes no more fixtures, so a team that played on Saturday does not leapfrog one playing on
         Sunday and then drop back a day later. Bracket play advances series by series, which is how
-        it is actually resolved.
+        it is resolved.
       </p>
       <p>
-        An arrow therefore compares the board against how it stood at the end of an earlier stage,
-        and the header says which date that is. Where there is nothing earlier to compare against,
-        it says so rather than drawing a row of dashes — no arrow is better than one measured
-        against itself.
+        An arrow compares the board against how it stood at the end of an earlier stage, and the
+        header names that date. Where there is nothing earlier to compare against it says so rather
+        than drawing a row of dashes, because no arrow is better than one measured against itself.
       </p>
     </section>
 
     <section aria-labelledby="players">
       <h3 id="players">Player ratings</h3>
       <p>
-        A regional player rating is a percentile within a league <em>and</em> a role: 50 is the
-        average player at that position in that league. Roles are rated separately because a
-        support's box score and a mid laner's are not on the same scale and never will be.
+        A regional player rating is a percentile within a league and a role: 50 is the average
+        player at that position in that league. Roles are rated separately because a support's box
+        score and a mid laner's are not on the same scale.
       </p>
       <p>The rating is a blend, weighted by role:</p>
       <ul>
-        <li><strong>Win rate at 0.40</strong> — the player's share of their team's results.</li>
+        <li><strong>Win rate at 0.40</strong>, the player's share of the team's results.</li>
         <li>
-          <strong>Damage per minute at 0.20</strong> — the least team-dependent stat available in
-          the data, and the only lever found so far that lowers a rating's correlation with team
+          <strong>Damage per minute at 0.20.</strong> It is the least team-dependent stat in the
+          data, and the only lever we have found that lowers a rating's correlation with team
           strength without making the board less recognisable.
         </li>
         <li>
-          <strong>The rest of the box score</strong> — gold difference, CS per minute, gold and
-          damage share, KDA, kill participation, objective control — reweighted per role for the
-          remaining 0.40.
+          <strong>The rest of the box score</strong> for the remaining 0.40, reweighted per role:
+          gold difference, CS per minute, gold and damage share, KDA, kill participation and
+          objective control.
         </li>
       </ul>
       <p>
-        Why include win rate at all, on a board meant to measure individuals? Because good players
-        genuinely do win more, and good teams recruit good players, so some correlation with team
-        results is irreducible. Strip out every win-correlated term and the board ranks Faker 601st
-        while predicting games about as well as a coin flip. Weight it much higher and you get the
-        league standings wearing a player board's clothes. 0.40 is where a winning playmaker still
-        outranks a losing stat-padder and the board still looks like the game.
+        Why include win rate at all on a board meant to measure individuals? Good players genuinely
+        do win more, and good teams recruit good players, so some correlation with team results is
+        irreducible. Strip out every win-correlated term and the board ranks Faker 601st while
+        predicting games about as well as a coin flip. Weight it much higher and the board becomes
+        the league standings in different clothes. 0.40 is where a winning playmaker still outranks
+        a losing stat-padder.
       </p>
       <p>
-        Games are weighted by recency, with a 120-day half-life. On top of that the board offers
-        three windows — <strong>All</strong>, <strong>This year</strong> and
-        <strong>This split</strong> — which run the same method over fewer games. A split is only a
-        few dozen games, so those ratings sit closer to 50; the narrower spread there is caution
-        doing its job, not a bug. Both bounded windows key off each league's own split start, since
-        the regions do not share a calendar.
+        Games are weighted by recency, with a 120-day half-life. The board also offers three
+        windows: All, This year and This split. They run the same method over fewer games. A split
+        is only a few dozen games, so those ratings sit closer to 50, and the narrower spread there
+        is caution doing its job rather than a bug. Both bounded windows key off each league's own
+        split start, since the regions do not share a calendar.
       </p>
       <p>
-        <strong>A regional board carries who is in the league now</strong> — rostered to a team
-        still playing there, or having played in it since the current split began. A player who
-        changes region leaves the old board outright; ranking him against players he no longer faces
-        answers nothing. A player arriving from another league is not treated as an unknown either:
-        his rating is pulled toward a carryover anchor about a third of the way from neutral, which
-        is roughly as much as past-league standing turns out to be worth.
+        <strong>A regional board carries who is in the league now</strong>: rostered to a team still
+        playing there, or having played in it since the current split began. A player who changes
+        region leaves the old board outright, since ranking them against players they no longer face
+        answers nothing. A player arriving from another league is not treated as an unknown either.
+        Their rating is pulled toward a carryover anchor about a third of the way from neutral,
+        which is roughly what past-league standing turns out to be worth.
       </p>
       <p>
         The International player board is a role-only pool of everyone with an international record,
-        and it needs five international games to appear. Because that pool really did play each
-        other, <strong>those numbers do compare across regions</strong>.
+        and it takes five international games to appear. That pool really did play each other, so
+        <strong>those numbers do compare across regions</strong>.
       </p>
     </section>
 
@@ -244,7 +238,7 @@
       <h3 id="games">Which games count</h3>
       <ul>
         <li>
-          Regular season and playoffs, including <strong>Regional Finals</strong> — the separate
+          Regular season and playoffs, including <strong>Regional Finals</strong>: the separate
           post-season event the LPL runs a few days after its playoffs. It is playoff-grade and it
           counts.
         </li>
@@ -260,9 +254,9 @@
         <li>
           <strong>A finished game waits for its player stat lines</strong> before it moves any
           rating, so the team and player boards cannot drift apart over a publication lag. The wait
-          is bounded, because some games never get stat lines published at all and waiting forever
-          would throw away real results. This is why a result can show on a team's page before it
-          has moved the board.
+          is bounded: some games never get stat lines at all, and waiting forever would throw away
+          real results. This is why a result can show on a team's page before it has moved the
+          board.
         </li>
       </ul>
       <p>
@@ -276,39 +270,39 @@
       <p>Measured, not guessed:</p>
       <ul>
         <li>
-          <strong>It is overconfident at the top end.</strong> Where it claims better than 80%, it
-          is claiming about 85% and delivering about 79%. Narrowing the ranges to make the boards
-          look tidier would make this worse, not better — tighter ranges push the probabilities
-          further out.
+          <strong>It is overconfident at the top end.</strong> Where it claims better than 80% it is
+          claiming about 85% and delivering about 79%. Narrowing the ranges to tidy up the boards
+          would make this worse, not better, because tighter ranges push the probabilities further
+          out.
         </li>
         <li>
           <strong>One number per region cannot represent an intransitive matchup.</strong> The LEC
           does better than the LCS against every large common opponent, yet the LCS beats the LEC
           head-to-head, repeatedly, across several events and different organisations. A single
-          league rating has to pick one of those stories; ours follows the common-opponent evidence,
+          league rating has to pick one of those stories. Ours follows the common-opponent evidence,
           which has far more games behind it, and so under-rates the LCS.
         </li>
         <li>
           <strong>Region gaps are overstated where play is thin.</strong> The model is honest where
-          data is thick — its LCK–LPL gap predicts within half a point of the actual result over a
-          hundred games — and stretched at the CBLOL end, which has only a few dozen cross-region
-          games to go on.
+          data is thick: its LCK–LPL gap predicts within half a point of the actual result over a
+          hundred games. It is stretched at the CBLOL end, which has only a few dozen cross-region
+          games behind it.
         </li>
         <li>
-          <strong>A player with no professional record anywhere gets nothing better than a
-          neutral start</strong>, which is mostly academy call-ups and brand-new teams. That gap
-          needs tier-two data, not a cleverer prior.
+          <strong>A player with no professional record anywhere gets nothing better than a neutral
+          start.</strong> That is mostly academy call-ups and brand-new teams, and closing it needs
+          tier-two data rather than a cleverer prior.
         </li>
       </ul>
       <p class="note">
-        The full write-up — every parameter, the sweeps behind it, and the alternatives that were
-        measured and rejected — is in
+        The full write-up is in
         <a
           href="https://github.com/kehanks2/power-ranking/blob/master/MODEL.md"
           rel="noopener noreferrer external"
           target="_blank"
           >MODEL.md</a
-        >.
+        >: every parameter, the sweeps behind it, and the alternatives that were measured and
+        rejected.
       </p>
     </section>
   </article>

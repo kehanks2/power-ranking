@@ -22,7 +22,6 @@ interface BoardRow {
   lastUpdated: string | null;
 }
 
-/** Breathing room between the sticky header and a heading jumped to. */
 const ANCHOR_GAP = 16;
 
 const BOARD_RANKS: Record<BoardScope, string> = {
@@ -45,7 +44,6 @@ const BOARD_RANKS: Record<BoardScope, string> = {
 export class HowItWorksComponent {
   private readonly api = inject(RankingsApiService);
 
-  /** Every id here has to be a heading on the page; the spec asserts it. */
   protected readonly contents = [
     { id: 'boards', label: 'Boards are not comparable' },
     { id: 'teams', label: "What a team's rating is" },
@@ -72,19 +70,16 @@ export class HowItWorksComponent {
   );
 
   constructor() {
-    // Angular's scroller lands an anchor flush at the viewport top with
-    // `scrollBy`, so it ignores `scroll-margin-top` and every heading arrived
-    // underneath the sticky header. The offset is read at scroll time because
-    // the header's height is measured, not fixed -- 94px on a desktop, 142
-    // once the tabs wrap on a phone.
+    // The router scrolls an anchor with `scrollBy`, so it ignores
+    // `scroll-margin-top` and lands every heading under the sticky header. The
+    // offset is a function because that header is measured, not fixed.
     const scroller = inject(ViewportScroller);
     const root = inject(DOCUMENT).documentElement;
     scroller.setOffset(() => [0, this.stickyHeight(root) + ANCHOR_GAP]);
     inject(DestroyRef).onDestroy(() => scroller.setOffset([0, 0]));
 
     // A deep link is scrolled before the live figures arrive, and the league
-    // line they add sits above most of the page -- so the anchor has to be
-    // taken again once they have rendered, or it lands 78px short.
+    // line they add sits above most of the page.
     const fragment = inject(ActivatedRoute).snapshot.fragment;
     const injector = inject(Injector);
     const keepAnchor = () => {

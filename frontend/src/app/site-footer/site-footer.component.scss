@@ -24,6 +24,12 @@
   }
 }
 
+.stack {
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+}
+
 p {
   margin: 0;
   font-size: 0.74rem;
@@ -50,6 +56,7 @@ a {
 .source__link {
   color: var(--color-gold);
   font-weight: 600;
+  white-space: nowrap;
 
   &:hover {
     color: var(--color-gold);

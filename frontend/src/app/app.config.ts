@@ -8,9 +8,8 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideZoneChangeDetection({ eventCoalescing: true }),
-    // In-page links go through the router, because `<base href="/">` makes the
-    // browser resolve a bare `#id` against the base rather than the document --
-    // so a plain fragment link lands on `/#id` and redirects to the teams board.
+    // In-page links go through the router: `<base href="/">` makes the browser
+    // resolve a bare `#id` against the base, landing on `/#id` instead.
     provideRouter(routes, withInMemoryScrolling({ anchorScrolling: 'enabled' })),
     provideHttpClient()
   ]
