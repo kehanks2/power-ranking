@@ -19,6 +19,10 @@ export const rankingsRoutes: Routes = [
         path: 'players',
         loadComponent: () => import('./players-list/players-list.component').then((m) => m.PlayersListComponent),
       },
+      {
+        path: 'how-it-works',
+        loadComponent: () => import('./how-it-works/how-it-works.component').then((m) => m.HowItWorksComponent),
+      },
     ],
   },
 ];

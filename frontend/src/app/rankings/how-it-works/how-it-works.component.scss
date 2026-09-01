@@ -1,0 +1,225 @@
+.how {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 68ch);
+  gap: 1rem 4rem;
+  padding-top: 0.5rem;
+}
+
+@media (max-width: 940px) {
+  .how {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+// Covers the scrolls the browser does itself -- find-in-page, focus. The
+// router's own anchor jump ignores this and takes an explicit ViewportScroller
+// offset instead; see the component.
+:is(h3, h4)[id] {
+  scroll-margin-top: calc(var(--sticky-top-height, 5rem) + 1rem);
+}
+
+.toc {
+  position: sticky;
+  top: calc(var(--sticky-top-height, 5rem) + 1rem);
+  align-self: start;
+  font-size: 0.82rem;
+
+  h2 {
+    margin: 0 0 0.6rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-dim);
+  }
+
+  ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  a {
+    color: var(--color-text-muted);
+    text-decoration: none;
+    line-height: 1.35;
+    display: inline-block;
+
+    &:hover {
+      color: var(--color-gold);
+    }
+  }
+}
+
+@media (max-width: 940px) {
+  .toc {
+    position: static;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .toc ol {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.9rem;
+  }
+
+  // Wrapped onto shared lines, two entries with only a gap between them read as
+  // one phrase.
+  .toc li:not(:last-child)::after {
+    content: '·';
+    margin-left: 0.9rem;
+    color: var(--color-border);
+  }
+}
+
+.prose {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: var(--color-text-muted);
+
+  p {
+    margin: 0 0 1rem;
+  }
+
+  strong {
+    color: var(--color-text);
+    font-weight: 600;
+  }
+
+  em {
+    color: var(--color-text);
+    font-style: italic;
+  }
+
+  ul {
+    margin: 0 0 1rem;
+    padding-left: 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  li::marker {
+    color: var(--color-text-dim);
+  }
+
+  a {
+    color: var(--color-gold);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+
+    &:hover {
+      color: var(--color-text);
+    }
+  }
+}
+
+.page-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--color-text);
+}
+
+.lede {
+  font-size: 1.02rem;
+  color: var(--color-text);
+}
+
+.prose section {
+  padding-top: 1.75rem;
+  margin-top: 1.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.prose h3 {
+  margin: 0 0 0.9rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.prose h4 {
+  margin: 1.5rem 0 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+}
+
+// The one claim the page exists to make.
+.key {
+  border-left: 3px solid var(--color-gold);
+  padding: 0.15rem 0 0.15rem 0.9rem;
+  color: var(--color-text);
+  font-size: 1rem;
+}
+
+.live,
+.note {
+  font-size: 0.85rem;
+  color: var(--color-text-dim);
+}
+
+.live span {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+
+.boards {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.85rem;
+  text-align: left;
+
+  th,
+  td {
+    padding: 0.5rem 0.75rem 0.5rem 0;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: top;
+  }
+
+  thead th {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-dim);
+    white-space: nowrap;
+  }
+
+  tbody th {
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  // Only the International row: a league row takes its colour from the global
+  // .lg-* accent, and setting a colour here would out-specify it once
+  // encapsulation has appended its attribute to every compound selector.
+  tbody th.intl {
+    color: var(--color-text);
+  }
+
+  tbody tr:last-child :is(th, td) {
+    border-bottom: 0;
+  }
+}
+
+.when {
+  white-space: nowrap;
+  color: var(--color-text-dim);
+  font-variant-numeric: tabular-nums;
+}

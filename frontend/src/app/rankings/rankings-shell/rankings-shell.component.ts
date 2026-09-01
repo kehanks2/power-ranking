@@ -61,9 +61,11 @@ export class RankingsShellComponent {
 
   protected readonly isPlayers = computed(() => this.url().includes('/players'));
 
-  // A team's page is not a board, so the scope tabs and strength box are hidden
-  // there -- the block is just the header.
-  protected readonly isBoard = computed(() => !/\/teams\/\d/.test(this.url()));
+  // A team's page and the explainer are not boards, so the scope tabs and
+  // strength box are hidden there -- the block is just the header.
+  protected readonly isBoard = computed(
+    () => !/\/teams\/\d/.test(this.url()) && !this.url().includes('/how-it-works'),
+  );
 
   constructor() {
     this.api.getLeagues().subscribe((leagues) => this.leagues.set(leagues));
