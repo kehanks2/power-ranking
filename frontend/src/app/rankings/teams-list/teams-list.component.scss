@@ -32,11 +32,6 @@ $slot-width: 56px;
   border-top: 0;
   background: var(--color-surface);
   overflow: clip;
-  // Rounded because `overflow: clip` clips to the radius, so the rows are cut by
-  // it. The top corners go square while the header is pinned -- what sits behind
-  // the notch is then a row of the same colour, not the page -- and docked flush
-  // under the site header is how that should look anyway. See issue #34.
-  border-radius: 8px;
 }
 
 // 1250px, not 1000: the widest board (International, with its extra Region
