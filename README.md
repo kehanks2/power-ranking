@@ -60,6 +60,8 @@ the harness the API test suite drives, and a convenient way to curl a board.
 
 ## Hosting
 
+Live at **https://kehanks2.github.io/power-ranking/**.
+
 The site is static, on GitHub Pages. `.github/workflows/deploy-site.yml` exports
 every board as JSON, builds the app against the `/power-ranking/` base, and
 assembles the two plus one `index.html` per route (so a shared team page answers

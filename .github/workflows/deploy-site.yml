@@ -1,5 +1,11 @@
 name: Deploy site
 
+# Which of the two paths a run took, in the Actions list, without opening it --
+# the difference is ~13 minutes. A run called by daily-update.yml has no name of
+# its own: it appears as a job inside that run, so this labels pushes and manual
+# runs only.
+run-name: Deploy Site - ${{ inputs.refresh_data && 'Export' || (github.event_name == 'push' && 'On Push' || 'Reuse') }}
+
 # Pages serves files, so the boards ship as files: the same queries the API
 # server runs, written out once and published. Nothing runs Express in
 # production -- see backend/api/src/exportStatic.ts.

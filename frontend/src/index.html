@@ -2,10 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Frontend</title>
+  <title>PowerRanking</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <!-- Relative, so they resolve against the base rather than the origin -- the
+       site is served from /power-ranking/ on Pages. SVG first for anything that
+       takes it; the .ico wraps the same 32px rendering for anything that does
+       not, and is asked for by path whether it is declared or not. -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="icon" type="image/x-icon" href="favicon.ico" sizes="32x32">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
 <body>
   <app-root></app-root>
