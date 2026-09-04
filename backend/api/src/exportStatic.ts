@@ -60,8 +60,22 @@ export interface ExportSummary {
   bytes: number;
 }
 
-export async function exportStatic(pool: Pool, outDir: string): Promise<ExportSummary> {
+/**
+ * Progress matters more than it looks: this is ~12 minutes of queries, Actions
+ * publishes no log until a job ENDS, and a step that prints one line at the end
+ * is indistinguishable from a hung one for its whole run. Silent by default so
+ * the test suite stays quiet.
+ */
+const PROGRESS_EVERY = 100;
+
+export async function exportStatic(
+  pool: Pool,
+  outDir: string,
+  log: (message: string) => void = () => {},
+): Promise<ExportSummary> {
   const summary: ExportSummary = { files: 0, bytes: 0 };
+  const started = Date.now();
+  const elapsed = () => `${((Date.now() - started) / 1000).toFixed(0)}s`;
 
   const write = async (relPath: string, body: Buffer | string) => {
     const target = join(outDir, relPath);
@@ -69,6 +83,7 @@ export async function exportStatic(pool: Pool, outDir: string): Promise<ExportSu
     await writeFile(target, body);
     summary.files += 1;
     summary.bytes += Buffer.byteLength(body);
+    if (summary.files % PROGRESS_EVERY === 0) log(`  ${summary.files} documents (${elapsed()})`);
   };
   const writeJson = (relPath: string, value: unknown) => write(relPath, JSON.stringify(value));
 
@@ -108,6 +123,9 @@ export async function exportStatic(pool: Pool, outDir: string): Promise<ExportSu
     await writeJson(dataPath.playerBoard(scope, window), board);
   }
 
+  log(`${teamScopes.length} team boards, ${playerBoards.length} player boards (${elapsed()})`);
+  log(`${playerDocs.length} player details, then ${teamIds.size} team details`);
+
   await eachLimited(playerDocs, async ({ id, scope, window }) => {
     const detail = await getPlayerById(
       pool,
@@ -117,6 +135,8 @@ export async function exportStatic(pool: Pool, outDir: string): Promise<ExportSu
     );
     if (detail) await writeJson(dataPath.playerDetail(id, scope, window), detail);
   });
+
+  log(`player details done (${elapsed()})`);
 
   // After the player boards, which are what turn a rostered team into a linked
   // one: a team page is reachable from either board.
@@ -145,7 +165,7 @@ if (invokedDirectly) {
   }
   const pool = createPool();
   try {
-    const { files, bytes } = await exportStatic(pool, outDir);
+    const { files, bytes } = await exportStatic(pool, outDir, (m) => console.log(m));
     console.log(`wrote ${files} files, ${(bytes / 1024 / 1024).toFixed(1)} MB to ${outDir}`);
   } finally {
     await pool.end();

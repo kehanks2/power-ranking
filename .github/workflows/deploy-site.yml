@@ -33,8 +33,15 @@ jobs:
         with:
           node-version: '24'
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
 
       - run: npm ci
+
+      # `frontend` is NOT an npm workspace, so the root install does not reach
+      # it and its node_modules would not exist at all.
+      - run: npm ci --prefix frontend
 
       # The export runs through tsx but imports both of these from their dist.
       - run: npm run build --workspace=@power-ranking/shared
@@ -49,9 +56,11 @@ jobs:
         run: npm run export --workspace=@power-ranking/api -- ../../site-data
 
       # The site lives at /power-ranking/, so the app resolves both its own
-      # assets and every data file against that base.
+      # assets and every data file against that base. Through the package's own
+      # `build` script, not `npx ng`: npx resolves binaries from the working
+      # directory regardless of --prefix, so it cannot see frontend's.
       - name: Build the app
-        run: npx --prefix frontend ng build --configuration production --base-href /power-ranking/
+        run: npm run build --prefix frontend -- --base-href /power-ranking/
 
       - name: Assemble
         run: node scripts/assembleSite.mjs frontend/dist/frontend/browser site-data site
