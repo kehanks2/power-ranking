@@ -9,7 +9,7 @@ that were measured and rejected.
 
 ```
 /frontend               Angular app
-/backend/api            Thin read API (Express)
+/backend/api            The board queries, and the static export built from them
 /backend/ingestion      Leaguepedia Cargo client + idempotent upserts
 /backend/rating-engine  Glicko-2 core, decay, contextual+meta, player rating (pure, unit-tested)
 /backend/shared         Shared DTO types
@@ -25,7 +25,7 @@ that were measured and rejected.
    TEST_DATABASE_URL=postgresql://... # a clone the suites wipe; must be named *_test
    LIQUIPEDIA_API_KEY=...
    ```
-   The database is [Neon](https://neon.tech); `psql` and `pg_dump` come from a native
+   The database is [Aiven](https://aiven.io); `psql` and `pg_dump` come from a native
    PostgreSQL install. Both variables are required — nothing falls back to a local
    database, so an unset `DATABASE_URL` fails immediately and says so.
 2. Apply schema + seed data (first time only, against an empty database):
@@ -42,15 +42,29 @@ that were measured and rejected.
    npm run build --workspace=@power-ranking/shared
    npm run build --workspace=@power-ranking/rating-engine
    ```
-5. Run the API (reads `DATABASE_URL` from `.env`):
+5. Write the boards out as files (reads `DATABASE_URL` from `.env`). The site is
+   static — it fetches these rather than calling a server, in dev exactly as in
+   production — so this is what gives the app data:
    ```
-   npm run dev --workspace=@power-ranking/api
+   npm run export:local
    ```
 6. Run the frontend:
    ```
    cd frontend && npx ng serve
    ```
    Visit http://localhost:4200.
+
+`npm run dev --workspace=@power-ranking/api` still starts the read API on port
+3000. Nothing serves it in production and the frontend does not call it; it is
+the harness the API test suite drives, and a convenient way to curl a board.
+
+## Hosting
+
+The site is static, on GitHub Pages. `.github/workflows/deploy-site.yml` exports
+every board as JSON, builds the app against the `/power-ranking/` base, and
+assembles the two plus one `index.html` per route (so a shared team page answers
+200 rather than falling through to `404.html`). The database is reached at build
+time only — no server runs in production, and no visitor request touches it.
 
 ## Tests
 

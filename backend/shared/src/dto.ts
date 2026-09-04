@@ -167,6 +167,28 @@ export function playerWindowPredicate(window: RatingWindow, gameTime: string, sp
   }
 }
 
+/**
+ * The crest's URL, for a team aliased `alias`. Carries a real extension because
+ * the static export serves these as FILES: a host types a response from the
+ * extension, and an extension-less crest arrives as octet-stream and does not
+ * draw. `?v=` is the source URL's digest, so new artwork is a new URL; it does
+ * not name a different file. An unnameable content type yields NULL through the
+ * concatenation, which is the same "no crest, draw initials" the board already
+ * handles.
+ */
+export function teamLogoUrlExpr(alias = 't'): string {
+  return `CASE WHEN ${alias}.logo_data IS NOT NULL
+             THEN '/teams/' || ${alias}.id || '/logo'
+                  || CASE ${alias}.logo_content_type
+                       WHEN 'image/webp' THEN '.webp'
+                       WHEN 'image/png' THEN '.png'
+                       WHEN 'image/jpeg' THEN '.jpg'
+                       WHEN 'image/gif' THEN '.gif'
+                       WHEN 'image/svg+xml' THEN '.svg'
+                     END
+                  || '?v=' || left(md5(${alias}.logo_source_url), 8) END`;
+}
+
 export interface PlayerSummaryDto {
   id: number;
   handle: string;
@@ -175,7 +197,7 @@ export interface PlayerSummaryDto {
   teamSlug: string | null;
   /** Display name ("Gen.G"), not the slug. */
   teamName: string | null;
-  /** API path to the team's crest (`/teams/:id/logo?v=…`), null when we hold none. */
+  /** Path to the team's crest (`/teams/:id/logo.webp?v=…`), null when we hold none. */
   teamLogoUrl: string | null;
   /** The player's current region/league (e.g. 'LCK'); null if unresolved. */
   leagueSlug: string | null;

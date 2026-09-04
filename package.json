@@ -9,7 +9,9 @@
   ],
   "scripts": {
     "test": "npm run test --workspaces --if-present && npm run test --prefix frontend",
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build --workspaces --if-present",
+    "//export:local": "The boards as files, where `ng serve` will serve them at /data. The frontend reads files in dev exactly as it does in production, so there is only ever one fetch path to get wrong.",
+    "export:local": "npm run export --workspace=@power-ranking/api -- ../../frontend/public/data"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.5",

@@ -21,8 +21,8 @@ describe('HowItWorksComponent', () => {
   function render(boards: { scope: string; lastUpdated: string | null }[] = []) {
     const fixture = TestBed.createComponent(HowItWorksComponent);
     fixture.detectChanges();
-    http.expectOne((r) => r.url.endsWith('/leagues')).flush([]);
-    http.expectOne((r) => r.url.endsWith('/boards/updated')).flush(boards);
+    http.expectOne((r) => r.url.endsWith('/leagues.json')).flush([]);
+    http.expectOne((r) => r.url.endsWith('/boards-updated.json')).flush(boards);
     fixture.detectChanges();
     return fixture.nativeElement as HTMLElement;
   }

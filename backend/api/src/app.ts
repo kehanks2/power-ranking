@@ -62,7 +62,10 @@ export function createApp(pool: Pool): Express {
     res.json(team);
   });
 
-  app.get('/teams/:id/logo', async (req, res) => {
+  // Both spellings: the DTO names the crest with the extension its bytes need,
+  // since the export serves it as a file, but the bare path is what this server
+  // answered before and costs nothing to keep.
+  app.get(['/teams/:id/logo', '/teams/:id/logo.:ext'], async (req, res) => {
     const teamId = Number(req.params.id);
     if (!Number.isInteger(teamId)) {
       res.status(400).json({ error: 'invalid team id' });

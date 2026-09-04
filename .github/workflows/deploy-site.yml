@@ -1,0 +1,71 @@
+name: Deploy site
+
+# Pages serves files, so the boards ship as files: the same queries the API
+# server runs, written out once and published. Nothing runs Express in
+# production -- see backend/api/src/exportStatic.ts.
+#
+# No `push` trigger and no call from daily-update.yml yet: both wait until Pages
+# is enabled on the repository and one manual run has been seen green, so a
+# missing Pages site cannot turn the daily job red.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and never cancel one in flight: the export is ~12
+# minutes of queries and a half-published site is worse than a stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      # The export runs through tsx but imports both of these from their dist.
+      - run: npm run build --workspace=@power-ranking/shared
+      - run: npm run build --workspace=@power-ranking/rating-engine
+
+      # ~12 minutes: 1,228 documents, each a board query against the free-plan
+      # instance. Do not widen the export's concurrency to speed this up -- it
+      # is measured to make it far slower.
+      - name: Export the boards
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run export --workspace=@power-ranking/api -- ../../site-data
+
+      # The site lives at /power-ranking/, so the app resolves both its own
+      # assets and every data file against that base.
+      - name: Build the app
+        run: npx --prefix frontend ng build --configuration production --base-href /power-ranking/
+
+      - name: Assemble
+        run: node scripts/assembleSite.mjs frontend/dist/frontend/browser site-data site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

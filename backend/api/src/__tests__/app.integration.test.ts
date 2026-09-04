@@ -741,15 +741,20 @@ describe('read API (live Postgres)', () => {
       expect(versioned.headers['etag']).toBeTruthy();
     });
 
+    // The extension is load-bearing on a static host, which types the response
+    // from it; without one the crest arrives as octet-stream and never draws.
     it('points the board at our own versioned path, never at the wiki', async () => {
       const leagues = await request(app).get('/leagues');
       for (const league of leagues.body) {
         const board = await request(app).get('/teams').query({ scope: league.slug });
         for (const team of board.body) {
           if (team.logoUrl === null) continue;
-          expect(team.logoUrl).toBe(`/teams/${team.id}/logo?v=${team.logoUrl.split('v=')[1]}`);
+          expect(team.logoUrl).toMatch(
+            new RegExp(`^/teams/${team.id}/logo\\.(webp|png|jpg|gif|svg)\\?v=[0-9a-f]{8}$`),
+          );
           expect(team.logoUrl).not.toContain('liquipedia');
-          expect(team.logoUrl).toMatch(/\?v=[0-9a-f]{8}$/);
+          const served = await request(app).get(team.logoUrl);
+          expect(served.status).toBe(200);
         }
       }
     });

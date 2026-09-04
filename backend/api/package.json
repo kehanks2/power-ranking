@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
+    "export": "tsx --env-file-if-exists=../../.env src/exportStatic.ts",
     "test": "vitest run"
   },
   "dependencies": {
