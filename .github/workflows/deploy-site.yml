@@ -4,12 +4,25 @@ name: Deploy site
 # server runs, written out once and published. Nothing runs Express in
 # production -- see backend/api/src/exportStatic.ts.
 #
-# No `push` trigger and no call from daily-update.yml yet: both wait until Pages
-# is enabled on the repository and one manual run has been seen green, so a
-# missing Pages site cannot turn the daily job red.
+# Exporting costs ~13 minutes and only the daily recompute changes what it would
+# write, so a site-only change reuses the last export instead of rebuilding 1,228
+# identical files. `refresh_data` is what says the data actually moved: the daily
+# job passes true, a push does not.
 on:
   workflow_call:
+    inputs:
+      refresh_data:
+        description: Re-export from the database rather than reusing the last export.
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      refresh_data:
+        description: Re-export from the database rather than reusing the last export.
+        type: boolean
+        default: false
+  push:
+    branches: [master]
 
 permissions:
   contents: read
@@ -47,13 +60,43 @@ jobs:
       - run: npm run build --workspace=@power-ranking/shared
       - run: npm run build --workspace=@power-ranking/rating-engine
 
-      # ~12 minutes: 1,228 documents, each a board query against the free-plan
+      # Restore/save rather than the combined action, and a unique key with a
+      # prefix to find the last one: cache entries are immutable, so a run that
+      # re-exports cannot overwrite the key it read from.
+      - name: Reuse the last export
+        id: restore
+        if: ${{ !inputs.refresh_data }}
+        uses: actions/cache/restore@v4
+        with:
+          path: site-data
+          key: site-data-${{ github.run_id }}
+          restore-keys: site-data-
+
+      # ~13 minutes: 1,228 documents, each a board query against the free-plan
       # instance. Do not widen the export's concurrency to speed this up -- it
-      # is measured to make it far slower.
+      # is measured to make it far slower. Runs when the data moved, and also
+      # when there is no cache to reuse -- an evicted entry must not silently
+      # publish a site with no boards in it.
       - name: Export the boards
+        id: export
+        if: ${{ inputs.refresh_data || !steps.restore.outputs.cache-matched-key }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: npm run export --workspace=@power-ranking/api -- ../../site-data
+
+      - name: Save the export
+        if: steps.export.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: site-data
+          key: site-data-${{ github.run_id }}
+
+      # Deploying an empty site is far worse than not deploying: it replaces a
+      # working board with nothing, and the next run is a day away.
+      - name: Check there is something to publish
+        run: |
+          test -s site-data/leagues.json || { echo "::error::no export to publish"; exit 1; }
+          echo "publishing $(find site-data -type f | wc -l) documents"
 
       # The site lives at /power-ranking/, so the app resolves both its own
       # assets and every data file against that base. Through the package's own

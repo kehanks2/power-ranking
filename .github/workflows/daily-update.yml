@@ -77,3 +77,18 @@ jobs:
         with:
           path: .liquipedia-rate-limit.json
           key: liquipedia-rate-limit-${{ github.run_id }}
+
+  # The site is static, so new ratings reach nobody until it is rebuilt. This is
+  # the only trigger that re-exports: a push deploys the app against the export
+  # this run leaves behind. `needs` is load-bearing -- deploying before the
+  # recompute would publish yesterday's numbers.
+  deploy:
+    needs: update
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/deploy-site.yml
+    with:
+      refresh_data: true
+    secrets: inherit
