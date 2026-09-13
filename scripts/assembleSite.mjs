@@ -20,7 +20,14 @@ if (!appDist || !dataDir || !outDir) {
 }
 
 /** Routes without a parameter, from `rankings.routes.ts`. */
-const STATIC_ROUTES = ['', 'rankings', 'rankings/teams', 'rankings/players', 'rankings/how-it-works'];
+const STATIC_ROUTES = [
+  '',
+  'rankings',
+  'rankings/teams',
+  'rankings/players',
+  'rankings/champions',
+  'rankings/how-it-works',
+];
 
 async function teamRoutes() {
   const entries = await readdir(join(dataDir, 'teams'), { withFileTypes: true });
