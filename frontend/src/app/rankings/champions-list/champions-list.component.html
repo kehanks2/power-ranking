@@ -246,9 +246,23 @@
                 <span class="champ__name">{{ row.champion }}</span>
               </td>
               <td class="presence">
-                <span class="bar bar--presence" [prTooltip]="presenceTitle(row)" tabindex="0">
-                  <span class="bar__pick" [style.width.%]="row.pickRate * 100"></span>
-                  <span class="bar__ban" [style.width.%]="row.banRate * 100"></span>
+                <span class="meter">
+                  <span class="bar bar--presence" [prTooltip]="presenceTitle(row)" tabindex="0">
+                    <span class="bar__pick" [style.width.%]="row.pickRate * 100"></span>
+                    <span class="bar__ban" [style.width.%]="row.banRate * 100"></span>
+                  </span>
+                  @if (row.winRate !== null) {
+                    <!-- Redundant with the Win column, which states the figure and
+                         carries its own tooltip, so it is not read out twice. -->
+                    <span class="bar bar--win" aria-hidden="true">
+                      <span
+                        class="bar__win"
+                        [class.bar__win--below]="winBar(row).below"
+                        [style.left.%]="winBar(row).left"
+                        [style.width.%]="winBar(row).width"
+                      ></span>
+                    </span>
+                  }
                 </span>
                 <span class="val">{{ row.presence * 100 | number: '1.0-0' }}%</span>
               </td>

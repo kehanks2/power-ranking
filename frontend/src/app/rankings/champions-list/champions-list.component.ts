@@ -15,6 +15,9 @@ type SortKey = 'presence' | 'pickRate' | 'banRate' | 'winRate' | 'gamesPicked';
 
 type PanelKey = 'year' | 'region' | 'window';
 
+/** Half the win-rate meter's span, in points either side of even. */
+const WIN_AXIS_SPAN = 15;
+
 interface EventOption {
   key: string;
   label: string;
@@ -206,6 +209,25 @@ export class ChampionsListComponent {
 
   protected ofGames(count: number, total: number, verb = 'available'): string {
     return `${count} of ${total} games ${verb}`;
+  }
+
+  /**
+   * Win rate drawn from even rather than from zero, over a track that ends at
+   * 50 +/- `WIN_AXIS_SPAN`. Champions with a real sample sit between 43% and
+   * 57% (p10-p90 of the 98 picked 20 times or more), so a bar filled from zero
+   * is very nearly the same length on every row; the extremes that do reach 0
+   * and 100 are champions picked once or twice, and they peg the end.
+   */
+  protected winBar(row: ChampionRow): { left: number; width: number; below: boolean } {
+    // The rounded figure, not the exact one: the Win column prints 50% for a
+    // 49.6% champion, and a meter leaning the other way from the number beside
+    // it reads as a bug.
+    const pct = Math.round((row.winRate ?? 0.5) * 100);
+    const off = Math.max(-WIN_AXIS_SPAN, Math.min(WIN_AXIS_SPAN, pct - 50));
+    const half = (off / WIN_AXIS_SPAN) * 50;
+    return half >= 0
+      ? { left: 50, width: half, below: false }
+      : { left: 50 + half, width: -half, below: true };
   }
 
   protected presenceTitle(row: ChampionRow): string {

@@ -17,6 +17,11 @@
      accent it started from, which sits at 4.3:1 on --color-surface-hover. */
   --color-up: #6fbf8e;
   --color-down: #d4808d;
+  /* Draft presence, which has no direction in it: a champion is picked or it is
+     banned, and neither is the good one. One hue carries both -- bans are drawn
+     struck rather than recoloured -- so up/down keep meaning up and down.
+     7.06:1 on --color-surface-hover. */
+  --color-draft: #8fb3d9;
   --focus-ring: #6ea8fe;
 }
 
