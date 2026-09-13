@@ -2,10 +2,18 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Pool } from 'pg';
-import { RATING_WINDOWS, type RatingWindow } from '@power-ranking/shared';
+import {
+  RATING_WINDOWS,
+  championScopeKey,
+  type RatingWindow,
+  type ChampionScope,
+  type ChampionWindow,
+} from '@power-ranking/shared';
 import { createPool } from './db.js';
 import {
   getBoardsLastUpdated,
+  getChampionBoard,
+  getChampionIndex,
   getLeagues,
   getPlayerById,
   getPlayers,
@@ -28,6 +36,9 @@ export const dataPath = {
   playerBoard: (scope: string, window: RatingWindow) => `players/${scope}/${window}.json`,
   playerDetail: (id: number, scope: string, window: RatingWindow) =>
     `players/${id}/${scope}/${window}.json`,
+  championIndex: () => 'champions/index.json',
+  championBoard: (year: number, scope: string, window: ChampionWindow) =>
+    `champions/${year}/${scope}/${window}.json`,
 };
 
 /**
@@ -123,7 +134,38 @@ export async function exportStatic(
     await writeJson(dataPath.playerBoard(scope, window), board);
   }
 
-  log(`${teamScopes.length} team boards, ${playerBoards.length} player boards (${elapsed()})`);
+  // Champion boards. Roles are not a facet here, so one document per (year,
+  // scope, window) covers the page's whole filter space -- a couple of dozen
+  // files, against the 1,200 the rating boards need.
+  const championIndex = await getChampionIndex(pool);
+  await writeJson(dataPath.championIndex(), championIndex);
+  let championBoards = 0;
+  for (const year of championIndex.years) {
+    const scopes: ChampionScope[] = [
+      { kind: 'all' },
+      ...(championIndex.leaguesByYear[year] ?? []).map((slug): ChampionScope => ({ kind: 'league', slug })),
+      { kind: 'international' },
+      ...(championIndex.eventsByYear[year] ?? []).map((event): ChampionScope => ({ kind: 'event', event })),
+    ];
+    for (const scope of scopes) {
+      // Only a regional scope has a split to narrow to (an international one is
+      // narrowed by picking the event instead), and only in a year that holds a
+      // current split -- a past year's split board is empty by definition.
+      const windows: ChampionWindow[] =
+        (scope.kind === 'all' || scope.kind === 'league') && championIndex.splitYears.includes(year)
+          ? ['year', 'split']
+          : ['year'];
+      for (const window of windows) {
+        await writeJson(
+          dataPath.championBoard(year, championScopeKey(scope), window),
+          await getChampionBoard(pool, year, scope, window),
+        );
+        championBoards += 1;
+      }
+    }
+  }
+
+  log(`${teamScopes.length} team boards, ${playerBoards.length} player boards, ${championBoards} champion boards (${elapsed()})`);
   log(`${playerDocs.length} player details, then ${teamIds.size} team details`);
 
   await eachLimited(playerDocs, async ({ id, scope, window }) => {

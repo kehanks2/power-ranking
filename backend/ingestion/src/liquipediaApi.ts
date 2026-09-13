@@ -270,6 +270,26 @@ export interface LiquipediaMatchGame {
   winner: string;
   scores: number[];
   opponents: LiquipediaGameOpponent[];
+  /**
+   * Draft. Bans are here and nowhere else -- `opponents[]` carries picks but no
+   * bans. `teamNbanM` (M is 1-5) is the flat form; `vetophase` repeats the same
+   * bans in draft order alongside the picks. An unplayed placeholder slot still
+   * returns stale `opponents[].players`, but its extradata carries no draft at
+   * all, which is the reliable "was this game actually drafted" signal.
+   */
+  extradata?: Record<string, unknown> | null;
+}
+
+/** The 10 bans of a game, in `teamNbanM` order, as `{ teamIndex: 0 | 1, champion }`. */
+export function bansFromExtradata(extradata: LiquipediaMatchGame['extradata']): { teamIndex: 0 | 1; order: number; champion: string }[] {
+  if (!extradata) return [];
+  const bans: { teamIndex: 0 | 1; order: number; champion: string }[] = [];
+  for (const [key, value] of Object.entries(extradata)) {
+    const match = /^team([12])ban(\d+)$/.exec(key);
+    if (!match || typeof value !== 'string' || value === '') continue;
+    bans.push({ teamIndex: match[1] === '1' ? 0 : 1, order: Number(match[2]), champion: value });
+  }
+  return bans.sort((a, b) => a.teamIndex - b.teamIndex || a.order - b.order);
 }
 
 export interface LiquipediaMatch {

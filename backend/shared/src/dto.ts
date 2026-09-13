@@ -284,3 +284,114 @@ export interface PlayerDetailDto extends PlayerSummaryDto {
   // constants and restating them here would let the two drift apart.
   ratedStats: (keyof PlayerStatsDto)[];
 }
+
+/**
+ * A champion board's scope. Regional leagues pool freely here -- unlike a
+ * rating board, these are raw rates and not percentiles, so a CBLOL pick rate
+ * and an LCK one mean the same thing.
+ */
+export type ChampionScope =
+  | { kind: 'all' }
+  | { kind: 'league'; slug: string }
+  | { kind: 'international' }
+  | { kind: 'event'; event: InternationalEventKey };
+
+/**
+ * The three international events, hardcoded rather than read from the
+ * tournaments table. A tournament row does not exist until Liquipedia creates
+ * it -- the pull reaches only 21 days forward -- so an absent row and an event
+ * that will never happen look identical, and the selector needs to show Worlds
+ * greyed rather than not at all. `ChampionIndexDto.eventsByYear` says which have
+ * actually been played.
+ */
+export const INTERNATIONAL_EVENTS = [
+  { key: 'first-stand', label: 'First Stand', namePattern: '%First Stand%' },
+  { key: 'msi', label: 'MSI', namePattern: '%Mid-Season Invitational%' },
+  { key: 'worlds', label: 'Worlds', namePattern: '%World Championship%' },
+] as const;
+
+export type InternationalEventKey = (typeof INTERNATIONAL_EVENTS)[number]['key'];
+
+/** URL/document key for a scope, and its inverse. Mirrored in the frontend. */
+export function championScopeKey(scope: ChampionScope): string {
+  switch (scope.kind) {
+    case 'all':
+      return 'all';
+    case 'international':
+      return 'international';
+    case 'league':
+      return scope.slug;
+    case 'event':
+      return scope.event;
+  }
+}
+
+/** Full calendar year, or only the league's current split. */
+export type ChampionWindow = 'year' | 'split';
+
+export interface ChampionRowDto {
+  /** Liquipedia's display name ("Cho'Gath"), which is what the board shows. */
+  champion: string;
+  /** Data Dragon asset key ("Chogath"), for the thumbnail. Null if unmapped. */
+  assetKey: string | null;
+  /**
+   * Games this champion was actually offered. Under fearless it is fewer than
+   * the board's game count: a champion picked in game 2 of a Bo5 is out of the
+   * pool for games 3-5, and is not charged for them.
+   */
+  gamesAvailable: number;
+  gamesPicked: number;
+  gamesBanned: number;
+  gamesWon: number;
+  /** gamesPicked / gamesAvailable. */
+  pickRate: number;
+  /** gamesBanned / gamesAvailable. */
+  banRate: number;
+  /** pickRate + banRate. Exact, since a champion cannot be both in one game. */
+  presence: number;
+  /** gamesWon / gamesPicked; null when never picked. */
+  winRate: number | null;
+}
+
+/** How much of a league's play we hold a draft for, over the board's year. */
+export interface ChampionCoverageDto {
+  leagueSlug: string;
+  games: number;
+  gamesWithDraft: number;
+}
+
+export interface ChampionBoardDto {
+  year: number;
+  scope: ChampionScope;
+  window: ChampionWindow;
+  /** Games behind the board -- those we hold a draft for, which is the denominator. */
+  games: number;
+  rows: ChampionRowDto[];
+  coverage: ChampionCoverageDto[];
+}
+
+/**
+ * What the champion page may offer: which years hold play, and which
+ * international events within them have been played. A year appears only once
+ * it HAS games, so the first weeks of January show the two completed years
+ * rather than an empty tab for the season that has not started.
+ */
+export interface ChampionIndexDto {
+  /** Newest first, at most two -- the current year and one prior. */
+  years: number[];
+  /** Event keys with games, per year. Anything absent is shown greyed. */
+  eventsByYear: Record<string, InternationalEventKey[]>;
+  /** League slugs holding draft data, per year. */
+  leaguesByYear: Record<string, string[]>;
+  /**
+   * Years in which some league's current split began -- the only years where
+   * "current split" narrows to anything. A past year's current-split board is
+   * empty by definition, since the split being run is this year's. Usually one
+   * year, but two around a turn: a split that started in December is still the
+   * current one in January.
+   */
+  splitYears: number[];
+}
+
+/** How many years the champion page keeps. Older data goes stale fast. */
+export const CHAMPION_YEARS_KEPT = 2;

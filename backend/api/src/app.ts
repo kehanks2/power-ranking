@@ -1,7 +1,7 @@
 import express, { type Express } from 'express';
 import cors from 'cors';
 import type { Pool } from 'pg';
-import { isRatingWindow } from '@power-ranking/shared';
+import { isRatingWindow, INTERNATIONAL_EVENTS, type ChampionScope } from '@power-ranking/shared';
 import {
   getLeagues,
   getTeams,
@@ -10,6 +10,8 @@ import {
   getPlayerById,
   getBoardsLastUpdated,
   getTeamLogo,
+  getChampionBoard,
+  getChampionIndex,
 } from './repositories.js';
 
 /**
@@ -110,5 +112,40 @@ export function createApp(pool: Pool): Express {
     res.json(player);
   });
 
+  app.get('/champions', async (req, res) => {
+    res.json(await getChampionIndex(pool));
+  });
+
+  app.get('/champions/:year/:scope', async (req, res) => {
+    const year = Number(req.params.year);
+    if (!Number.isInteger(year)) {
+      res.status(400).json({ error: 'invalid year' });
+      return;
+    }
+    const scope = championScopeFromKey(req.params.scope);
+    if (!scope) {
+      res.status(404).json({ error: 'unknown scope' });
+      return;
+    }
+    // Only a regional scope has a split to narrow to; anything else ignores it,
+    // rather than returning an empty board for a window it cannot honour.
+    const requested = req.query.window === 'split' ? 'split' : 'year';
+    const window = scope.kind === 'all' || scope.kind === 'league' ? requested : 'year';
+    res.json(await getChampionBoard(pool, year, scope, window));
+  });
+
   return app;
+}
+
+/**
+ * The inverse of `championScopeKey`. A league slug is anything left over, and
+ * the board comes back empty for one that does not exist -- there is no list of
+ * slugs here to check against without a round trip.
+ */
+function championScopeFromKey(key: string): ChampionScope | null {
+  if (key === 'all') return { kind: 'all' };
+  if (key === 'international') return { kind: 'international' };
+  const event = INTERNATIONAL_EVENTS.find((e) => e.key === key);
+  if (event) return { kind: 'event', event: event.key };
+  return /^[A-Za-z0-9_-]+$/.test(key) ? { kind: 'league', slug: key } : null;
 }

@@ -61,10 +61,15 @@ export class RankingsShellComponent {
 
   protected readonly isPlayers = computed(() => this.url().includes('/players'));
 
-  // A team's page and the explainer are not boards, so the scope tabs and
-  // strength box are hidden there -- the block is just the header.
+  // A team's page, the explainer and the champion board are not rating boards,
+  // so the scope tabs and strength box are hidden there -- the block is just the
+  // header. The champion board brings its own filters and its own coverage box,
+  // because it is scoped by year and event rather than by rating scope.
   protected readonly isBoard = computed(
-    () => !/\/teams\/\d/.test(this.url()) && !this.url().includes('/how-it-works'),
+    () =>
+      !/\/teams\/\d/.test(this.url()) &&
+      !this.url().includes('/how-it-works') &&
+      !this.url().includes('/champions'),
   );
 
   constructor() {

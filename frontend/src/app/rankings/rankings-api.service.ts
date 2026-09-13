@@ -10,6 +10,10 @@ import type {
   BoardScope,
   BoardUpdated,
   RatingWindow,
+  ChampionBoard,
+  ChampionIndex,
+  ChampionScopeKey,
+  ChampionWindow,
 } from './models';
 
 /**
@@ -93,5 +97,28 @@ export class RankingsApiService {
     return scope === 'international'
       ? `international/${INTERNATIONAL_WINDOW}.json`
       : `${scope}/${window}.json`;
+  }
+
+  /** Which years and international events the champion page may offer. */
+  getChampionIndex(): Observable<ChampionIndex> {
+    return this.http.get<ChampionIndex>(`${this.base}/champions/index.json`);
+  }
+
+  /**
+   * Unlike the rating boards, this one pools leagues: pick and ban rates are
+   * raw rates rather than percentiles within a league, so they are directly
+   * comparable across regions.
+   */
+  getChampions(year: number, scope: ChampionScopeKey, window: ChampionWindow): Observable<ChampionBoard> {
+    return this.http.get<ChampionBoard>(`${this.base}/champions/${year}/${scope}/${window}.json`);
+  }
+
+  /**
+   * Champion portraits are ours, not Riot's CDN: a Data Dragon URL pins a patch
+   * version that goes stale. Served from `frontend/public/champions`, so this
+   * resolves against the base the same way the data does.
+   */
+  championPortrait(assetKey: string): string {
+    return `${this.base.replace(/\/data$/, '')}/champions/${assetKey}.webp`;
   }
 }

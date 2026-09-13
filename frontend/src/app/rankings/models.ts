@@ -216,3 +216,67 @@ export interface PlayerDetail extends PlayerSummary {
    */
   ratedStats: (keyof PlayerStats)[];
 }
+
+/**
+ * Mirrors `ChampionScope` in the backend DTOs. Regional leagues pool freely
+ * here -- these are raw rates, not the percentiles the rating boards carry, so
+ * a CBLOL pick rate and an LCK one mean the same thing.
+ */
+export type ChampionScopeKey = string;
+
+/** The three international events, greyed in the selector until one has games. */
+export const INTERNATIONAL_EVENTS = [
+  { key: 'first-stand', label: 'First Stand' },
+  { key: 'msi', label: 'MSI' },
+  { key: 'worlds', label: 'Worlds' },
+] as const;
+
+export type ChampionWindow = 'year' | 'split';
+
+export interface ChampionRow {
+  champion: string;
+  /** Data Dragon asset key, for the portrait. Null when we hold no art. */
+  assetKey: string | null;
+  /**
+   * Games the champion was actually offered. Under fearless draft this is fewer
+   * than the board's game count -- a champion picked in game 2 of a Bo5 is out
+   * of the pool for games 3-5 and is not charged for them.
+   */
+  gamesAvailable: number;
+  gamesPicked: number;
+  gamesBanned: number;
+  gamesWon: number;
+  pickRate: number;
+  banRate: number;
+  /** pickRate + banRate, exactly: a champion cannot be both in one game. */
+  presence: number;
+  winRate: number | null;
+}
+
+export interface ChampionCoverage {
+  leagueSlug: string;
+  games: number;
+  gamesWithDraft: number;
+}
+
+export interface ChampionBoard {
+  year: number;
+  window: ChampionWindow;
+  /** The denominator: games we hold a draft for. */
+  games: number;
+  rows: ChampionRow[];
+  coverage: ChampionCoverage[];
+}
+
+export interface ChampionIndex {
+  /** Newest first, at most two. A year appears only once it holds games. */
+  years: number[];
+  eventsByYear: Record<string, string[]>;
+  leaguesByYear: Record<string, string[]>;
+  /**
+   * Years in which some league's current split began -- the only years where
+   * "current split" narrows to anything, since a past year's current-split
+   * board is empty by definition.
+   */
+  splitYears: number[];
+}

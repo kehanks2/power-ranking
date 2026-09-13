@@ -116,6 +116,30 @@ describe('static export', () => {
     }
   });
 
+  it('exports every champion board the index offers, as the API gives it', async () => {
+    const index = await readJson(dataPath.championIndex());
+    await expectMatchesApi(dataPath.championIndex(), '/champions');
+    for (const year of index.years) {
+      const scopes = [
+        'all',
+        ...(index.leaguesByYear[year] ?? []),
+        'international',
+        ...(index.eventsByYear[year] ?? []),
+      ];
+      for (const scope of scopes) {
+        const regional = scope === 'all' || (index.leaguesByYear[year] ?? []).includes(scope);
+        const windows = regional && index.splitYears.includes(year) ? ['year', 'split'] : ['year'];
+        for (const window of windows) {
+          await expectMatchesApi(
+            dataPath.championBoard(year, scope, window as 'year' | 'split'),
+            `/champions/${year}/${scope}`,
+            { window },
+          );
+        }
+      }
+    }
+  });
+
   it('exports a detail for every team either board can link to', async () => {
     const leagues = await readJson(dataPath.leagues());
     const linked = new Set<number>();
@@ -164,6 +188,8 @@ describe('static export', () => {
       /^teams\/\d+\/logo\.(webp|png|jpg|gif|svg)$/,
       /^players\/[A-Za-z]\w*\/(all|year|split)\.json$/,
       /^players\/\d+\/[A-Za-z]\w*\/(all|year|split)\.json$/,
+      /^champions\/index\.json$/,
+      /^champions\/\d{4}\/[A-Za-z][\w-]*\/(year|split)\.json$/,
     ];
     const walk = async (dir: string, prefix = ''): Promise<string[]> => {
       const entries = await readdir(join(outDir, dir), { withFileTypes: true });

@@ -546,5 +546,7 @@ export interface PlayerGamePerformanceInput {
   creepScore: number | null;
   /** Against the same-role opponent; null when that opponent is unresolvable. */
   goldDiff: number | null;
+  /** Liquipedia's display name ("Cho'Gath"), not a Data Dragon key. */
+  champion: string | null;
 }
 

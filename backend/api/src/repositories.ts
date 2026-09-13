@@ -27,11 +27,21 @@ import type {
   RosterEntryDto,
   TeamSeriesDto,
   BoardUpdatedDto,
+  ChampionScope,
+  ChampionWindow,
+  ChampionRowDto,
+  ChampionBoardDto,
+  ChampionCoverageDto,
+  ChampionIndexDto,
+  InternationalEventKey,
 } from '@power-ranking/shared';
 import {
   leagueSplitStartCte,
   playerWindowPredicate,
   teamLogoUrlExpr,
+  championAssetKey,
+  INTERNATIONAL_EVENTS,
+  CHAMPION_YEARS_KEPT,
   resolveBoardAdvance,
   STAGE_STATUS_SQL,
   isPlayoffSeries,
@@ -1565,4 +1575,235 @@ export async function getTeamLogo(pool: Pool, teamId: number): Promise<TeamLogo 
   const row = result.rows[0];
   if (!row) return null;
   return { data: row.logo_data, contentType: row.logo_content_type, sourceUrl: row.logo_source_url };
+}
+
+function championScopeSql(scope: ChampionScope, params: unknown[]): string {
+  switch (scope.kind) {
+    case 'all':
+      return 't.canonical_league_id IS NOT NULL';
+    case 'international':
+      return 't.canonical_league_id IS NULL';
+    case 'league':
+      params.push(scope.slug);
+      return `t.canonical_league_id = (SELECT id FROM leagues WHERE slug = $${params.length})`;
+    case 'event': {
+      const event = INTERNATIONAL_EVENTS.find((e) => e.key === scope.event);
+      if (!event) throw new Error(`unknown international event: ${scope.event}`);
+      params.push(event.namePattern);
+      // Matched by name against $1's year rather than by id: the event key is
+      // stable across years and a tournament id is not.
+      return `t.canonical_league_id IS NULL AND t.name ILIKE $${params.length}`;
+    }
+  }
+}
+
+/**
+ * Champion pick/ban/win rates for one year and scope.
+ *
+ * The denominator is availability, not games played. League play is fearless --
+ * a champion picked in game N of a series is out of the pool for the rest of it
+ * -- so charging it for games it could not be picked in would cap its pick rate
+ * at roughly one over the series length. `blocked` subtracts exactly those
+ * games, which is what keeps a contested champion's presence honest.
+ *
+ * Fearless is detected, not assumed: a tournament where any champion appears in
+ * two games of one series cannot be fearless, so it blocks nothing. An all-Bo1
+ * tournament reads as fearless and is unaffected either way, having no later
+ * games to block.
+ *
+ * Only games we hold a draft for are counted at all. Including the rest would
+ * deflate every rate by the publication gap; `coverage` reports that gap
+ * separately instead.
+ */
+export async function getChampionBoard(
+  pool: Pool,
+  year: number,
+  scope: ChampionScope,
+  window: ChampionWindow,
+): Promise<ChampionBoardDto> {
+  const params: unknown[] = [year];
+  const scopeSql = championScopeSql(scope, params);
+  // Only a regional board has a split to hold to; international play is
+  // filtered by tournament instead.
+  const windowSql =
+    window === 'split' && (scope.kind === 'all' || scope.kind === 'league')
+      ? 'AND g.datetime_utc >= ls.latest_split_start'
+      : '';
+
+  const result = await pool.query<{
+    champion: string;
+    games_available: string;
+    games_picked: string;
+    games_banned: string;
+    games_won: string;
+    games: string;
+  }>(
+    `WITH league_split AS (
+       SELECT t.canonical_league_id, MAX(t.date_start) AS latest_split_start
+         FROM tournaments t
+        WHERE t.canonical_league_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM series s JOIN games g ON g.series_id = s.id WHERE s.tournament_id = t.id)
+        GROUP BY t.canonical_league_id
+     ),
+     filtered_games AS (
+       SELECT g.id, g.series_id, g.game_number, g.winner_team_id, s.tournament_id
+         FROM games g
+         JOIN series s ON s.id = g.series_id
+         JOIN tournaments t ON t.id = s.tournament_id
+         LEFT JOIN league_split ls ON ls.canonical_league_id = t.canonical_league_id
+        WHERE g.datetime_utc >= make_date($1, 1, 1)
+          AND g.datetime_utc < make_date($1 + 1, 1, 1)
+          AND ${scopeSql}
+          ${windowSql}
+          AND EXISTS (SELECT 1 FROM player_game_performance p WHERE p.game_id = g.id AND p.champion IS NOT NULL)
+     ),
+     picks AS (
+       SELECT fg.id AS game_id, fg.series_id, fg.game_number, fg.tournament_id, p.champion,
+              (p.team_id = fg.winner_team_id) AS won
+         FROM filtered_games fg
+         JOIN player_game_performance p ON p.game_id = fg.id
+        WHERE p.champion IS NOT NULL
+     ),
+     not_fearless AS (
+       SELECT DISTINCT tournament_id FROM (
+         SELECT tournament_id, series_id, champion
+           FROM picks
+          GROUP BY tournament_id, series_id, champion
+         HAVING count(DISTINCT game_id) > 1
+       ) repeats
+     ),
+     blocked AS (
+       SELECT pk.champion, count(*)::int AS games_blocked
+         FROM (SELECT DISTINCT champion, series_id, game_number, tournament_id FROM picks) pk
+         JOIN filtered_games later
+           ON later.series_id = pk.series_id AND later.game_number > pk.game_number
+        WHERE NOT EXISTS (SELECT 1 FROM not_fearless nf WHERE nf.tournament_id = pk.tournament_id)
+        GROUP BY pk.champion
+     ),
+     pick_totals AS (
+       SELECT champion,
+              count(DISTINCT game_id)::int AS games_picked,
+              count(DISTINCT game_id) FILTER (WHERE won)::int AS games_won
+         FROM picks GROUP BY champion
+     ),
+     ban_totals AS (
+       SELECT b.champion, count(DISTINCT b.game_id)::int AS games_banned
+         FROM game_bans b JOIN filtered_games fg ON fg.id = b.game_id
+        GROUP BY b.champion
+     ),
+     totals AS (SELECT count(*)::int AS games FROM filtered_games),
+     universe AS (
+       SELECT champion FROM pick_totals UNION SELECT champion FROM ban_totals
+     )
+     SELECT u.champion,
+            (SELECT games FROM totals) - COALESCE(bl.games_blocked, 0) AS games_available,
+            COALESCE(pt.games_picked, 0) AS games_picked,
+            COALESCE(bt.games_banned, 0) AS games_banned,
+            COALESCE(pt.games_won, 0) AS games_won,
+            (SELECT games FROM totals) AS games
+       FROM universe u
+       LEFT JOIN pick_totals pt ON pt.champion = u.champion
+       LEFT JOIN ban_totals bt ON bt.champion = u.champion
+       LEFT JOIN blocked bl ON bl.champion = u.champion
+      ORDER BY COALESCE(pt.games_picked, 0) + COALESCE(bt.games_banned, 0) DESC, u.champion`,
+    params,
+  );
+
+  const rows: ChampionRowDto[] = result.rows.map((row) => {
+    const available = Number(row.games_available);
+    const picked = Number(row.games_picked);
+    const banned = Number(row.games_banned);
+    const won = Number(row.games_won);
+    const rate = (n: number) => (available > 0 ? n / available : 0);
+    return {
+      champion: row.champion,
+      assetKey: championAssetKey(row.champion),
+      gamesAvailable: available,
+      gamesPicked: picked,
+      gamesBanned: banned,
+      gamesWon: won,
+      pickRate: rate(picked),
+      banRate: rate(banned),
+      presence: rate(picked + banned),
+      winRate: picked > 0 ? won / picked : null,
+    };
+  });
+
+  return {
+    year,
+    scope,
+    window,
+    games: Number(result.rows[0]?.games ?? 0),
+    rows,
+    coverage: await getChampionCoverage(pool, year),
+  };
+}
+
+/**
+ * Which years and international events the champion page may offer.
+ *
+ * A year is listed only once it holds a draft, so the season's first weeks show
+ * the two completed years instead of an empty tab. Events are listed the same
+ * way, and the selector greys whatever is missing -- an unplayed Worlds has no
+ * tournament row at all, so absence is the only signal there is.
+ */
+export async function getChampionIndex(pool: Pool): Promise<ChampionIndexDto> {
+  const result = await pool.query<{ year: number; slug: string | null; name: string }>(
+    `SELECT DISTINCT extract(year FROM g.datetime_utc)::int AS year,
+            l.slug,
+            t.name
+       FROM games g
+       JOIN series s ON s.id = g.series_id
+       JOIN tournaments t ON t.id = s.tournament_id
+       LEFT JOIN leagues l ON l.id = t.canonical_league_id
+      WHERE EXISTS (SELECT 1 FROM player_game_performance p WHERE p.game_id = g.id AND p.champion IS NOT NULL)`,
+  );
+
+  const splitStarts = await pool.query<{ year: number }>(
+    `SELECT DISTINCT extract(year FROM MAX(t.date_start))::int AS year
+       FROM tournaments t
+      WHERE t.canonical_league_id IS NOT NULL
+        AND EXISTS (SELECT 1 FROM series s JOIN games g ON g.series_id = s.id WHERE s.tournament_id = t.id)
+      GROUP BY t.canonical_league_id`,
+  );
+
+  const years = [...new Set(result.rows.map((row) => row.year))].sort((a, b) => b - a).slice(0, CHAMPION_YEARS_KEPT);
+  const splitYears = [...new Set(splitStarts.rows.map((row) => row.year))].filter((year) => years.includes(year));
+  const eventsByYear: Record<string, InternationalEventKey[]> = {};
+  const leaguesByYear: Record<string, string[]> = {};
+
+  for (const year of years) {
+    const rows = result.rows.filter((row) => row.year === year);
+    leaguesByYear[year] = [...new Set(rows.map((row) => row.slug).filter((slug): slug is string => slug !== null))].sort();
+    eventsByYear[year] = INTERNATIONAL_EVENTS.filter((event) => {
+      const like = new RegExp(event.namePattern.replaceAll('%', '.*'), 'i');
+      return rows.some((row) => row.slug === null && like.test(row.name));
+    }).map((event) => event.key);
+  }
+
+  return { years, eventsByYear, leaguesByYear, splitYears };
+}
+
+/** Games held versus games we hold a draft for, per league, over one year. */
+export async function getChampionCoverage(pool: Pool, year: number): Promise<ChampionCoverageDto[]> {
+  const result = await pool.query<{ slug: string; games: string; with_draft: string }>(
+    `SELECT COALESCE(l.slug, 'international') AS slug,
+            count(*)::int AS games,
+            count(*) FILTER (
+              WHERE EXISTS (SELECT 1 FROM player_game_performance p WHERE p.game_id = g.id AND p.champion IS NOT NULL)
+            )::int AS with_draft
+       FROM games g
+       JOIN series s ON s.id = g.series_id
+       JOIN tournaments t ON t.id = s.tournament_id
+       LEFT JOIN leagues l ON l.id = t.canonical_league_id
+      WHERE g.datetime_utc >= make_date($1, 1, 1) AND g.datetime_utc < make_date($1 + 1, 1, 1)
+      GROUP BY 1
+      ORDER BY 2 DESC`,
+    [year],
+  );
+  return result.rows.map((row) => ({
+    leagueSlug: row.slug,
+    games: Number(row.games),
+    gamesWithDraft: Number(row.with_draft),
+  }));
 }

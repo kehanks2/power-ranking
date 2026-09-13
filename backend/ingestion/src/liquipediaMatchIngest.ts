@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 import type { LiquipediaGamePlayer } from './liquipediaApi.js';
-import { fetchMatches } from './liquipediaApi.js';
+import { fetchMatches, bansFromExtradata } from './liquipediaApi.js';
 import { resolvePosition, ourNameToLiquipediaName, HISTORICAL_LIQUIPEDIA_NAME_ALIASES } from './liquipediaMappings.js';
 import { upsertPlayer, upsertTournament, upsertSeries, upsertGame, ensureTeamLeagueMembership } from './upsert.js';
 import type { PlayerGamePerformanceInput } from './computePlayerRatings.js';
@@ -272,7 +272,7 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
   };
   // Pinned once so every game in a run is judged against the same clock.
   const now = new Date();
-  const pending: PendingWrites = { lineups: [], performances: [], keep: [] };
+  const pending: PendingWrites = { lineups: [], performances: [], bans: [], keep: [] };
   const teamsUnresolvedSet = new Set<string>();
   const playerIdCache = new Map<string, number>(); // Liquipedia's disambiguated player key -> our player_id
   const tournamentIdByOverview = new Map<string, number>();
@@ -430,6 +430,7 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
             killParticipation: player.killparticipation ?? null,
             creepScore: player.creepscore ?? null,
             goldDiff: facingGold === undefined ? null : (player.gold ?? 0) - facingGold,
+            champion: player.character || null,
           });
         }
 
@@ -438,6 +439,15 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
         // reported rather than swallowed.
         if (idsThisSide.size < rolesWritten) result.gamesWithCollidedPlayers += 1;
         rolesPerSide.push(rolesWritten);
+      }
+
+      for (const ban of bansFromExtradata(game.extradata)) {
+        pending.bans.push({
+          gameId,
+          teamId: ban.teamIndex === 0 ? team1Id : team2Id,
+          banOrder: ban.order,
+          champion: ban.champion,
+        });
       }
 
       // Offer this game to the prune ONLY if both sides came back whole. A
@@ -476,19 +486,21 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
 interface PendingWrites {
   lineups: { gameId: number; teamId: number; playerId: number; role: 'TOP' | 'JNG' | 'MID' | 'BOT' | 'SUP' }[];
   performances: PlayerGamePerformanceInput[];
+  bans: { gameId: number; teamId: number; banOrder: number; champion: string }[];
   keep: { gameId: number; playerId: number }[];
 }
 
 const FLUSH_ROWS = 2000;
 
 async function flushPending(pool: Pool, pending: PendingWrites): Promise<void> {
-  if (pending.performances.length === 0 && pending.lineups.length === 0) return;
+  if (pending.performances.length === 0 && pending.lineups.length === 0 && pending.bans.length === 0) return;
 
   // Deduplicated on the conflict key: one statement may not touch a key twice,
   // and two handles can resolve to one player id. Last wins, as a sequence of
   // individual upserts would have left it.
   const lineups = dedupeByKey(pending.lineups, (row) => `${row.gameId}:${row.teamId}:${row.role}`);
   const performances = dedupeByKey(pending.performances, (row) => `${row.gameId}:${row.playerId}`);
+  const bans = dedupeByKey(pending.bans, (row) => `${row.gameId}:${row.teamId}:${row.banOrder}`);
 
   await bulkInsert(
     pool,
@@ -504,23 +516,34 @@ async function flushPending(pool: Pool, pending: PendingWrites): Promise<void> {
     [
       'game_id', 'player_id', 'team_id', 'role', 'kills', 'deaths', 'assists', 'gold',
       'damage_to_champions', 'gold_share', 'damage_share', 'kill_participation', 'creep_score', 'gold_diff',
+      'champion',
     ],
     performances.map((row) => [
       row.gameId, row.playerId, row.teamId, row.role, row.kills, row.deaths, row.assists, row.gold,
       row.damageToChampions, row.goldShare, row.damageShare, row.killParticipation, row.creepScore, row.goldDiff,
+      row.champion,
     ]),
     `ON CONFLICT (game_id, player_id) DO UPDATE SET
        kills = EXCLUDED.kills, deaths = EXCLUDED.deaths, assists = EXCLUDED.assists,
        gold = EXCLUDED.gold, damage_to_champions = EXCLUDED.damage_to_champions,
        gold_share = EXCLUDED.gold_share, damage_share = EXCLUDED.damage_share,
        kill_participation = EXCLUDED.kill_participation, creep_score = EXCLUDED.creep_score,
-       gold_diff = EXCLUDED.gold_diff`,
+       gold_diff = EXCLUDED.gold_diff, champion = EXCLUDED.champion`,
+  );
+
+  await bulkInsert(
+    pool,
+    'game_bans',
+    ['game_id', 'team_id', 'ban_order', 'champion'],
+    bans.map((row) => [row.gameId, row.teamId, row.banOrder, row.champion]),
+    'ON CONFLICT (game_id, team_id, ban_order) DO UPDATE SET champion = EXCLUDED.champion',
   );
 
   await pruneStalePerformance(pool, pending.keep);
 
   pending.lineups.length = 0;
   pending.performances.length = 0;
+  pending.bans.length = 0;
   pending.keep.length = 0;
 }
 

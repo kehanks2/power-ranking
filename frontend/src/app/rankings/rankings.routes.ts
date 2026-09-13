@@ -20,6 +20,11 @@ export const rankingsRoutes: Routes = [
         loadComponent: () => import('./players-list/players-list.component').then((m) => m.PlayersListComponent),
       },
       {
+        path: 'champions',
+        loadComponent: () =>
+          import('./champions-list/champions-list.component').then((m) => m.ChampionsListComponent),
+      },
+      {
         path: 'how-it-works',
         loadComponent: () => import('./how-it-works/how-it-works.component').then((m) => m.HowItWorksComponent),
       },

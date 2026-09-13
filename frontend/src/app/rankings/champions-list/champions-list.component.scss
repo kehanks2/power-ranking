@@ -1,0 +1,467 @@
+.champions {
+  padding-top: 1rem;
+}
+
+// Coverage sits beside the filters, above the board -- the position Regional
+// strength holds on the rating boards.
+// `stretch`, so the coverage box matches the height of the filters and note
+// beside it rather than sitting short.
+.top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: stretch;
+  padding-bottom: 1rem;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.filterbar {
+  position: relative;
+}
+
+.ftabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+// Anchors one panel, so it opens under the tab that owns it rather than at the
+// row's left edge. The panel is positioned rather than in flow, so opening it
+// never moves the board beneath.
+.ftab-wrap {
+  position: relative;
+}
+
+.ftab {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--color-surface-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+
+    .ftab__value {
+      color: var(--color-text-dim);
+    }
+  }
+}
+
+.ftab--open {
+  border-color: var(--color-gold);
+}
+
+.ftab__label {
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+}
+
+.ftab__value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ftab__chev {
+  font-size: 0.6rem;
+  color: var(--color-text-dim);
+}
+
+// Over the board, not above it: in flow, opening a panel pushed the table down
+// and that is the movement this layout is trying to avoid.
+.panel {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 45%);
+}
+
+// Narrow enough to sit under its own tab without running off the page; the
+// options wrap onto more rows instead.
+.panel--region {
+  flex-direction: column;
+  gap: 0.35rem;
+  width: max-content;
+  max-width: 26rem;
+}
+
+.panel__group {
+  margin: 0;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+
+  &:not(:first-child) {
+    margin-top: 0.5rem;
+  }
+}
+
+.panel__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.opt {
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--color-surface-hover);
+    color: var(--color-text);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  // An event not yet played is listed rather than hidden, so "not yet" and
+  // "never" do not look the same. Dimmed further would fail contrast, so it
+  // keeps --color-text-dim and loses only the pointer.
+  &:disabled {
+    color: var(--color-text-dim);
+    border-style: dashed;
+    cursor: not-allowed;
+  }
+}
+
+.opt--active {
+  background: var(--color-gold);
+  border-color: var(--color-gold);
+  color: var(--color-gold-contrast);
+}
+
+.scope-note {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+// Names the denominator every rate on the board divides by, and fills the left
+// column so it sits closer to the coverage box's height.
+.denominator {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+
+  strong {
+    color: var(--color-text);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+// `clip`, never `auto`: overflow-x: auto computes overflow-y to auto as well,
+// which makes this a scroll container and kills the sticky header inside it.
+.table-scroll {
+  overflow: clip;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.state {
+  margin: 0;
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.champions-table {
+  width: 100%;
+  // Fixed, so a column's width is its width rather than a ratio for handing out
+  // slack. Every column names one except Champion, which takes the remainder.
+  table-layout: fixed;
+  // Collapse hands borders to the table to paint, so a sticky cell leaves them
+  // behind when it detaches, and cell radii are ignored outright.
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 52rem;
+  font-size: 0.98rem;
+
+  th,
+  td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    text-align: left;
+  }
+
+  thead th {
+    position: sticky;
+    top: var(--sticky-top-height, 0px);
+    z-index: 1;
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  thead th button {
+    all: unset;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+
+    &:hover {
+      color: var(--color-text);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+  }
+
+  td.num,
+  th.num {
+    text-align: right;
+  }
+
+  // Sized to the heading, not the values: text wider than its line box starts at
+  // the content box and overflows right whatever text-align says, so padding
+  // cannot pull an over-long heading off the column beside it -- only width can.
+  th.num {
+    width: 7rem;
+  }
+
+  th.games-h,
+  td.games {
+    width: 6.5rem;
+  }
+
+  // Every column but Champion names a width, so Champion takes the remainder --
+  // and giving Presence a generous fixed width is what keeps that remainder
+  // modest. Letting Presence take the remainder instead put a 494px bar beside
+  // a 240px name.
+  th.presence-h,
+  td.presence {
+    width: 24rem;
+  }
+
+  // Centred over the column: the cell holds a bar pinned left and a number
+  // pinned right, so there is no single edge for the heading to line up with.
+  thead th.presence-h {
+    text-align: center;
+  }
+}
+
+// Before the label, not after, and in a slot that is always reserved. After the
+// label its 14px width sat between the heading and the cell's right edge, so
+// every numeric heading printed 14px left of the digits it named. Leading, the
+// label still ends flush with the values, and the slot's fixed width keeps the
+// heading from shifting as the sort moves between columns.
+.arrow {
+  display: inline-block;
+  width: 0.85rem;
+  text-align: left;
+  font-size: 0.7rem;
+}
+
+.champ {
+  // Laid out inline rather than as a flex cell: display:flex on a td takes it out
+  // of the table layout algorithm and the column stops tracking its th.
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.portrait {
+  display: inline-block;
+  vertical-align: middle;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-right: 0.6rem;
+  border-radius: 4px;
+  background: var(--color-surface-hover);
+}
+
+.champ__name {
+  vertical-align: middle;
+}
+
+// One bar treatment for both the presence cell and the coverage box, so the two
+// read as the same kind of measure. Fills from the left in both.
+.bar {
+  display: inline-block;
+  vertical-align: middle;
+  height: 0.5rem;
+  border-radius: 2px;
+  background: var(--color-surface-hover);
+  font-size: 0;
+  white-space: nowrap;
+  overflow: hidden;
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+// Takes the cell's remainder, less the fixed slot its number sits in, so the bar
+// grows with the column instead of leaving a gap beside it.
+.bar--presence {
+  width: calc(100% - 3.5rem);
+  margin-right: 0.6rem;
+}
+
+.bar__pick,
+.bar__ban,
+.bar__fill {
+  display: inline-block;
+  height: 100%;
+  vertical-align: top;
+}
+
+// Picked is the champion being played; banned is the champion being refused.
+.bar__pick {
+  background: var(--color-up);
+}
+
+.bar__ban {
+  background: var(--color-down);
+}
+
+.bar__fill {
+  display: block;
+  background: var(--color-up);
+}
+
+.val {
+  display: inline-block;
+  // A fixed slot for the number, or the bar beside it drifts row to row.
+  min-width: 2.5rem;
+  text-align: right;
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+
+.champions-table td.num,
+.champions-table td.presence {
+  font-variant-numeric: tabular-nums;
+}
+
+// Two elements plus the section name, so this beats `.champions-table td.num`:
+// encapsulation appends an attribute to every compound selector, which levels
+// the class counts and makes a bare `td .none` lose.
+.champions-table tbody td .none {
+  color: var(--color-text-dim);
+}
+
+.coverage {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: 0.9rem 1rem;
+  // Column, so the note can be pushed to the bottom and the box fills the height
+  // the filters and page note set beside it.
+  display: flex;
+  flex-direction: column;
+
+  h2 {
+    margin: 0 0 0.75rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  // Two columns, so seven regions take four rows rather than seven. In one
+  // column the box stood 126px taller than the filters and note beside it.
+  ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem 1rem;
+  }
+
+  li {
+    display: grid;
+    grid-template-columns: 2.4rem minmax(0, 1fr) 2.2rem;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+  }
+
+  .rg {
+    color: var(--color-text-muted);
+    font-weight: 600;
+  }
+
+  .bar {
+    display: block;
+    width: 100%;
+  }
+
+  .val {
+    min-width: 0;
+    font-size: 0.8rem;
+  }
+
+  .foot {
+    margin: 0.9rem 0 0;
+    margin-top: auto;
+    padding-top: 0.9rem;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+}
+
+@media (max-width: 60rem) {
+  .top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .table-scroll {
+    overflow: auto;
+  }
+
+  // Declared AFTER the sticky rule, and it has to be: both selectors carry the
+  // same specificity, so source order is what decides. Once the scroller is on,
+  // a sticky offset measures from the TABLE's top rather than the page's and
+  // draws the header down among the rows.
+  .champions-table thead th {
+    position: static;
+  }
+}

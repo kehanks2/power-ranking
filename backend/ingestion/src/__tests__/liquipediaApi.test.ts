@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  bansFromExtradata,
   checkCanCall,
   retryDelayMs,
   REQUESTS_PER_HOUR,
@@ -122,5 +123,38 @@ describe('teamLogoUrl', () => {
   it('is null when the wiki holds no logo at all', () => {
     expect(teamLogoUrl(none)).toBeNull();
     expect(teamLogoUrl({ logourl: '  ', logodarkurl: ' ', textlesslogourl: '', textlesslogodarkurl: '   ' })).toBeNull();
+  });
+});
+
+describe('bansFromExtradata', () => {
+  it('reads the ten bans in team then draft order', () => {
+    const bans = bansFromExtradata({
+      team2ban2: 'Olaf',
+      team1ban1: 'Camille',
+      team1ban2: 'Vi',
+      team2ban1: 'Cassiopeia',
+      team1side: 'red',
+      team1champion1: 'Yorick',
+    });
+    expect(bans).toEqual([
+      { teamIndex: 0, order: 1, champion: 'Camille' },
+      { teamIndex: 0, order: 2, champion: 'Vi' },
+      { teamIndex: 1, order: 1, champion: 'Cassiopeia' },
+      { teamIndex: 1, order: 2, champion: 'Olaf' },
+    ]);
+  });
+
+  // An unplayed placeholder slot still returns stale `opponents[].players`, but
+  // carries no draft -- counting it would add a game nobody could be picked in.
+  it('is empty for a game that was never drafted', () => {
+    expect(bansFromExtradata(null)).toEqual([]);
+    expect(bansFromExtradata(undefined)).toEqual([]);
+    expect(bansFromExtradata({ team1side: 'blue', timestamp: 1788595200 })).toEqual([]);
+  });
+
+  it('skips an empty ban slot rather than storing a blank champion', () => {
+    expect(bansFromExtradata({ team1ban1: '', team1ban2: 'Vi' })).toEqual([
+      { teamIndex: 0, order: 2, champion: 'Vi' },
+    ]);
   });
 });

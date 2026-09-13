@@ -1,0 +1,281 @@
+<div class="champions">
+  <!-- Filters and coverage share the top band, so coverage sits where Regional
+       strength sits on the rating boards rather than beside the table. -->
+  <div class="top">
+    <div class="controls">
+      <!-- Each tab names its filter and its current value; the panel opens over
+           the board rather than pushing it, so nothing below moves. The tab row
+           itself is a constant height whatever the choices are, which is what
+           stopped the page jumping when a year with fewer leagues was picked. -->
+      <div class="filterbar">
+        <div class="ftabs">
+          <!-- Each tab anchors its own panel, so a panel opens under the tab that
+               opened it rather than at the left edge of the row. -->
+          <div class="ftab-wrap">
+            <button
+              type="button"
+              class="ftab"
+              [class.ftab--open]="openPanel() === 'year'"
+              [attr.aria-expanded]="openPanel() === 'year'"
+              aria-controls="panel-year"
+              (click)="togglePanel('year')"
+            >
+              <span class="ftab__label">Year</span>
+              <span class="ftab__value">{{ year() }}</span>
+              <span class="ftab__chev" aria-hidden="true">▾</span>
+            </button>
+
+            @if (openPanel() === 'year') {
+              <div class="panel" id="panel-year" role="group" aria-label="Choose year">
+                @for (y of years(); track y) {
+                  <button
+                    type="button"
+                    class="opt"
+                    [class.opt--active]="year() === y"
+                    [attr.aria-pressed]="year() === y"
+                    (click)="selectYear(y)"
+                  >
+                    {{ y }}
+                  </button>
+                }
+              </div>
+            }
+          </div>
+
+          <div class="ftab-wrap">
+            <button
+              type="button"
+              class="ftab"
+              [class.ftab--open]="openPanel() === 'region'"
+              [attr.aria-expanded]="openPanel() === 'region'"
+              aria-controls="panel-region"
+              (click)="togglePanel('region')"
+            >
+              <span class="ftab__label">{{ regionTabLabel() }}</span>
+              <span class="ftab__value">{{ regionTabValue() }}</span>
+              <span class="ftab__chev" aria-hidden="true">▾</span>
+            </button>
+
+            @if (openPanel() === 'region') {
+              <div class="panel panel--region" id="panel-region" role="group" aria-label="Choose region or event">
+                <p class="panel__group">Leagues</p>
+                <div class="panel__row">
+                  <button
+                    type="button"
+                    class="opt"
+                    [class.opt--active]="scope() === 'all'"
+                    [attr.aria-pressed]="scope() === 'all'"
+                    (click)="selectScope('all')"
+                  >
+                    All leagues
+                  </button>
+                  @for (slug of leagues(); track slug) {
+                    <button
+                      type="button"
+                      class="opt"
+                      [class.opt--active]="scope() === slug"
+                      [attr.aria-pressed]="scope() === slug"
+                      (click)="selectScope(slug)"
+                    >
+                      {{ slug }}
+                    </button>
+                  }
+                </div>
+                <p class="panel__group">International</p>
+                <div class="panel__row">
+                  <button
+                    type="button"
+                    class="opt"
+                    [class.opt--active]="scope() === 'international'"
+                    [attr.aria-pressed]="scope() === 'international'"
+                    (click)="selectScope('international')"
+                  >
+                    All events
+                  </button>
+                  @for (event of events(); track event.key) {
+                    <button
+                      type="button"
+                      class="opt"
+                      [class.opt--active]="scope() === event.key"
+                      [attr.aria-pressed]="scope() === event.key"
+                      [disabled]="event.disabled"
+                      [prTooltip]="event.disabled ? 'Not played yet in ' + year() : ''"
+                      (click)="selectScope(event.key)"
+                    >
+                      {{ event.label }}
+                    </button>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+
+          <div class="ftab-wrap">
+            <button
+              type="button"
+              class="ftab"
+              [class.ftab--open]="openPanel() === 'window'"
+              [attr.aria-expanded]="openPanel() === 'window'"
+              [disabled]="!splitAvailable()"
+              aria-controls="panel-window"
+              (click)="togglePanel('window')"
+            >
+              <span class="ftab__label">Window</span>
+              <span class="ftab__value">{{ window() === 'split' ? 'Current split' : 'Full year' }}</span>
+              <span class="ftab__chev" aria-hidden="true">▾</span>
+            </button>
+
+            @if (openPanel() === 'window') {
+              <div class="panel" id="panel-window" role="group" aria-label="Choose stretch of play">
+                <button
+                  type="button"
+                  class="opt"
+                  [class.opt--active]="window() === 'year'"
+                  [attr.aria-pressed]="window() === 'year'"
+                  (click)="selectWindow('year')"
+                >
+                  Full year
+                </button>
+                <button
+                  type="button"
+                  class="opt"
+                  [class.opt--active]="window() === 'split'"
+                  [attr.aria-pressed]="window() === 'split'"
+                  (click)="selectWindow('split')"
+                >
+                  Current split
+                </button>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+
+      <p class="scope-note">
+        League play is fearless so rates only include games it was still in the pool for.
+        <strong>Presence is pick plus ban rate.</strong> These numbers compare across regions.
+      </p>
+
+      @if (board(); as current) {
+        <p class="denominator">
+          <strong>{{ current.games | number }}</strong>
+          {{ current.games === 1 ? 'game' : 'games' }} behind this board.
+        </p>
+      }
+    </div>
+
+    <aside class="coverage" aria-labelledby="coverage-heading">
+      <h2 id="coverage-heading">Draft coverage</h2>
+      <ol>
+        @for (entry of coverage(); track entry.leagueSlug) {
+          <li>
+            <span class="rg">{{ coverageLabel(entry.leagueSlug) }}</span>
+            <span
+              class="bar"
+              [prTooltip]="entry.gamesWithDraft + ' of ' + entry.games + ' games'"
+              tabindex="0"
+            >
+              <span class="bar__fill" [style.width.%]="coveragePct(entry) * 100"></span>
+            </span>
+            <span class="val">{{ coveragePct(entry) * 100 | number: '1.0-0' }}%</span>
+          </li>
+        }
+      </ol>
+      <p class="foot">
+        How much of each region’s {{ year() }} play we hold a draft for. Only games with drafts
+        published by Liquipedia are available.
+      </p>
+    </aside>
+  </div>
+
+  <div class="table-scroll" [class.table-scroll--loading]="loading()">
+    @if (rows().length === 0) {
+      <p class="state">{{ loading() ? 'Loading…' : 'No draft data for this selection.' }}</p>
+    } @else {
+      <table class="champions-table">
+        <caption class="visually-hidden">
+          Champion pick, ban and win rates for {{ year() }}, over {{ board()?.games }} games
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" class="champ-h">Champion</th>
+            <th scope="col" class="presence-h" [attr.aria-sort]="sortState('presence')">
+              <button type="button" (click)="sortBy('presence')">
+                <span class="arrow" aria-hidden="true">{{ arrow('presence') }}</span>Presence
+              </button>
+            </th>
+            <th scope="col" class="num" [attr.aria-sort]="sortState('pickRate')">
+              <button type="button" (click)="sortBy('pickRate')">
+                <span class="arrow" aria-hidden="true">{{ arrow('pickRate') }}</span>Pick
+              </button>
+            </th>
+            <th scope="col" class="num" [attr.aria-sort]="sortState('banRate')">
+              <button type="button" (click)="sortBy('banRate')">
+                <span class="arrow" aria-hidden="true">{{ arrow('banRate') }}</span>Ban
+              </button>
+            </th>
+            <th scope="col" class="num" [attr.aria-sort]="sortState('winRate')">
+              <button type="button" (click)="sortBy('winRate')">
+                <span class="arrow" aria-hidden="true">{{ arrow('winRate') }}</span>Win
+              </button>
+            </th>
+            <th scope="col" class="num games-h" [attr.aria-sort]="sortState('gamesPicked')">
+              <button type="button" (click)="sortBy('gamesPicked')">
+                <span class="arrow" aria-hidden="true">{{ arrow('gamesPicked') }}</span>Picks
+              </button>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of rows(); track row.champion) {
+            <tr>
+              <td class="champ">
+                @if (portrait(row); as src) {
+                  <img
+                    class="portrait"
+                    [src]="src"
+                    alt=""
+                    width="28"
+                    height="28"
+                    loading="lazy"
+                    (error)="onPortraitError(row)"
+                  />
+                } @else {
+                  <span class="portrait portrait--none" aria-hidden="true"></span>
+                }
+                <span class="champ__name">{{ row.champion }}</span>
+              </td>
+              <td class="presence">
+                <span class="bar bar--presence" [prTooltip]="presenceTitle(row)" tabindex="0">
+                  <span class="bar__pick" [style.width.%]="row.pickRate * 100"></span>
+                  <span class="bar__ban" [style.width.%]="row.banRate * 100"></span>
+                </span>
+                <span class="val">{{ row.presence * 100 | number: '1.0-0' }}%</span>
+              </td>
+              <td class="num">
+                <span [prTooltip]="ofGames(row.gamesPicked, row.gamesAvailable)" tabindex="0">
+                  {{ row.pickRate * 100 | number: '1.0-0' }}%
+                </span>
+              </td>
+              <td class="num">
+                <span [prTooltip]="ofGames(row.gamesBanned, row.gamesAvailable)" tabindex="0">
+                  {{ row.banRate * 100 | number: '1.0-0' }}%
+                </span>
+              </td>
+              <td class="num">
+                @if (row.winRate === null) {
+                  <span class="none" prTooltip="Never picked, so there is no win rate">—</span>
+                } @else {
+                  <span [prTooltip]="ofGames(row.gamesWon, row.gamesPicked, 'picked')" tabindex="0">
+                    {{ row.winRate * 100 | number: '1.0-0' }}%
+                  </span>
+                }
+              </td>
+              <td class="num games">{{ row.gamesPicked }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </div>
+</div>
