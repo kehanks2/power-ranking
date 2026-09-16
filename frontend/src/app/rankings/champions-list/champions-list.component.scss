@@ -204,6 +204,22 @@
   color: var(--color-text-muted);
 }
 
+.state__clear {
+  display: block;
+  margin: 0.75rem auto 0;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-surface-hover);
+  }
+}
+
 .champions-table {
   width: 100%;
   // Fixed, so a column's width is its width rather than a ratio for handing out

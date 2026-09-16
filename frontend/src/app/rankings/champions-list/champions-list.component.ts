@@ -13,7 +13,26 @@ import {
 
 type SortKey = 'presence' | 'pickRate' | 'banRate' | 'winRate' | 'gamesPicked';
 
-type PanelKey = 'year' | 'region' | 'window';
+type PanelKey = 'year' | 'region' | 'window' | 'picks';
+
+/**
+ * Minimum picks a champion needs to stay on the board; 0 is no filter.
+ *
+ * A raw win rate is only as good as its sample, and the sample is the absolute
+ * count rather than the share -- two picks is two picks whether the board holds
+ * 71 games or 2,234 -- so this filters on `gamesPicked`, not `pickRate`.
+ *
+ * Measured on the 2026 pooled year board: 24 of 154 champions have two picks or
+ * fewer, and they are every 0% and every 100% on it. At 5 the win rates span
+ * 14-77%, at 10 only four rows sit outside 35-65%, and past 20 the distribution
+ * stops moving -- which is why there is no higher option.
+ *
+ * A threshold is absolute, so it bites very differently by scope: 20 keeps 99
+ * champions on that board and none at all at MSI, whose 71 games have no
+ * champion picked 20 times. That is honest rather than broken, and the empty
+ * state says so.
+ */
+const MIN_PICK_OPTIONS = [0, 5, 10, 20] as const;
 
 interface EventOption {
   key: string;
@@ -46,6 +65,8 @@ export class ChampionsListComponent {
   protected readonly year = signal<number | null>(null);
   protected readonly scope = signal('all');
   protected readonly window = signal<ChampionWindow>('year');
+  protected readonly minPicks = signal<number>(0);
+  protected readonly minPickOptions = MIN_PICK_OPTIONS;
 
   private readonly sortKey = signal<SortKey>('presence');
   private readonly sortDescending = signal(true);
@@ -107,7 +128,10 @@ export class ChampionsListComponent {
   });
 
   protected readonly rows = computed(() => {
-    const rows = [...(this.board()?.rows ?? [])];
+    // Purely a row filter: champion rates are raw, not percentiles within the
+    // board, so dropping rows changes no number on the ones that remain.
+    const floor = this.minPicks();
+    const rows = (this.board()?.rows ?? []).filter((row) => row.gamesPicked >= floor);
     const key = this.sortKey();
     const descending = this.sortDescending() ? -1 : 1;
     return rows.sort((a, b) => {
@@ -121,6 +145,25 @@ export class ChampionsListComponent {
   });
 
   protected readonly coverage = computed(() => this.board()?.coverage ?? []);
+
+  protected readonly minPicksLabel = computed(() => {
+    const floor = this.minPicks();
+    return floor === 0 ? 'Any' : `${floor}+`;
+  });
+
+  /**
+   * Whether the board holds champions but the filter left none, which is the
+   * expected reading of a small scope rather than missing data. The two empty
+   * states have to be told apart or a full board reads as an outage.
+   */
+  protected readonly filteredToNothing = computed(
+    () => this.minPicks() > 0 && (this.board()?.rows.length ?? 0) > 0 && this.rows().length === 0,
+  );
+
+  /** For that empty state: how close the board actually gets to the threshold. */
+  protected readonly mostPicked = computed(() =>
+    (this.board()?.rows ?? []).reduce((most, row) => Math.max(most, row.gamesPicked), 0),
+  );
 
   protected togglePanel(panel: PanelKey): void {
     this.openPanel.update((open) => (open === panel ? null : panel));
@@ -182,6 +225,12 @@ export class ChampionsListComponent {
     if (this.window() === window) return;
     this.window.set(window);
     this.load();
+  }
+
+  /** No `load()`: the threshold filters the board in hand and fetches nothing. */
+  protected selectMinPicks(floor: number): void {
+    this.openPanel.set(null);
+    this.minPicks.set(floor);
   }
 
   protected sortBy(key: SortKey): void {

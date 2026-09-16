@@ -29,6 +29,17 @@
   box-sizing: border-box;
 }
 
+/* Reserve the scrollbar's track whether or not one is showing. Every board
+   collapses to viewport height for a frame while its data loads -- measured on
+   Players -> Champions and How it works -> Teams -- which on a classic
+   scrollbar (the Windows default) takes the bar away, widens clientWidth by its
+   ~15px, and slides the centred layout ~7.5px sideways and back. How it works
+   is the one route that never did it: static markup, so it renders at full
+   height in the same frame. */
+html {
+  scrollbar-gutter: stable;
+}
+
 html,
 body {
   margin: 0;

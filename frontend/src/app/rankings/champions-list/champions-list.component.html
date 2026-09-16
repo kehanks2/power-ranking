@@ -148,6 +148,37 @@
               </div>
             }
           </div>
+
+          <div class="ftab-wrap">
+            <button
+              type="button"
+              class="ftab"
+              [class.ftab--open]="openPanel() === 'picks'"
+              [attr.aria-expanded]="openPanel() === 'picks'"
+              aria-controls="panel-picks"
+              (click)="togglePanel('picks')"
+            >
+              <span class="ftab__label">Min picks</span>
+              <span class="ftab__value">{{ minPicksLabel() }}</span>
+              <span class="ftab__chev" aria-hidden="true">▾</span>
+            </button>
+
+            @if (openPanel() === 'picks') {
+              <div class="panel" id="panel-picks" role="group" aria-label="Choose a minimum number of picks">
+                @for (floor of minPickOptions; track floor) {
+                  <button
+                    type="button"
+                    class="opt"
+                    [class.opt--active]="minPicks() === floor"
+                    [attr.aria-pressed]="minPicks() === floor"
+                    (click)="selectMinPicks(floor)"
+                  >
+                    {{ floor === 0 ? 'Any' : floor + '+' }}
+                  </button>
+                }
+              </div>
+            }
+          </div>
         </div>
       </div>
 
@@ -160,6 +191,9 @@
         <p class="denominator">
           <strong>{{ current.games | number }}</strong>
           {{ current.games === 1 ? 'game' : 'games' }} behind this board.
+          @if (minPicks() > 0) {
+            Showing <strong>{{ rows().length }}</strong> of {{ current.rows.length }} champions.
+          }
         </p>
       }
     </div>
@@ -190,7 +224,19 @@
 
   <div class="table-scroll" [class.table-scroll--loading]="loading()">
     @if (rows().length === 0) {
-      <p class="state">{{ loading() ? 'Loading…' : 'No draft data for this selection.' }}</p>
+      @if (loading()) {
+        <p class="state">Loading…</p>
+      } @else if (filteredToNothing()) {
+        <!-- A threshold is absolute, so one that suits the pooled year board
+             empties a small event. Say which, rather than reading as no data. -->
+        <p class="state">
+          No champion was picked {{ minPicks() }} times in these {{ board()?.games | number }} games — the
+          most any was picked is {{ mostPicked() }}.
+          <button type="button" class="state__clear" (click)="selectMinPicks(0)">Show every champion</button>
+        </p>
+      } @else {
+        <p class="state">No draft data for this selection.</p>
+      }
     } @else {
       <table class="champions-table">
         <caption class="visually-hidden">
