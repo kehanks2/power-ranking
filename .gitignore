@@ -6,6 +6,7 @@ dist/
 logs/
 *.log
 .angular/
+.vscode/
 .DS_Store
 .liquipedia-rate-limit.json
 tsconfig.tsbuildinfo
