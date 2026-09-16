@@ -36,6 +36,7 @@ import { computeRatings } from './computeRatings.js';
 import { refreshStatlessGames } from './refreshStatlessGames.js';
 import { computeAllPlayerRatingWindows, computeInternationalPlayerRatings } from './computePlayerRatings.js';
 import { populateRosterFromLiquipedia } from './populateRosterFromLiquipedia.js';
+import { ingestPlacements } from './ingestPlacements.js';
 import { fetchTeamLogos } from './fetchTeamLogos.js';
 
 export const ALL_SERIES = [...Object.keys(REGIONAL_SERIES_TO_LEAGUE_SLUG), AMERICAS_SERIES, ...INTERNATIONAL_SERIES];
@@ -160,6 +161,23 @@ async function main() {
   } catch (err) {
     // A best-effort catch-up must never cost the run its recompute.
     console.error(`  statless refresh FAILED: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Standings are display-only -- the Results column on the teams board -- but
+  // they are the one thing a finished split produces that no game record
+  // carries, so a season ends and nothing says who won it. Every 2026 summer
+  // split sat at zero placements on 2026-09-15 because this only ever ran by
+  // hand. v3/placement has its own hourly budget, so the ~7 requests are free
+  // against the pull.
+  try {
+    const placements = await ingestPlacements(pool);
+    console.log(`  placements: ${placements.placementsInserted} standings over ${placements.tournamentsProcessed} tournaments`);
+    if (placements.unmatchedTeams.length > 0) {
+      console.log(`  placements unmatched: ${placements.unmatchedTeams.join(', ')}`);
+    }
+  } catch (err) {
+    // Yesterday's standings stand; a missing one costs a Results cell, not a rating.
+    console.error(`  placement refresh FAILED: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Rosters, then crests, then the recompute -- in that order and all before it.

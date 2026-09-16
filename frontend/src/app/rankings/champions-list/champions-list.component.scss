@@ -376,6 +376,10 @@
   background: var(--color-down);
 }
 
+.bar__win--even {
+  min-width: 0;
+}
+
 // Even ground. It stands proud of the track top and bottom so it still reads
 // where the gold starts on it, which is every champion near 50%.
 .bar--win::after {

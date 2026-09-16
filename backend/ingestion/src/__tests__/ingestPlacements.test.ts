@@ -1,6 +1,9 @@
-import { describe, it, expect } from 'vitest';
-import { placementSortValue, isTeamStanding, placementSourceNames } from '../ingestPlacements.js';
-import type { LiquipediaPlacement } from '../liquipediaApi.js';
+import { describe, it, expect, vi } from 'vitest';
+import type { Pool } from 'pg';
+import { placementSortValue, isTeamStanding, placementSourceNames, ingestPlacements } from '../ingestPlacements.js';
+import { fetchPlacements, type LiquipediaPlacement } from '../liquipediaApi.js';
+
+vi.mock('../liquipediaApi.js', () => ({ fetchPlacements: vi.fn() }));
 
 const row = (over: Partial<LiquipediaPlacement>): LiquipediaPlacement => ({
   tournament: '2026 Mid-Season Invitational',
@@ -56,5 +59,29 @@ describe('isTeamStanding', () => {
 
   it('rejects a team row with no finish recorded', () => {
     expect(isTeamStanding(row({ placement: '' }))).toBe(false);
+  });
+});
+
+describe('ingestPlacements', () => {
+  const pool = (): Pool =>
+    ({
+      query: async (sql: string) => ({ rows: sql.includes('tournaments') ? [{ id: 1, name: 'LCK 2026 Summer' }] : [] }),
+      connect: async () => {
+        throw new Error('connected to write');
+      },
+    }) as unknown as Pool;
+
+  it('writes nothing when Liquipedia returns no team standings', async () => {
+    // The refresh wipes the table before reloading it, and now runs unattended
+    // every day: an empty 200 must not blank every Results cell on the site.
+    vi.mocked(fetchPlacements).mockResolvedValue([row({ opponenttype: 'solo', placement: '' })]);
+
+    await expect(ingestPlacements(pool())).resolves.toMatchObject({ placementsInserted: 0 });
+  });
+
+  it('writes when there is a standing to write', async () => {
+    vi.mocked(fetchPlacements).mockResolvedValue([row({ tournament: 'LCK 2026 Season' })]);
+
+    await expect(ingestPlacements(pool())).rejects.toThrow('connected to write');
   });
 });

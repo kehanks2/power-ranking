@@ -85,6 +85,12 @@ export async function ingestPlacements(pool: Pool): Promise<PlacementImportResul
     }
   }
   const rows = await fetchPlacements(queryNames);
+  // The refresh is a wipe and a reload, and it now runs unattended every day: an
+  // empty 200 from Liquipedia would blank the Results column on every board
+  // until someone noticed. A fetch that failed outright throws above.
+  if (!rows.some(isTeamStanding)) {
+    return { tournamentsProcessed: tournaments.rows.length, placementsInserted: 0, unmatchedTeams: [] };
+  }
 
   const client = await pool.connect();
   try {
