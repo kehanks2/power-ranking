@@ -37,6 +37,7 @@ import type {
 } from '@power-ranking/shared';
 import {
   leagueSplitStartCte,
+  splitDefiningTournamentSql,
   playerWindowPredicate,
   teamLogoUrlExpr,
   championAssetKey,
@@ -64,6 +65,7 @@ const LEAGUE_LATEST_SPLIT_CTE = `
     SELECT t.canonical_league_id, MAX(t.date_start) AS latest_split_start
     FROM tournaments t
     WHERE t.canonical_league_id IS NOT NULL
+      AND ${splitDefiningTournamentSql('t')}
       AND EXISTS (
         SELECT 1 FROM series s JOIN games g ON g.series_id = s.id WHERE s.tournament_id = t.id
       )
@@ -1642,6 +1644,7 @@ export async function getChampionBoard(
        SELECT t.canonical_league_id, MAX(t.date_start) AS latest_split_start
          FROM tournaments t
         WHERE t.canonical_league_id IS NOT NULL
+          AND ${splitDefiningTournamentSql('t')}
           AND EXISTS (SELECT 1 FROM series s JOIN games g ON g.series_id = s.id WHERE s.tournament_id = t.id)
         GROUP BY t.canonical_league_id
      ),
@@ -1763,6 +1766,7 @@ export async function getChampionIndex(pool: Pool): Promise<ChampionIndexDto> {
     `SELECT DISTINCT extract(year FROM MAX(t.date_start))::int AS year
        FROM tournaments t
       WHERE t.canonical_league_id IS NOT NULL
+        AND ${splitDefiningTournamentSql('t')}
         AND EXISTS (SELECT 1 FROM series s JOIN games g ON g.series_id = s.id WHERE s.tournament_id = t.id)
       GROUP BY t.canonical_league_id`,
   );

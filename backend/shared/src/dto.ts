@@ -136,7 +136,23 @@ export function isRatingWindow(value: unknown): value is RatingWindow {
   return typeof value === 'string' && (RATING_WINDOWS as readonly string[]).includes(value);
 }
 
-/** Each league's current split start, which both bounded windows key off. */
+/**
+ * Tournaments that may define a league's split start, for a table aliased
+ * `alias`. Shared because four boards derive that date and all four must agree.
+ *
+ * Regional Finals are the league's post-season, not a new split -- a 4-team
+ * event days after the split's own playoffs -- but Liquipedia files each as its
+ * own tournament, so MAX(date_start) adopts it and the split collapses to the
+ * teams that reached it: 2 of 17 LPL teams on 2026-09-18, and 0 while that
+ * declared start postdated its own 2026-09-17 games. Matched on the page path,
+ * the one field that separates them -- see `isPromotionPlay`, which says why
+ * tier and tiertype cannot.
+ */
+export function splitDefiningTournamentSql(alias?: string): string {
+  const page = alias ? `${alias}.overview_page` : 'overview_page';
+  return `${page} !~ '(^|/)Regional_Finals$'`;
+}
+
 /**
  * Latest split per league. `asOfExpr` bounds it to splits that had already
  * started, which an as-of computation needs: the pull stores tournaments up to
@@ -148,7 +164,8 @@ export function leagueSplitStartCte(asOfExpr?: string): string {
   league_split_start AS (
     SELECT canonical_league_id, MAX(date_start) AS latest_split_start
     FROM tournaments
-    WHERE canonical_league_id IS NOT NULL${asOfExpr ? `\n      AND date_start <= ${asOfExpr}` : ''}
+    WHERE canonical_league_id IS NOT NULL
+      AND ${splitDefiningTournamentSql()}${asOfExpr ? `\n      AND date_start <= ${asOfExpr}` : ''}
     GROUP BY canonical_league_id
   )
 `;
