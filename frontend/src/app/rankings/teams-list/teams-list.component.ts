@@ -10,11 +10,17 @@ import { RankChangeComponent } from '../rank-change/rank-change.component';
 import { TooltipDirective } from '../tooltip.directive';
 
 /**
- * OLDEST first, and the same window the international rating is built from --
- * rating on six while showing four had the evidence disagree with the number
- * beside it.
+ * An international code is `FS`/`MSI`/`W` plus a 2-digit year, generated in
+ * `TEAM_CONTEXT_CTE`. Used to order the columns chronologically; an unparseable
+ * code sorts first rather than throwing the rest out of order.
  */
-const RECENT_EVENTS = ['W24', 'FS25', 'MSI25', 'W25', 'FS26', 'MSI26'] as const;
+const INTERNATIONAL_PHASES = ['FS', 'MSI', 'W'];
+
+function internationalEventOrder(code: string): number {
+  const parts = /^(FS|MSI|W)(\d\d)$/.exec(code);
+  if (!parts) return -1;
+  return Number(parts[2]) * INTERNATIONAL_PHASES.length + INTERNATIONAL_PHASES.indexOf(parts[1]);
+}
 
 /** Axis gridline spacing, in rating points. */
 /**
@@ -55,11 +61,20 @@ export class TeamsListComponent {
   protected readonly isInternational = computed(() => this.filterService.selectedScope() === 'international');
 
   /**
-   * Regional order is read from the data, since the codes are per-league
-   * (Spr26/Cup26/S126). Results arrive newest-first, so reverse for oldest-left.
+   * Oldest-left either way, and read from the data so a new event appears the
+   * day it has games. The international columns are the UNION of what the
+   * board's teams played -- no team attends every event, so the fullest row
+   * carried four of the six -- ordered by the code. A hardcoded list was wrong
+   * in both directions the day Worlds 26 began: no W26 column, and a W24 one
+   * the six-event window no longer holds. Regional codes are per-league
+   * (Spr26/Cup26/S126) with no orderable form, so they take the fullest row,
+   * whose results arrive newest-first.
    */
   protected readonly events = computed<readonly string[]>(() => {
-    if (this.isInternational()) return RECENT_EVENTS;
+    if (this.isInternational()) {
+      const codes = new Set(this.teams().flatMap((t) => t.results.map((r) => r.event)));
+      return [...codes].sort((a, b) => internationalEventOrder(a) - internationalEventOrder(b));
+    }
     const fullest = this.teams().reduce<TeamSummary['results']>(
       (best, t) => (t.results.length > best.length ? t.results : best),
       [],
