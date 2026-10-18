@@ -8,6 +8,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import pg from 'pg';
 import { DEFAULT_TRANSFER_CARRYOVER, NEUTRAL_SCORE } from '@power-ranking/rating-engine';
+import { NEWEST_INTERNATIONAL_EVENT_TEAMS_SQL } from '@power-ranking/shared';
 import { createApp } from '../app.js';
 import { createPool } from '../db.js';
 
@@ -120,11 +121,21 @@ describe('read API (live Postgres)', () => {
     const leagues = new Set(res.body.map((t: { leagueSlug: string }) => t.leagueSlug));
     expect(leagues.size).toBeGreaterThan(1);
 
-    for (const team of res.body) {
-      // The floor exists because nothing is rated internationally on a token
-      // appearance -- see MIN_INTERNATIONAL_GAMES.
-      expect(team.games).toBeGreaterThanOrEqual(10);
+    // Nothing is rated internationally on a token appearance (see
+    // MIN_INTERNATIONAL_GAMES), with one exemption: a team at the event being
+    // played now is rated however few games it has, so the board is never
+    // missing half the teams on stage. Asserted against the predicate that
+    // wrote the board rather than a restated copy of it.
+    const playing = new Set(
+      (await pool.query<{ team_id: number }>(NEWEST_INTERNATIONAL_EVENT_TEAMS_SQL)).rows.map((r) => r.team_id),
+    );
+    const belowFloor = res.body.filter((t: { games: number }) => t.games < 10);
+    for (const team of belowFloor) {
+      expect(playing.has(team.id)).toBe(true);
     }
+    // And the exemption is doing something -- otherwise this passes vacuously
+    // the moment the floor is the only rule again.
+    expect(res.body.length).toBeGreaterThan(belowFloor.length);
 
     // Strictly a subset of the regions it draws from.
     const lck = await request(app).get('/teams').query({ scope: 'LCK' });

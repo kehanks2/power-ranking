@@ -272,7 +272,7 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
   };
   // Pinned once so every game in a run is judged against the same clock.
   const now = new Date();
-  const pending: PendingWrites = { lineups: [], performances: [], bans: [], keep: [] };
+  const pending: PendingWrites = { lineups: [], performances: [], bans: [], keep: [], gameIds: [], vanishedLines: [] };
   const teamsUnresolvedSet = new Set<string>();
   const playerIdCache = new Map<string, number>(); // Liquipedia's disambiguated player key -> our player_id
   const tournamentIdByOverview = new Map<string, number>();
@@ -353,6 +353,13 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
     for (const [gameIndex, game] of match.match2games.entries()) {
       if (!isPlayedGame(game)) {
         result.gamesSkippedUnplayed += 1;
+        // Only played games are ever stored, so a stored one the match now
+        // reports unplayed is a leftover. A re-paired bracket slot shrinks:
+        // LCK2026POB_R01-M001 held five games as T1 vs BNK FEARX and three as
+        // the Dplus/KT match it actually is, leaving two phantoms rating teams
+        // that never played them. NOT the stats wait, which skips earlier and
+        // never inserted a row to begin with.
+        pending.vanishedLines.push(`liquipedia:${match.match2id}_${game.match2gameid}`);
         continue;
       }
       // A result whose stat lines may still arrive waits for them, so team and
@@ -390,6 +397,7 @@ export async function ingestLiquipediaMatches(pool: Pool, conditions: string): P
         team2NeutralObjectives: neutralObjectives(gameOpp2),
       });
       result.gamesProcessed += 1;
+      pending.gameIds.push(gameId);
 
       // Everyone written this run; rows for anyone no longer listed are cleared
       // afterwards -- see pruneStalePerformance.
@@ -488,11 +496,17 @@ interface PendingWrites {
   performances: PlayerGamePerformanceInput[];
   bans: { gameId: number; teamId: number; banOrder: number; champion: string }[];
   keep: { gameId: number; playerId: number }[];
+  /** Every game written this batch, for the side prune. */
+  gameIds: number[];
+  /** Unique lines the match no longer reports as played, for the game prune. */
+  vanishedLines: string[];
 }
 
 const FLUSH_ROWS = 2000;
 
 async function flushPending(pool: Pool, pending: PendingWrites): Promise<void> {
+  await pruneVanishedGames(pool, pending.vanishedLines);
+  pending.vanishedLines.length = 0;
   if (pending.performances.length === 0 && pending.lineups.length === 0 && pending.bans.length === 0) return;
 
   // Deduplicated on the conflict key: one statement may not touch a key twice,
@@ -540,11 +554,46 @@ async function flushPending(pool: Pool, pending: PendingWrites): Promise<void> {
   );
 
   await pruneStalePerformance(pool, pending.keep);
+  await pruneMisattributedSides(pool, pending.gameIds);
 
   pending.lineups.length = 0;
   pending.performances.length = 0;
   pending.bans.length = 0;
   pending.keep.length = 0;
+  pending.gameIds.length = 0;
+}
+
+/**
+ * Clears lineup and ban rows left under a team the game is no longer played by.
+ * Both are keyed on (game, team, ...), so a game whose sides are corrected
+ * gains a second set rather than replacing the first -- which would put a
+ * player on a board through `game_lineups` and double a champion's bans.
+ * Unconditional, unlike the performance prune: a row naming neither side of
+ * its own game cannot be right, however partial the response was.
+ */
+/**
+ * Deletes stored games the match no longer reports as played, child rows
+ * first -- nothing cascades off `games`.
+ */
+async function pruneVanishedGames(pool: Pool, lines: string[]): Promise<void> {
+  if (lines.length === 0) return;
+  const target = `SELECT id FROM games WHERE leaguepedia_unique_line = ANY($1::text[])`;
+  for (const table of ['player_game_performance', 'game_lineups', 'game_bans']) {
+    await pool.query(`DELETE FROM ${table} WHERE game_id IN (${target})`, [lines]);
+  }
+  await pool.query(`DELETE FROM games WHERE leaguepedia_unique_line = ANY($1::text[])`, [lines]);
+}
+
+async function pruneMisattributedSides(pool: Pool, gameIds: number[]): Promise<void> {
+  if (gameIds.length === 0) return;
+  for (const table of ['game_lineups', 'game_bans']) {
+    await pool.query(
+      `DELETE FROM ${table} r USING games g
+        WHERE g.id = r.game_id AND r.game_id = ANY($1::int[])
+          AND r.team_id NOT IN (g.team1_id, g.team2_id)`,
+      [gameIds],
+    );
+  }
 }
 
 /**

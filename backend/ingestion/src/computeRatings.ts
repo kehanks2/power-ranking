@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import { NEWEST_INTERNATIONAL_EVENT_TEAMS_SQL } from '@power-ranking/shared';
 import {
   runReplay,
   computeRosterImpliedMu,
@@ -82,8 +83,29 @@ async function computeInternationalSeeds(pool: Pool): Promise<Map<string, Rating
  * Minimum games at international events before a team is rated on that board.
  * Below this the rating is noise (KT Rolster placed 2nd on 7 games, RD 206);
  * such teams are absent, not rated low.
+ *
+ * A team at the event currently being played is exempt -- see
+ * `teamsAtNewestInternationalEvent`.
  */
 export const MIN_INTERNATIONAL_GAMES = 10;
+
+/**
+ * Teams playing the newest international event that has games.
+ *
+ * They are rated however few games they have, because a board that omits half
+ * the teams currently on stage answers the wrong question -- Cloud9 played a
+ * full Worlds 26 play-in run, went out on 9 games, and never appeared. The
+ * exemption lapses on its own: the set is recomputed from whichever event is
+ * newest, so a team that does not turn up to the next one falls back on the
+ * game threshold and leaves the board.
+ *
+ * The predicate itself is NEWEST_INTERNATIONAL_EVENT_TEAMS_SQL, shared so the
+ * board the API serves is asserted against the rule that wrote it.
+ */
+export async function teamsAtNewestInternationalEvent(pool: Pool): Promise<Set<string>> {
+  const result = await pool.query<{ team_id: number }>(NEWEST_INTERNATIONAL_EVENT_TEAMS_SQL);
+  return new Set(result.rows.map((row) => String(row.team_id)));
+}
 
 /**
  * Full replay from Postgres, persisting the resulting history. Safe to re-run
@@ -132,8 +154,9 @@ export async function computeRatings(pool: Pool): Promise<{ teamRows: number; le
     config: { ...replayInput.config, metaWeight: 0, internationalWeightMultiplier: 1 },
     initialTeamStates: await computeInternationalSeeds(pool),
   });
+  const atNewestEvent = await teamsAtNewestInternationalEvent(pool);
   const qualifiedInternational = internationalResult.teamHistory.filter(
-    (s) => (internationalGameCount.get(s.teamId) ?? 0) >= MIN_INTERNATIONAL_GAMES,
+    (s) => (internationalGameCount.get(s.teamId) ?? 0) >= MIN_INTERNATIONAL_GAMES || atNewestEvent.has(s.teamId),
   );
 
   // Pin the transaction to one client. pool.query('BEGIN') can hand each

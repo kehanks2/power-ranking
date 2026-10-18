@@ -163,3 +163,92 @@ describe.runIf(process.env.SKIP_DB_TESTS !== 'true')('ensureTeamLeagueMembership
     expect(await openRows()).toEqual(before);
   });
 });
+
+describe.runIf(process.env.SKIP_DB_TESTS !== 'true')('a re-paired bracket slot takes its new teams', () => {
+  let pool: pg.Pool;
+  let tournamentId: number;
+  let teams: number[];
+
+  beforeAll(async () => {
+    pool = createPool();
+    teams = [];
+    for (const name of ['W', 'X', 'Y', 'Z']) {
+      teams.push(
+        await upsertTeam(pool, { leaguepediaPage: `__Test_Pair_${name}`, slug: `__test-pair-${name.toLowerCase()}`, name: `Test Pair ${name}` }),
+      );
+    }
+    tournamentId = await upsertTournament(pool, {
+      overviewPage: '__Test_Pair_Tournament',
+      name: 'Test Pair Tournament 2026',
+      rawLeagueName: 'LCS',
+      canonicalLeagueId: null,
+      tournamentType: 'regional_split',
+      dateStart: '2026-01-01',
+      dateEnd: null,
+    });
+  });
+
+  afterAll(async () => {
+    await pool.query(`DELETE FROM games WHERE leaguepedia_unique_line = '__Test_Pair_Game_1'`);
+    await pool.query(`DELETE FROM series WHERE leaguepedia_match_id = '__Test_Pair_Match'`);
+    await pool.query(`DELETE FROM tournaments WHERE overview_page = '__Test_Pair_Tournament'`);
+    await pool.query(`DELETE FROM teams WHERE leaguepedia_page LIKE '__Test_Pair_%'`);
+    await pool.end();
+  });
+
+  // A bracket slot is published before the draw settles, so the match a slot
+  // names can change. Freezing the teams left the slot holding a neighbouring
+  // match's sides with its own correct score -- 11 series, one of them
+  // Cloud9's 2-3 at Worlds 26 filed as FURIA 2-3 MVK.
+  const ingest = async (team1Id: number, team2Id: number) => {
+    const seriesId = await upsertSeries(pool, {
+      tournamentId,
+      leaguepediaMatchId: '__Test_Pair_Match',
+      team1Id,
+      team2Id,
+      bestOf: 3,
+      team1Score: 2,
+      team2Score: 0,
+      winnerTeamId: team1Id,
+      isInternational: false,
+      bracketId: '__TestPairR1',
+      dateUtc: '2026-02-01T15:00:00Z',
+      stageName: 'Round 1',
+    });
+    await upsertGame(pool, {
+      seriesId,
+      leaguepediaUniqueLine: '__Test_Pair_Game_1',
+      gameNumber: 1,
+      team1Id,
+      team2Id,
+      winnerTeamId: team1Id,
+      datetimeUtc: '2026-02-01T15:00:00Z',
+      patch: null,
+      team1Gold: null,
+      team2Gold: null,
+      gamelengthSeconds: null,
+      team1NeutralObjectives: null,
+      team2NeutralObjectives: null,
+    });
+    return seriesId;
+  };
+
+  it('rewrites both sides of the series and its games when the slot is re-drawn', async () => {
+    const [w, x, y, z] = teams;
+    const firstId = await ingest(w, x);
+    const secondId = await ingest(y, z);
+    expect(secondId).toBe(firstId); // same slot, not a second series
+
+    const series = await pool.query<{ team1_id: number; team2_id: number; winner_team_id: number }>(
+      `SELECT team1_id, team2_id, winner_team_id FROM series WHERE leaguepedia_match_id = '__Test_Pair_Match'`,
+    );
+    expect(series.rows).toHaveLength(1);
+    expect(series.rows[0]).toEqual({ team1_id: y, team2_id: z, winner_team_id: y });
+
+    const game = await pool.query<{ team1_id: number; team2_id: number; winner_team_id: number }>(
+      `SELECT team1_id, team2_id, winner_team_id FROM games WHERE leaguepedia_unique_line = '__Test_Pair_Game_1'`,
+    );
+    expect(game.rows).toHaveLength(1);
+    expect(game.rows[0]).toEqual({ team1_id: y, team2_id: z, winner_team_id: y });
+  });
+});

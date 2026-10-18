@@ -154,6 +154,29 @@ export function splitDefiningTournamentSql(alias?: string): string {
 }
 
 /**
+ * Teams playing the newest international event that HAS games -- the one
+ * exemption from the international board's game floor, so a team currently on
+ * stage is never missing from it. Shared because the recompute decides who is
+ * rated and the API suite asserts the resulting board against the same rule.
+ *
+ * Keyed on having games, not on existing: the pull stores tournaments 21 days
+ * ahead, so the newest row routinely names an event nobody has played, which
+ * would empty the exemption for everyone at the one being contested.
+ */
+export const NEWEST_INTERNATIONAL_EVENT_TEAMS_SQL = `
+  WITH newest AS (
+    SELECT t.id FROM tournaments t
+    WHERE t.tournament_type = 'international'
+      AND EXISTS (SELECT 1 FROM series s JOIN games g ON g.series_id = s.id WHERE s.tournament_id = t.id)
+    ORDER BY t.date_start DESC LIMIT 1
+  )
+  SELECT DISTINCT unnest(ARRAY[g.team1_id, g.team2_id]) AS team_id
+  FROM games g
+  JOIN series s ON s.id = g.series_id
+  JOIN newest n ON n.id = s.tournament_id
+`;
+
+/**
  * Latest split per league. `asOfExpr` bounds it to splits that had already
  * started, which an as-of computation needs: the pull stores tournaments up to
  * 21 days ahead, so unbounded this adopts a split that has not begun yet and

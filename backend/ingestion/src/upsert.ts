@@ -96,6 +96,12 @@ export async function upsertSeries(
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      ON CONFLICT (leaguepedia_match_id) DO UPDATE SET
        tournament_id = EXCLUDED.tournament_id,
+       -- A bracket slot is published before the draw settles, so the match a
+       -- slot names can change under us. Freezing the teams left 9 series
+       -- holding a neighbouring match's sides with their own correct scores --
+       -- Cloud9's 2-3 at Worlds 26 filed as FURIA 2-3 MVK.
+       team1_id = EXCLUDED.team1_id,
+       team2_id = EXCLUDED.team2_id,
        team1_score = EXCLUDED.team1_score,
        team2_score = EXCLUDED.team2_score,
        winner_team_id = EXCLUDED.winner_team_id,
@@ -149,6 +155,11 @@ export async function upsertGame(
     `INSERT INTO games (series_id, leaguepedia_unique_line, game_number, team1_id, team2_id, winner_team_id, datetime_utc, patch, team1_gold, team2_gold, gamelength_seconds, team1_neutral_objectives, team2_neutral_objectives)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      ON CONFLICT (leaguepedia_unique_line) DO UPDATE SET
+       -- Same correction the series takes. A game whose sides move leaves
+       -- game_lineups and game_bans rows behind under the old team, since both
+       -- are keyed on it -- pruneMisattributedSides clears them.
+       team1_id = EXCLUDED.team1_id,
+       team2_id = EXCLUDED.team2_id,
        winner_team_id = EXCLUDED.winner_team_id,
        team1_gold = EXCLUDED.team1_gold,
        team2_gold = EXCLUDED.team2_gold,
