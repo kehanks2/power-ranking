@@ -211,6 +211,30 @@ for (const weight of WEIGHTS) {
     return `${mean(brier).toFixed(4)} ${(100 * mean(correct)).toFixed(1).padStart(5)}%`;
   };
 
+  // CARETS=<day> prints the international board's rank changes as computeRankChanges would:
+  // each team's last combined row before that day against its latest, ranked by floor.
+  const combinedRows = result.combinedHistory;
+  if (process.env.CARETS && combinedRows) {
+    const lastRow = (id: string, before?: string) =>
+      [...combinedRows].reverse().find((s) => s.teamId === id && (before === undefined || s.asOfDate < before));
+    const floorOrder = (pick: (id: string) => TeamRatingSnapshot | undefined) =>
+      boardIds
+        .map((id) => ({ id, row: pick(id) }))
+        .filter((t) => t.row)
+        .sort((a, b) => b.row!.mu - b.row!.phi - (a.row!.mu - a.row!.phi))
+        .map((t) => t.id);
+    const prior = floorOrder((id) => lastRow(id, process.env.CARETS));
+    const current = floorOrder((id) => lastRow(id));
+    rows.push(
+      `  carets vs before ${process.env.CARETS}: ${current
+        .map((id, i) => {
+          const move = prior.indexOf(id) - i;
+          return `${i + 1}.${(teamNames.get(id) ?? id).replace(/ /g, '')} ${move > 0 ? `+${move}` : move < 0 ? String(move) : '='}`;
+        })
+        .join('  ')}`,
+    );
+  }
+
   // The engine's own combinedHistory must agree with the combined() above on every team's final state.
   if (result.combinedHistory) {
     const engineFinal = new Map<string, TeamRatingSnapshot>();
