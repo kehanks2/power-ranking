@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectRosterChanges, computeTurnover, type LineupGame, type Role } from '../rosterChangeDetection.js';
+import { detectRosterChanges, dropSubstituteStints, computeTurnover, type LineupGame, type Role, type RosterChangeEvent } from '../rosterChangeDetection.js';
 
 const BASE_LINEUP: Record<Role, string> = { TOP: 'p1', JNG: 'p2', MID: 'p3', BOT: 'p4', SUP: 'p5' };
 
@@ -74,5 +74,40 @@ describe('detectRosterChanges', () => {
     const events = detectRosterChanges(games, 2);
     expect(events).toHaveLength(1);
     expect(events[0].effectiveGameId).toBe('g3');
+  });
+});
+
+describe('dropSubstituteStints', () => {
+  const change = (role: Role, from: string, to: string, at: string): RosterChangeEvent => ({
+    role,
+    previousPlayerId: from,
+    newPlayerId: to,
+    effectiveGameId: `${role}-${at}`,
+    effectiveAt: at,
+  });
+
+  it('drops both halves of a stint whose starter returns within the limit', () => {
+    const events = [change('JNG', 'starter', 'sub', '2026-07-25'), change('JNG', 'sub', 'starter', '2026-08-29')];
+    expect(dropSubstituteStints(events, 60)).toEqual([]);
+  });
+
+  it('keeps a stint that outlasts the limit, and every other role untouched', () => {
+    const top = change('TOP', 'a', 'b', '2026-07-01');
+    const events = [change('JNG', 'starter', 'sub', '2025-01-01'), change('JNG', 'sub', 'starter', '2025-06-01'), top];
+    expect(dropSubstituteStints(events, 60)).toEqual(events);
+  });
+
+  it('keeps a replacement that is not a return', () => {
+    const events = [change('MID', 'a', 'b', '2026-01-01'), change('MID', 'b', 'c', '2026-01-20')];
+    expect(dropSubstituteStints(events, 60)).toEqual(events);
+  });
+
+  it('pairs a rotation in order rather than double-counting the middle event', () => {
+    const events = [
+      change('BOT', 'a', 'b', '2025-01-01'),
+      change('BOT', 'b', 'a', '2025-01-20'),
+      change('BOT', 'a', 'b', '2025-02-10'),
+    ];
+    expect(dropSubstituteStints(events, 60)).toEqual([events[2]]);
   });
 });

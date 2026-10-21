@@ -1,9 +1,11 @@
 import type { Pool } from 'pg';
 import {
   detectRosterChanges,
+  dropSubstituteStints,
   computeRosterImpliedMu,
   confidenceFromGamesPlayed,
   ROSTER_CHANGE_MIN_GAMES,
+  SUBSTITUTE_RETURN_DAYS,
   type ReplayGame,
   type DecayEvent,
   type IncomingPlayerSignal,
@@ -11,10 +13,12 @@ import {
 import { buildTeamLineupGames } from './teamLineups.js';
 
 // 5, not 2: at 2, ordinary bench rotation counted as full roster turnover and
-// spiked RD. Matches ROSTER_DISPLAY_PERSISTENCE_GAMES in computePlayerRatings.ts.
+// spiked RD.
 const DEFAULT_ROSTER_CHANGE_PERSISTENCE_GAMES = 5;
 const OFFSET_SCALE = 150; // rating points a maximally-rated incoming roster is worth vs the league mean
-const K_SEASON = 0.25; // matches plan's design default
+// A team with no tracked regional game this long before an international game
+// played it from a league we do not hold (2024's PCS, VCS, LJL, LLA).
+const LEAGUE_THEN_WINDOW_MS = 240 * 24 * 60 * 60 * 1000;
 
 interface GameRow {
   series_id: number;
@@ -27,6 +31,7 @@ interface GameRow {
   team2_gold: number | null;
   gamelength_seconds: number | null;
   international_event: boolean;
+  play_in: boolean;
   team1_league_id: number;
   team2_league_id: number;
 }
@@ -59,6 +64,7 @@ export interface ReplayData {
 export async function loadReplayData(
   pool: Pool,
   rosterChangePersistenceGames: number = DEFAULT_ROSTER_CHANGE_PERSISTENCE_GAMES,
+  substituteReturnDays: number = SUBSTITUTE_RETURN_DAYS,
 ): Promise<ReplayData> {
   const leaguesResult = await pool.query<{ id: number }>('SELECT id FROM leagues');
   const leagueIds = leaguesResult.rows.map((row) => String(row.id));
@@ -75,7 +81,13 @@ export async function loadReplayData(
     SELECT g.series_id, g.team1_id, g.team2_id, g.winner_team_id, g.datetime_utc,
            g.team1_gold, g.team2_gold, g.gamelength_seconds,
            tlm1.league_id AS team1_league_id, tlm2.league_id AS team2_league_id,
-           (tn.tournament_type = 'international') AS international_event
+           (tn.tournament_type = 'international') AS international_event,
+           -- MSI 2024's play-in was two groups, so 'Group' is a play-in at an MSI only:
+           -- First Stand 2026 also has a Group A/B, and it was its main stage.
+           (tn.tournament_type = 'international' AND (
+             s.stage_name ILIKE 'play-in%'
+             OR (tn.name ILIKE '%Mid-Season Invitational%' AND s.stage_name ILIKE 'group %')
+           )) AS play_in
     FROM games g
     JOIN series s ON s.id = g.series_id
     JOIN tournaments tn ON tn.id = s.tournament_id
@@ -84,6 +96,25 @@ export async function loadReplayData(
     ORDER BY g.datetime_utc, g.id
   `);
 
+  // A team's league comes from its CURRENT membership, which is wrong for an
+  // international game played from a league since dissolved: LYON's 2024 Worlds
+  // games were LLA's, not LCS's. Such a side carries no league, so it neither
+  // takes a league term nor trains one (runReplay skips unknown league ids).
+  const regionalGameTimes = new Map<number, number[]>();
+  for (const row of gamesResult.rows) {
+    if (row.international_event) continue;
+    for (const teamId of [row.team1_id, row.team2_id]) {
+      if (!regionalGameTimes.has(teamId)) regionalGameTimes.set(teamId, []);
+      regionalGameTimes.get(teamId)!.push(row.datetime_utc.getTime());
+    }
+  }
+  const leagueThen = (row: GameRow, teamId: number, leagueId: number): string => {
+    if (!row.international_event) return String(leagueId);
+    const at = row.datetime_utc.getTime();
+    const known = (regionalGameTimes.get(teamId) ?? []).some((t) => t < at && t > at - LEAGUE_THEN_WINDOW_MS);
+    return known ? String(leagueId) : `unknown:${teamId}`;
+  };
+
   const games: ReplayGame[] = gamesResult.rows.map((row, index) => ({
     gameId: String(index),
     seriesId: String(row.series_id),
@@ -91,12 +122,13 @@ export async function loadReplayData(
     team1Id: String(row.team1_id),
     team2Id: String(row.team2_id),
     winnerTeamId: String(row.winner_team_id),
-    team1LeagueId: String(row.team1_league_id),
-    team2LeagueId: String(row.team2_league_id),
+    team1LeagueId: leagueThen(row, row.team1_id, row.team1_league_id),
+    team2LeagueId: leagueThen(row, row.team2_id, row.team2_league_id),
     team1Gold: row.team1_gold,
     team2Gold: row.team2_gold,
     gamelengthSeconds: row.gamelength_seconds,
     internationalEvent: row.international_event,
+    playIn: row.play_in,
   }));
 
   const decayEvents: DecayEvent[] = [];
@@ -124,7 +156,7 @@ export async function loadReplayData(
 
   const lineupGamesByTeam = await buildTeamLineupGames(pool);
   for (const [teamId, lineupGames] of lineupGamesByTeam) {
-    const events = detectRosterChanges(lineupGames, rosterChangePersistenceGames);
+    const events = dropSubstituteStints(detectRosterChanges(lineupGames, rosterChangePersistenceGames), substituteReturnDays);
     const eventsByDate = new Map<string, typeof events>();
     for (const event of events) {
       const dateKey = String(event.effectiveAt).slice(0, 10);
@@ -164,47 +196,8 @@ export async function loadReplayData(
     }
   }
 
-  // --- Seasonal soft-decay at split boundaries ---
-  // Each distinct tournament date_start per league is a split boundary; the
-  // first has no "before" to decay from, so it's skipped. Without this, a
-  // continuously-active team never sheds old results -- Glicko-2's RD growth
-  // only kicks in across a real gap in games. leagueMeanMu is neutral (0)
-  // rather than the true mid-run mean, which only the replay engine would know.
-  const boundariesResult = await pool.query<{ canonical_league_id: number; date_start: string }>(`
-    SELECT DISTINCT canonical_league_id, date_start::text
-    FROM tournaments
-    WHERE canonical_league_id IS NOT NULL
-    ORDER BY canonical_league_id, date_start
-  `);
-  const boundariesByLeague = new Map<number, string[]>();
-  for (const row of boundariesResult.rows) {
-    if (!boundariesByLeague.has(row.canonical_league_id)) boundariesByLeague.set(row.canonical_league_id, []);
-    boundariesByLeague.get(row.canonical_league_id)!.push(row.date_start);
-  }
-
-  const teamsByLeagueResult = await pool.query<{ team_id: number; league_id: number }>(`
-    SELECT team_id, league_id FROM team_league_memberships WHERE end_date IS NULL
-  `);
-  const teamsByLeague = new Map<number, number[]>();
-  for (const row of teamsByLeagueResult.rows) {
-    if (!teamsByLeague.has(row.league_id)) teamsByLeague.set(row.league_id, []);
-    teamsByLeague.get(row.league_id)!.push(row.team_id);
-  }
-
-  for (const [leagueId, boundaries] of boundariesByLeague) {
-    const teamsInLeague = teamsByLeague.get(leagueId) ?? [];
-    for (const boundaryDate of boundaries.slice(1)) {
-      for (const teamId of teamsInLeague) {
-        decayEvents.push({
-          kind: 'seasonal',
-          teamId: String(teamId),
-          effectiveDate: boundaryDate,
-          leagueMeanMu: 0,
-          kSeason: K_SEASON,
-        });
-      }
-    }
-  }
+  // No split-boundary decay: it pulled every team 25% toward its league mean at
+  // each tournament start and made regional and cross-region prediction worse.
 
   // Oldest event still inside the window; null when fewer events exist than
   // the window holds (nothing excluded yet).

@@ -82,6 +82,31 @@ export function detectRosterChanges(games: LineupGame[], persistenceGames: numbe
   return events;
 }
 
+/**
+ * Removes substitute stints: a role's change X -> Y followed by its next change
+ * Y -> X within `maxDays`. A substitute who outlasts the persistence threshold
+ * otherwise yields two events for a roster that never changed.
+ */
+export function dropSubstituteStints(events: RosterChangeEvent[], maxDays: number): RosterChangeEvent[] {
+  const dropped = new Set<RosterChangeEvent>();
+  for (const role of ROLES) {
+    const inRole = events
+      .filter((e) => e.role === role)
+      .sort((a, b) => (a.effectiveAt < b.effectiveAt ? -1 : a.effectiveAt > b.effectiveAt ? 1 : 0));
+    for (let i = 0; i + 1 < inRole.length; i++) {
+      const out = inRole[i];
+      const back = inRole[i + 1];
+      if (dropped.has(out) || back.newPlayerId !== out.previousPlayerId || back.previousPlayerId !== out.newPlayerId) continue;
+      const days = (Date.parse(String(back.effectiveAt)) - Date.parse(String(out.effectiveAt))) / 86_400_000;
+      if (days > maxDays) continue;
+      dropped.add(out);
+      dropped.add(back);
+      i++;
+    }
+  }
+  return events.filter((e) => !dropped.has(e));
+}
+
 /** Fraction of the 5 starting roles that changed in a set of detected events (for the same period). */
 export function computeTurnover(events: RosterChangeEvent[]): number {
   const changedRoles = new Set(events.map((e) => e.role));

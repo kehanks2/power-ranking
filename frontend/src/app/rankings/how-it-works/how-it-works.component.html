@@ -37,9 +37,10 @@
         nothing in a purely regional record would show it.
       </p>
       <p>
-        <strong>One board does compare regions: International.</strong> It is built only from games
-        teams played against each other, at First Stand, MSI and Worlds. Everyone on it faced the
-        same field, so those numbers mean the same thing wherever a team is from.
+        <strong>One board does compare regions: International.</strong> It places each team's
+        regional record on a shared scale using what First Stand, MSI and Worlds say about the
+        regions and about the team itself, so those numbers mean the same thing wherever a team is
+        from.
       </p>
 
       <h4>The boards</h4>
@@ -79,24 +80,29 @@
       <h3 id="teams">How a team is rated</h3>
       <p>
         The core is Glicko-2, a rating system that tracks both a rating and how certain it is. A
-        team's number is two terms:
+        team's international number is three terms:
       </p>
       <ul>
         <li>
-          <strong>Their own record.</strong> How they have done against everyone they have played,
-          updated by every game. International games count double: they are the only cross-region
-          evidence and there are about ten times fewer of them, so at equal weight a domestic
-          schedule outvotes them.
+          <strong>Their regional record.</strong> How they have done against their own league,
+          updated by every league game. This alone is what a regional board ranks.
         </li>
         <li>
           <strong>Their region's strength</strong>, measured only from international results. For a
           team that never leaves its league this is the only cross-region signal there is.
         </li>
+        <li>
+          <strong>Their own international record</strong>: how far their international results
+          have run ahead of or behind the first two terms.
+        </li>
       </ul>
       <p>
-        Both are needed. Averaged by league, the first term barely separates them and does not even
-        put them in the right order. Essentially all the cross-region information sits in the
-        second.
+        The region's strength counts for less the more a team plays internationally: in full for a
+        team with no international games, half after 30. So a team with little international history
+        is predicted from its league record and its league, and a team with a long one is not dragged
+        down because a league-mate had a bad event. International games count double, since there
+        are about ten times fewer of them; a play-in game counts a quarter of that, because it is
+        played against the weakest teams at the event.
       </p>
       @if (leagues().length) {
         <p class="live">
@@ -111,11 +117,6 @@
         </p>
       }
       <p>
-        A region's credit fades if it stops showing up: full for six months, tapering to a floor
-        over two years. It never reaches zero, because a team that has not had the chance still
-        belongs to its region.
-      </p>
-      <p>
         <strong>Regional team boards are not cut to a recent window.</strong> Old results already
         count for very little, through the rating's own drift and the volume of regional play at 40
         to 80 games a split. We tested cutting the record to 24, 18 and 12 months and graded every
@@ -123,11 +124,11 @@
         which was measurably worse. Past a point a window only discards evidence.
       </p>
       <p>
-        <strong>The International board is cut</strong>, to the last six events, or about two years.
-        International play runs two or three events a year, so without a hard cutoff a result from
-        two seasons ago leaks in forever, and this board's claim is who is good at that level now. A
-        team needs 10 games across those events to appear. One missing from it is not ranked low; it
-        is not ranked.
+        <strong>A team's own international record fades</strong>, by half each year, and a roster
+        change clears it in proportion to the players replaced. International play runs two or three
+        events a year, so without that a result from two seasons ago, by a different roster, would
+        keep its full weight. A team needs 10 games across the last six international events to
+        appear on the board. One missing from it is not ranked low; it is not ranked.
       </p>
     </section>
 
@@ -141,8 +142,9 @@
       <p>
         A roster change widens the range without resetting it. We usually know the incoming
         players well enough to move the rating with them, but five known players are still an
-        unknown combination, so some of the certainty goes. A team whose roster changed inside its
-        last 10 games is flagged on the board.
+        unknown combination, so some of the certainty goes. A substitute is not a roster change: if
+        the starter is back within 60 days, neither swap counts. A team whose roster changed inside
+        its last 10 games is flagged on the board.
       </p>
       <p>
         On the player boards the same idea is drawn as a bar: solid out to what the games have

@@ -29,7 +29,8 @@ const ANCHOR_GAP = 16;
 const WIDE_VIEWPORT = '(min-width: 941px)';
 
 const BOARD_RANKS: Record<BoardScope, string> = {
-  international: 'Teams and players measured against the same field, at First Stand, MSI and Worlds',
+  international:
+    'Teams across regions, from every game they play; players measured against the same field at First Stand, MSI and Worlds',
   LCK: 'Teams and players in the LCK, against each other only',
   LPL: 'Teams and players in the LPL, against each other only',
   LEC: 'Teams and players in the LEC, against each other only',

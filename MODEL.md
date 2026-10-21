@@ -8,40 +8,87 @@ it was compensating for had been fixed.
 
 ## Structure
 
-A team's displayed rating is
+One replay produces three terms per team:
+
+- **contextual** — the team's standing within its league, from league games
+  only. A regional board ranks on this alone; the other two terms are shared or
+  zero inside one league.
+- **leagueMeta** — how strong the region is, from cross-region games only. It
+  is the *only* cross-region signal for a team that never leaves its league.
+- **international deviation** — how far the team's own cross-region results
+  have run ahead of or behind the first two. Moved only by cross-region games.
+
+The International board ranks the strength a cross-region game is graded with:
 
 ```
-rating = contextual + effectiveMetaWeight(league) x participation(team) x leagueMeta
+international = contextual
+              + effectiveMetaWeight(league) x h/(h + crossRegionGames) x leagueMeta
+              + deviation
 ```
 
-Two terms, each answering a question the other cannot:
-
-- **contextual** — how good is this team, measured against everyone it has
-  played. Updated by every game.
-- **leagueMeta** — how strong is this region, measured only from international
-  games. It is the *only* cross-region signal for a team that never leaves its
-  league.
+so a team with no international history is its league record plus its league,
+and one with a long record leans on its own (h = `LEAGUE_TERM_HALF_LIFE_GAMES`,
+30). The meta is still trained by every team's games, which is what lets a thin
+team inherit it.
 
 These are not redundant. Measured: mean contextual offsets by league span just
 85 points and are not even correctly ordered (CBLOL, the weakest region, has the
-highest mean), because contextual floats within each league's own pool. The meta
-carries essentially all cross-region information.
+highest mean), because contextual floats within each league's own pool. Dropping
+the meta (`metaWeight = 0`) collapses per-league calibration, 7.80pp vs 2.93pp.
 
-Two structural alternatives were tested and rejected on data, not taste:
+### The International board, rebuilt (2026-10-20)
 
-| Alternative | Result |
-|---|---|
-| Drop the meta entirely (`metaWeight = 0`) | per-league calibration collapses, 7.80pp vs 2.93pp |
-| Shrink the meta as a team accrues its own international record | worse on every metric, monotonically (Brier 0.2350 at k=10 vs 0.2259 with no shrink) |
+It used to be a separate replay over international-event games only, no league
+term, cut to the last six events. That predicted worst of everything measured
+(Brier 0.2398 and 59.6% on the 337 window games, against 0.2168 and 66.5% for
+the all-games model) and let one play-in run lift KC from 11th to 3rd: with 39
+international games on record, 11 play-in wins were a quarter of everything it
+knew.
 
-The second is the intuitive "the prior should yield to evidence" idea. It fails
-because a team's contextual rating is still earned mostly in regional games no
-matter how many internationals it plays, so the prior never becomes redundant.
+The obvious repair — every game, plus the league term at full weight — was
+right on average and wrong per team. It predicted LCK's cross-region win rate
+to the point (71% vs 72%) but BNK FEARX at 63% (won 45%) and LYON at 41% (won
+52%): the meta, learned from Gen.G and HLE, was added in full to a mid-table LCK
+team, and LYON's MSI wins went into an LCS term Cloud9 then lost. Those per-team
+gaps are mostly within noise (2 of 19 teams beyond 2 SE), but the structure the
+owner asked for — a thin team inherits its league, a proven team does not — is
+the fade plus the deviation term above.
+
+"Shrink the meta as a team accrues an international record" was previously
+rejected here (Brier 0.2350 vs 0.2259). That test shrank the league term with
+nowhere for the team's own results to go, since contextual is earned mostly in
+league games. With the deviation term to hold them, the fade measured neutral:
+cross-region Brier −0.0002 ± 0.0029.
+
+What also changed, each measured on the same games with paired SEs:
+
+- **Leagues as they were.** A team with no tracked league game in the 240 days
+  before an international game played it from a league we do not hold (2024's
+  PCS, VCS, LJL and LLA: 63 games). That side carries no league term and trains
+  none; it had been crediting LLA's 2024 results to the LCS.
+- **The deviation fades and resets.** Glicko-2 widens RD with time but never
+  moves mu, so a sparse record keeps a 2024 result at full weight. The mean
+  halves each `TEAM_INTERNATIONAL_HALF_LIFE_DAYS` and its variance relaxes to the
+  prior's instead of growing without bound — under plain drift the prior RD
+  stopped mattering, since every team was wide again after a few months. A roster
+  change clears it by its turnover.
+- **Play-ins count a quarter** (`PLAY_IN_WEIGHT`, owner's ruling): KC's 2026
+  play-in moves it 10th → 8th rather than 11th → 3rd, at no measurable cost.
+- **No split-boundary decay.** `K_SEASON` 0.25 was a design default, never
+  swept. Removing it improved regional prediction (Brier 0.2232 → 0.2204, 4.4 SE)
+  as well as cross-region.
+
+`META_WEIGHT` is 0.2, the owner's choice over the measured optimum of 0.5:
+0.5 is better by 0.0056 ± 0.0030 cross-region (1.9 SE) but ranks mid-table LCK
+teams above LYON. ~300 cross-region games cannot separate most of these
+settings, so score both weights on the Worlds 26 main stage before revisiting.
+`manualGlobalBoardWeightSweep.ts` reproduces every number here and checks the
+engine's combined history against its own to 0.0000.
 
 ### Regional boards are deliberately unbounded
 
-The International board is cut to the last six events. Regional boards are not,
-and that asymmetry is intentional rather than an oversight.
+The international deviation fades with time; regional records are not cut or
+faded, and that asymmetry is intentional rather than an oversight.
 
 Tested by feeding the replay only the last N months and scoring every candidate
 on the **same** 1,573 recent games (`checkModelQuality --window-months N
@@ -60,11 +107,10 @@ of 1,573 against a standard error of about 19 — inside noise — and the Brier
 gap is 0.0004. Cutting to 12 months is measurably worse, which is the useful
 part of the result: past a point a window is just discarding evidence.
 
-The mechanism explains why the two boards differ. International events run 2-3
-a year, so a half-life alone lets a 2024 result leak in forever at ever-smaller
-weight, and the board's whole claim is "who is good at this level *now*" — a
-hard cutoff is what makes that true. Regional play is continuous at 40-80 games
-a split, so Glicko's time-scaled drift plus sheer volume has already swamped old
+The mechanism explains the asymmetry. International events run 2-3 a year, and
+Glicko's drift widens RD without moving mu, so without a fade a 2024 result
+keeps its full weight in the point estimate. Regional play is continuous at
+40-80 games a split, so drift plus sheer volume has already swamped old
 results. No team currently on a regional board has less than 44% of its games
 inside 18 months.
 
@@ -152,19 +198,21 @@ accuracy it cannot be improved by shading probabilities toward 50%.
 
 | Name | Value | Why |
 |---|---|---|
-| `META_WEIGHT` | 0.5 | Grid minimum on Brier (0.2254) and log loss (0.6434); overconfidence 5.3pp vs 6.7pp at 0.8; league spread 1.20x the Bradley-Terry fit vs 1.45x |
+| `META_WEIGHT` | 0.2 | Owner's choice (2026-10-20); 0.5 was this grid's minimum (Brier 0.2254) and is still 1.9 SE better cross-region under the three-term model. See "The International board, rebuilt" |
 | `SERIES_CORRELATION` | 0.6 | Games inside a series are not independent; weight `1/(1+(n-1)*rho)`, so a 3-0 counts as 1.36 games. Best overconfidence in the grid (5.3pp vs 6.9pp at rho=0) |
-| `INTERNATIONAL_WEIGHT_MULTIPLIER` | 2 | International games are the only cross-region evidence and only ~500 of 5,929, so at equal weight regional volume decides everything. Brier marginally prefers 1x, but the difference (0.2256 vs 0.2259) is inside noise while the ordering effect is not — BLG beat T1 and Hanwha Life head-to-head in 2026 and ranked below both at 1x |
+| `INTERNATIONAL_WEIGHT_MULTIPLIER` | 2 | Swept when international games still moved contextual: Brier marginally preferred 1x (0.2256 vs 0.2259, inside noise), 2x put BLG adjacent to the T1 and HLE it beat. They now move only the league term and the deviation; 3x and 4x left the per-team cross-region error unchanged |
 | `RATING_PERIOD_DAYS` | 1 | A genuinely free knob since drift became time-scaled: total uncertainty growth over a span no longer depends on how finely it is sliced. Daily is correct during international events where a team plays several series in a week |
 
 ### Cross-region credit
 
 | Name | Value | Why |
 |---|---|---|
-| `META_PARTICIPATION_FULL_CREDIT_DAYS` | 182 | A year of undiminished regional credit spans a whole competitive season. Six months means credit lapses if a team misses the next international cycle, matching the First Stand → MSI → Worlds cadence |
-| `META_PARTICIPATION_ZERO_CREDIT_DAYS` | 730 | Two years without an international appearance is a different organisation |
-| `META_PARTICIPATION_FLOOR` | 0.3 | Never zero: a team that has never had the chance still belongs to its region |
+| `LEAGUE_TERM_HALF_LIFE_GAMES` | 30 | Cross-region games at which a team's league term counts half. Not swept; the fade measured neutral at 30 (−0.0002 ± 0.0029) |
+| `TEAM_INTERNATIONAL_RD` | 75 | Prior RD of the deviation, and what its variance relaxes back to. 25–150 all within noise cross-region; 75 scored best at both league weights tried, 25 and 150 worst |
+| `TEAM_INTERNATIONAL_HALF_LIFE_DAYS` | 365 | Deviation mean halves per year. 180 and 90 measured within noise; 365 kept the most evidence for the same score |
+| `PLAY_IN_WEIGHT` | 0.25 | Owner's ruling: a play-in is against the weakest teams at the event. Matched by stage name, plus MSI 2024's groups, which were its play-in |
 | `effectiveMetaWeight` | derived | Not a knob — shrinks league credit by the meta's own confidence (`1 - phi_meta/phi_init_max`), so an uncertain league rating counts for less automatically |
+| `META_PARTICIPATION_*` | — | Not used by the replay or the boards; only `manualLeagueCalibration` scores them |
 
 ### Decay
 
@@ -174,7 +222,8 @@ accuracy it cannot be improved by shading probabilities toward 50%.
 | `DEFAULT_ROSTER_CHANGE_PERSISTENCE_GAMES` | 5 | Backtested: 289 roster events and 63.16% accuracy at 5, against 422 events and 62.39% at 2 — bench rotation was being counted as turnover |
 | `ROSTER_CHANGE_MIN_GAMES` | 10 | Games before an incoming player's rating is trusted at full weight |
 | `OFFSET_SCALE` | 150 | Rating points a maximally-rated incoming roster is worth against the league mean |
-| `K_SEASON` | 0.25 | Split-boundary regression toward the league mean |
+| `SUBSTITUTE_RETURN_DAYS` | 60 | Owner's ruling. A replaced starter back within this was covered by a sub, and both events are dropped: 66 stints had produced 132 of 581 roster events, LYON's three-week jungle sub among them |
+| ~~`K_SEASON`~~ | removed | Split-boundary regression toward the league mean, at a design default of 0.25 that was never swept. Removing it improved regional Brier 0.2232 → 0.2204 (4.4 SE) |
 
 ### Player composite — the win weight corrects a double-count
 

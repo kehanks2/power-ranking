@@ -238,3 +238,85 @@ describe('seriesEvidenceWeight', () => {
     expect(seriesEvidenceWeight(3, 0.9)).toBeLessThan(seriesEvidenceWeight(3, 0.3));
   });
 });
+
+describe('runReplay with an international deviation', () => {
+  const init = 75 / GLICKO2_SCALE;
+  const deviationConfig = {
+    ...config,
+    ratingPeriodDays: 1,
+    contextualLearnsInternational: false,
+    teamInternationalPhiInit: init,
+    teamInternationalHalfLifeDays: 365,
+    teamInternationalRosterReset: true,
+  };
+  const game = (id: string, at: string, team1: [string, string], team2: [string, string], extra: Partial<ReplayGame> = {}): ReplayGame => ({
+    gameId: id,
+    datetimeUtc: at,
+    team1Id: team1[0],
+    team2Id: team2[0],
+    winnerTeamId: team1[0],
+    team1LeagueId: team1[1],
+    team2LeagueId: team2[1],
+    team1Gold: null,
+    team2Gold: null,
+    gamelengthSeconds: null,
+    ...extra,
+  });
+  const run = (games: ReplayGame[], extraConfig = {}, decayEvents: RosterDecayEvent[] = []) =>
+    runReplay({ teamIds: ['A', 'B', 'C', 'D'], leagueIds: ['LCK', 'LCS'], games, decayEvents, config: { ...deviationConfig, ...extraConfig } });
+  const lastOf = <T extends { teamId: string }>(rows: T[], teamId: string) => [...rows].reverse().find((r) => r.teamId === teamId)!;
+
+  it('moves the deviation, not contextual, on a cross-region game', () => {
+    const result = run([game('g1', '2026-05-01T10:00:00Z', ['A', 'LCK'], ['B', 'LCS'])]);
+    expect(result.teamHistory.filter((s) => s.reason === 'game_update')).toEqual([]);
+    expect(lastOf(result.teamInternationalHistory!, 'A').mu).toBeGreaterThan(0);
+    expect(lastOf(result.teamInternationalHistory!, 'B').mu).toBeLessThan(0);
+  });
+
+  it('gives a side from an unknown league no league term, and trains no league from it', () => {
+    const result = run([game('g1', '2026-05-01T10:00:00Z', ['A', 'unknown:A'], ['B', 'LCS'])]);
+    expect(result.leagueHistory.filter((s) => s.leagueId === 'LCK')).toHaveLength(1);
+    expect(result.leagueHistory.filter((s) => s.leagueId === 'LCS')).toHaveLength(2);
+  });
+
+  it('halves the deviation over its half-life', () => {
+    const result = run(
+      [
+        game('g1', '2025-05-01T10:00:00Z', ['A', 'LCK'], ['B', 'LCS']),
+        game('g2', '2026-05-01T10:00:00Z', ['C', 'LCK'], ['D', 'LCK']),
+      ],
+      { metaWeight: 0 },
+    );
+    const afterGame = lastOf(result.teamInternationalHistory!, 'A').mu;
+    expect(lastOf(result.combinedHistory!, 'A').mu).toBeCloseTo(afterGame / 2, 10);
+  });
+
+  it('clears the deviation on a full roster change', () => {
+    const result = run(
+      [game('g1', '2026-05-01T10:00:00Z', ['A', 'LCK'], ['B', 'LCS'])],
+      {},
+      [{ kind: 'roster_change', teamId: 'A', effectiveDate: '2026-06-01', turnover: 1, rosterImpliedMu: 0 }],
+    );
+    expect(lastOf(result.teamInternationalHistory!, 'A')).toMatchObject({ reason: 'roster_decay', mu: 0 });
+  });
+
+  it('weights a play-in game by playInWeight', () => {
+    const playIn = [game('g1', '2026-05-01T10:00:00Z', ['A', 'LCK'], ['B', 'LCS'], { playIn: true })];
+    const full = lastOf(run(playIn).teamInternationalHistory!, 'A').mu;
+    const quarter = lastOf(run(playIn, { playInWeight: 0.25 }).teamInternationalHistory!, 'A').mu;
+    expect(quarter).toBeGreaterThan(0);
+    expect(quarter).toBeLessThan(full);
+  });
+
+  it('builds the combined RD from contextual as last recorded, not as drifted while idle', () => {
+    const result = run(
+      [
+        game('g1', '2025-05-01T10:00:00Z', ['C', 'LCK'], ['B', 'LCK']),
+        game('g2', '2026-05-01T10:00:00Z', ['A', 'LCK'], ['B', 'LCK']),
+      ],
+      { metaWeight: 0 },
+    );
+    const recorded = lastOf(result.teamHistory, 'C');
+    expect(lastOf(result.combinedHistory!, 'C').phi).toBeCloseTo(Math.hypot(recorded.phi, init), 10);
+  });
+});

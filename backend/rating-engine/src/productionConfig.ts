@@ -15,20 +15,26 @@ export const MARGIN_SCALE = 1e9;
 export const MOV_WEIGHT_CAP = 1.5;
 
 /**
- * Weight on the league prior relative to a team's own record.
- *
- * From a joint 48-config grid (manualModelSweep) over metaWeight x
- * seriesCorrelation x internationalWeightMultiplier -- tuning these one at a
- * time is what left SERIES_CORRELATION stale for months. Judged on Brier, which
- * unlike accuracy cannot be improved by shading toward 50%.
- *
- * 0.5 is the grid minimum (Brier 0.2254) and cuts the >80%-confidence
- * overconfidence gap to 5.3pp from 6.7pp at 0.8. Per-league calibration prefers
- * a larger weight, but on only ~870 observations, and a bigger league term
- * matches per-league win rates almost mechanically -- the over-attribution to
- * region this weight exists to limit.
+ * Weight on the league term in a cross-region comparison. Owner's choice
+ * (2026-10-20) over the Brier optimum of 0.5: cross-region Brier 0.2213 vs
+ * 0.2157, 1.9 SE on 300 games, and 0.5 ranks mid-table LCK teams above LYON.
+ * Score both on Worlds 26's main stage before revisiting (MODEL.md).
  */
-export const META_WEIGHT = 0.5;
+export const META_WEIGHT = 0.2;
+
+/** Cross-region games at which a team's league term counts half: weight x h / (h + games). */
+export const LEAGUE_TERM_HALF_LIFE_GAMES = 30;
+
+/**
+ * Prior RD (display points) of a team's own international deviation, the term
+ * only cross-region games move. Its variance relaxes back to this, and its mean
+ * to 0, over TEAM_INTERNATIONAL_HALF_LIFE_DAYS.
+ */
+export const TEAM_INTERNATIONAL_RD = 75;
+export const TEAM_INTERNATIONAL_HALF_LIFE_DAYS = 365;
+
+/** Weight of a play-in game relative to any other international game. Owner's ruling (2026-10-20). */
+export const PLAY_IN_WEIGHT = 0.25;
 
 /**
  * Intra-series correlation (rho): games inside a Bo3/Bo5 are not independent, so
@@ -52,28 +58,11 @@ export const SERIES_CORRELATION = 0.6;
 export const RATING_PERIOD_DAYS = 1;
 
 /**
- * International games count double in the CONTEXTUAL update. They are the only
- * ones carrying cross-region information and there are ~10x fewer of them (about
- * 500 of 5,929), so at equal weight a team's regional schedule outvotes them:
- * Bilibili Gaming won First Stand 2026 yet ranked four places below T1. At 2x
- * they sit adjacent.
- *
- * 2 rather than higher on purpose. manualLeagueCalibration keeps improving as
- * this rises, but it is measured ON international games, so up-weighting them
- * fits it almost by construction. Overall accuracy peaks near 3x and falls by
- * 4x, with 1x-3x inside noise (~8 games).
+ * Weight of a cross-region game in the league and international-deviation
+ * updates. Contextual no longer sees these games. 3x and 4x left the per-team
+ * cross-region error unchanged (manualGlobalBoardWeightSweep, 2026-10-20).
  */
 export const INTERNATIONAL_WEIGHT_MULTIPLIER = 2;
-
-// Roster prior for the international board: seed each team from its roster's
-// international player ratings instead of a cold RD-350 start, so a thin team is
-// not treated as a total unknown. RELIEF is how much a fully-known roster tightens
-// the prior RD; OFFSET_SCALE maps roster percentile to rating points; CONF_THRESHOLD
-// is the player games for full confidence. relief 0.8 is a held-out-Brier sweep
-// optimum (a free lunch -- tighter ranges AND lower Brier -- up to ~0.8, then it bends).
-export const ROSTER_PRIOR_RELIEF = 0.8;
-export const ROSTER_PRIOR_OFFSET_SCALE = 150;
-export const ROSTER_PRIOR_CONF_THRESHOLD = 15;
 
 // Games an incoming player must play before their rating is trusted in full.
 // Shared because two places need the same number: the replay, which weights a
@@ -81,3 +70,9 @@ export const ROSTER_PRIOR_CONF_THRESHOLD = 15;
 // has not settled yet. Restating it in the API let the flag drift from the
 // model it is describing.
 export const ROSTER_CHANGE_MIN_GAMES = 10;
+
+// A replaced starter who returns within this many days was covered by a
+// substitute, not replaced: both roster-change events are dropped. Owner's
+// ruling (2026-10-20). 66 stints produced 132 of 581 events, LYON's three-week
+// jungle sub among them.
+export const SUBSTITUTE_RETURN_DAYS = 60;
